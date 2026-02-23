@@ -1,0 +1,236 @@
+name: AEGIS-AI CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Lint and Type Check
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    name: Lint & TypeScript Check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run ESLint
+      run: npm run lint
+    
+    - name: Run TypeScript check
+      run: npm run typecheck
+
+  # Security Scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scanning
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run npm audit
+      continue-on-error: true
+      run: npm audit --audit-level=moderate
+
+  # Testing
+  test:
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    name: Unit & Integration Tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests with coverage
+      run: npm run test:coverage
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/coverage-final.json
+        flags: unittests
+        name: codecov-umbrella
+
+  # Build Docker Images
+  build-images:
+    needs: [lint-and-typecheck, test]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Build Docker Images
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+    
+    - name: Build and push backend image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.backend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.frontend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  # Deploy to Staging
+  deploy-staging:
+    needs: build-images
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    environment:
+      name: staging
+      url: https://staging-api.aegis-ai.co.za
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.27.0'
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+    
+    - name: Update image tags
+      run: |
+        kubectl set image deployment/aegis-api \
+          -n aegis \
+          api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:develop \
+          --record
+        
+        kubectl set image deployment/aegis-frontend \
+          -n aegis \
+          frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:develop \
+          --record
+    
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/aegis-api -n aegis --timeout=5m
+        kubectl rollout status deployment/aegis-frontend -n aegis --timeout=5m
+    
+    - name: Smoke test
+      run: |
+        sleep 30
+        curl -f https://staging-api.aegis-ai.co.za/health/ready || exit 1
+
+  # Deploy to Production
+  deploy-production:
+    needs: build-images
+    if: github.ref == 'refs/heads/main' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    environment:
+      name: production
+      url: https://api.aegis-ai.co.za
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.27.0'
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+    
+    - name: Update image tags
+      run: |
+        TAG=${{ github.ref_name }}
+        kubectl set image deployment/aegis-api \
+          -n aegis \
+          api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${TAG} \
+          --record
+        
+        kubectl set image deployment/aegis-frontend \
+          -n aegis \
+          frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${TAG} \
+          --record
+    
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/aegis-api -n aegis --timeout=5m
+        kubectl rollout status deployment/aegis-frontend -n aegis --timeout=5m
+    
+    - name: Run smoke tests
+      run: |
+        sleep 30
+        curl -f https://api.aegis-ai.co.za/health/ready || exit 1
+        curl -f https://aegis-ai.co.za || exit 1

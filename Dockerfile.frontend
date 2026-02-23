@@ -1,0 +1,71 @@
+# ============================================================================
+# AEGIS-AI Frontend Dockerfile
+# Multi-stage build for optimized production image
+# ============================================================================
+
+# Stage 1: Build
+FROM node:20-alpine AS builder
+
+LABEL maintainer="AEGIS-AI Development Team"
+LABEL description="AEGIS-AI Frontend Builder Stage"
+
+WORKDIR /app
+
+# Install dependencies (including dev for build)
+COPY package*.json ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build application
+ARG NODE_ENV=production
+ARG VITE_ENV=production
+ENV NODE_ENV=$NODE_ENV
+ENV VITE_ENV=$VITE_ENV
+
+# Build the app
+RUN npm run build
+
+# ============================================================================
+# Stage 2: Runtime (Nginx)
+FROM node:20-alpine
+
+LABEL maintainer="AEGIS-AI Development Team"
+LABEL description="AEGIS-AI Frontend Runtime Stage"
+
+# Create app user (non-root)
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+WORKDIR /app
+
+# Install lightweight HTTP server for serving static files
+RUN npm install -g http-server
+
+# Copy built assets from builder
+COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
+
+# Security: Drop unnecessary capabilities
+RUN npm cache clean --force
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8080', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+# Switch to non-root user
+USER nextjs
+
+# Expose port
+EXPOSE 8080
+
+# Start server
+CMD ["http-server", "dist", "-p", "8080", "--gzip", "--cors"]
+
+# ============================================================================
+# Alternative: Production with Vite preview server
+# ============================================================================
+# If you prefer to use vite preview instead of http-server:
+# RUN npm install vite @vitejs/plugin-react-swc
+# CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "8080"]

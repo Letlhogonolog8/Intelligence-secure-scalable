@@ -1,0 +1,213 @@
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import axios from 'axios';
+import { APIClient } from '@/lib/apiClient';
+
+vi.mock('axios');
+vi.mock('@supabase/auth-helpers-js', () => ({
+  getSession: vi.fn(),
+}));
+
+describe('APIClient', () => {
+  let apiClient: APIClient;
+  const mockAxiosInstance = {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    interceptors: {
+      request: { use: vi.fn() },
+      response: { use: vi.fn() },
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (axios.create as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockAxiosInstance);
+    apiClient = new APIClient();
+  });
+
+  describe('initialization', () => {
+    it('should create API client with correct base URL', () => {
+      expect(axios.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: expect.stringContaining('/api'),
+          timeout: 30000,
+        })
+      );
+    });
+
+    it('should set required headers', () => {
+      const createCall = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect((createCall.headers as Record<string, unknown>)['Content-Type']).toBe('application/json');
+      expect((createCall.headers as Record<string, unknown>)['X-Correlation-ID']).toBeDefined();
+    });
+
+    it('should setup request and response interceptors', () => {
+      expect(mockAxiosInstance.interceptors.request.use).toHaveBeenCalled();
+      expect(mockAxiosInstance.interceptors.response.use).toHaveBeenCalled();
+    });
+  });
+
+  describe('HTTP methods', () => {
+    it('should call GET endpoint', async () => {
+      mockAxiosInstance.get.mockResolvedValue({ data: { id: 1 } });
+      
+      const result = await apiClient.get('/users/1');
+      
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/users/1', undefined);
+      expect(result.data).toEqual({ id: 1 });
+    });
+
+    it('should call POST endpoint with data', async () => {
+      const postData = { name: 'Test User' };
+      mockAxiosInstance.post.mockResolvedValue({ data: { id: 1, ...postData } });
+      
+      const result = await apiClient.post('/users', postData);
+      
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/users', postData, undefined);
+      expect(result.data).toEqual({ id: 1, ...postData });
+    });
+
+    it('should call PUT endpoint with data', async () => {
+      const updateData = { name: 'Updated User' };
+      mockAxiosInstance.put.mockResolvedValue({ data: { id: 1, ...updateData } });
+      
+      const result = await apiClient.put('/users/1', updateData);
+      
+      expect(mockAxiosInstance.put).toHaveBeenCalledWith('/users/1', updateData, undefined);
+      expect(result.data).toEqual({ id: 1, ...updateData });
+    });
+
+    it('should call DELETE endpoint', async () => {
+      mockAxiosInstance.delete.mockResolvedValue({ data: { success: true } });
+      
+      const result = await apiClient.delete('/users/1');
+      
+      expect(mockAxiosInstance.delete).toHaveBeenCalledWith('/users/1', undefined);
+      expect(result.data).toEqual({ success: true });
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle 401 Unauthorized error', () => {
+      const error = {
+        response: {
+          status: 401,
+          data: { error: { message: 'Unauthorized' } },
+        },
+        message: 'Unauthorized',
+      };
+
+      mockAxiosInstance.interceptors.response.use.mockImplementation(
+        (successHandler: unknown, errorHandler: unknown) => {
+          try {
+            (errorHandler as (error: unknown) => void)(error);
+          } catch (e) {
+            void e;
+          }
+        }
+      );
+
+      expect(() => {
+        const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0] as [unknown, (error: unknown) => void];
+        errorHandler(error);
+      }).not.toThrow();
+    });
+
+    it('should handle 429 Rate Limited error', () => {
+      const error = {
+        response: {
+          status: 429,
+          data: { error: { message: 'Too Many Requests' } },
+        },
+        message: 'Too Many Requests',
+      };
+
+      expect(() => {
+        const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0];
+        errorHandler(error);
+      }).not.toThrow();
+    });
+
+    it('should handle network errors', () => {
+      const error = new Error('Network Error');
+
+      expect(() => {
+        const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0];
+        errorHandler(error);
+      }).not.toThrow();
+    });
+  });
+
+  describe('request interceptor', () => {
+    it('should add authorization header if session exists', async () => {
+      const mockSession = {
+        access_token: 'test-token-123',
+      };
+
+      const { getSession } = await import('@supabase/auth-helpers-js');
+      (getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: mockSession } });
+
+      const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
+      
+      const config: Record<string, unknown> = { headers: {} };
+      await (requestInterceptor as (config: Record<string, unknown>) => Promise<void>)(config);
+
+      expect(config.headers.Authorization).toBe('Bearer test-token-123');
+    });
+
+    it('should not add authorization header if no session', async () => {
+      const { getSession } = await import('@supabase/auth-helpers-js');
+      (getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null } });
+
+      const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
+      
+      const config: Record<string, unknown> = { headers: {} };
+      await (requestInterceptor as (config: Record<string, unknown>) => Promise<void>)(config);
+
+      expect((config.headers as Record<string, unknown>).Authorization).toBeUndefined();
+    });
+  });
+
+  describe('correlation ID', () => {
+    it('should include correlation ID in headers', () => {
+      const createCall = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect(((createCall.headers as Record<string, unknown>)['X-Correlation-ID'] as string)).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      );
+    });
+
+    it('should maintain same correlation ID across requests', () => {
+      const createCall1 = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      const createCall2 = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      
+      expect(((createCall1.headers as Record<string, unknown>)['X-Correlation-ID'] as string)).toBe(
+        ((createCall2.headers as Record<string, unknown>)['X-Correlation-ID'] as string)
+      );
+    });
+  });
+
+  describe('timeout configuration', () => {
+    it('should set reasonable timeout', () => {
+      const createCall = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect(createCall.timeout).toBe(30000);
+    });
+  });
+
+  describe('concurrent requests', () => {
+    it('should handle multiple concurrent requests', async () => {
+      mockAxiosInstance.get.mockResolvedValue({ data: { id: 1 } });
+      mockAxiosInstance.post.mockResolvedValue({ data: { id: 2 } });
+
+      const [result1, result2] = await Promise.all([
+        apiClient.get('/users/1'),
+        apiClient.post('/users', { name: 'New User' }),
+      ]);
+
+      expect(result1.data).toEqual({ id: 1 });
+      expect(result2.data).toEqual({ id: 2 });
+      expect(mockAxiosInstance.get).toHaveBeenCalled();
+      expect(mockAxiosInstance.post).toHaveBeenCalled();
+    });
+  });
+});

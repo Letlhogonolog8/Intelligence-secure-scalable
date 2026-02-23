@@ -1,0 +1,57 @@
+{
+  "webhooks": [
+    {
+      "id": "survivor_escalation",
+      "name": "Survivor Chat Escalation",
+      "table": "survivor_chat_sessions",
+      "events": ["UPDATE"],
+      "filter": "escalated_to_counselor = true",
+      "handler": "notify_counselor_assignment",
+      "description": "Notifies assigned counselor when a chat is escalated"
+    },
+    {
+      "id": "high_risk_alert",
+      "name": "High Risk Alert Detection",
+      "table": "anomaly_alerts",
+      "events": ["INSERT"],
+      "filter": "severity IN ('high', 'critical')",
+      "handler": "notify_high_risk_alert",
+      "description": "Alerts analysts and supervisors of critical risk anomalies"
+    },
+    {
+      "id": "case_milestone",
+      "name": "Justice Case Milestone",
+      "table": "case_events",
+      "events": ["INSERT"],
+      "filter": "event_type IN ('verdict', 'sentence', 'charge')",
+      "handler": "log_case_milestone",
+      "description": "Logs important justice case milestones in audit trail"
+    },
+    {
+      "id": "resource_update",
+      "name": "Resource Directory Update",
+      "table": "resources",
+      "events": ["INSERT", "UPDATE"],
+      "filter": "active = true",
+      "handler": "cache_invalidate_resources",
+      "description": "Invalidates cached resources when new ones are added or updated"
+    }
+  ],
+  "realtime_subscriptions": [
+    {
+      "channels": ["survivor_support"],
+      "tables": ["survivor_chat_sessions", "chat_messages"],
+      "description": "Enables real-time chat updates for survivors and counselors"
+    },
+    {
+      "channels": ["justice_analytics"],
+      "tables": ["justice_cases", "convictions"],
+      "description": "Real-time case status updates for justice analytics"
+    },
+    {
+      "channels": ["risk_intelligence"],
+      "tables": ["anomaly_alerts", "risk_predictions"],
+      "description": "Real-time alerts and risk prediction updates"
+    }
+  ]
+}

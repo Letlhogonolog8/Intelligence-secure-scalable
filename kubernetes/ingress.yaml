@@ -1,0 +1,335 @@
+# ============================================================================
+# AEGIS-AI Kubernetes Ingress
+# Exposes frontend and backend services via Ingress Controller
+# ============================================================================
+
+---
+# ============================================================================
+# Ingress for HTTPS/TLS termination
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegis-ingress
+  namespace: default
+  annotations:
+    # Cert-manager annotations for automatic SSL
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/issue-temporary-certificate: "true"
+    
+    # Nginx Ingress annotations
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Content-Security-Policy: default-src 'self';";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+    
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://aegis-ai.co.za"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    
+    # Logging
+    nginx.ingress.kubernetes.io/enable-access-log: "true"
+
+spec:
+  ingressClassName: nginx
+  
+  tls:
+  - hosts:
+    - aegis-ai.co.za
+    - www.aegis-ai.co.za
+    - api.aegis-ai.co.za
+    secretName: aegis-tls-cert
+
+  rules:
+  # Frontend - Main domain
+  - host: aegis-ai.co.za
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aegis-frontend
+            port:
+              number: 80
+      - path: /api/
+        pathType: Prefix
+        backend:
+          service:
+            name: aegis-backend
+            port:
+              number: 3001
+
+  # Frontend - WWW domain
+  - host: www.aegis-ai.co.za
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aegis-frontend
+            port:
+              number: 80
+
+  # API subdomain
+  - host: api.aegis-ai.co.za
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aegis-backend
+            port:
+              number: 3001
+
+---
+# ============================================================================
+# NetworkPolicy for pod-to-pod communication
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aegis-network-policy
+  namespace: default
+
+spec:
+  podSelector:
+    matchLabels:
+      app: aegis
+
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Allow from Ingress Controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 3001
+
+  # Allow frontend to backend
+  - from:
+    - podSelector:
+        matchLabels:
+          component: frontend
+    to:
+    - podSelector:
+        matchLabels:
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 3001
+
+  egress:
+  # Allow DNS
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow external HTTPS (for Supabase, etc.)
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+  # Allow to Supabase
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# ============================================================================
+# ClusterIssuer for Let's Encrypt (Cert-Manager)
+# ============================================================================
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@aegis-ai.co.za
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+    # HTTP-01 challenge
+    - http01:
+        ingress:
+          class: nginx
+    # DNS-01 challenge (for wildcard certs)
+    - dns01:
+        route53:
+          region: af-south-1  # AWS South Africa region
+          accessKeyID: ""     # Set via secret
+          secretAccessKeySecretRef:
+            name: route53-credentials
+            key: secret-access-key
+
+---
+# ============================================================================
+# HorizontalPodAutoscaler for Frontend
+# ============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aegis-frontend-hpa
+  namespace: default
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aegis-frontend
+
+  minReplicas: 3
+  maxReplicas: 10
+
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 2
+        periodSeconds: 30
+      selectPolicy: Max
+
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+
+---
+# ============================================================================
+# HorizontalPodAutoscaler for Backend
+# ============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aegis-backend-hpa
+  namespace: default
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aegis-backend
+
+  minReplicas: 3
+  maxReplicas: 15
+
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 3
+        periodSeconds: 30
+      selectPolicy: Max
+
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 120
+
+---
+# ============================================================================
+# PodDisruptionBudget for Frontend
+# ============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aegis-frontend-pdb
+  namespace: default
+
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: aegis
+      component: frontend
+
+---
+# ============================================================================
+# PodDisruptionBudget for Backend
+# ============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aegis-backend-pdb
+  namespace: default
+
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: aegis
+      component: backend

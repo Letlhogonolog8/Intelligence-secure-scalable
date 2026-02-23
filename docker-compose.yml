@@ -1,0 +1,67 @@
+services:
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: aegis-frontend-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tailwind.config.ts:/app/tailwind.config.ts
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - VITE_API_URL=http://localhost:3001/api
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_KEY=${VITE_SUPABASE_KEY}
+    networks:
+      - aegis-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: aegis-backend-dev
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server:/app/server
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - CORS_ORIGIN=http://localhost:8080
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_KEY=${VITE_SUPABASE_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CHAT_ENCRYPTION_KEY=${CHAT_ENCRYPTION_KEY}
+      - MFA_ISSUER=${MFA_ISSUER}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+    networks:
+      - aegis-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  aegis-network:
+    driver: bridge

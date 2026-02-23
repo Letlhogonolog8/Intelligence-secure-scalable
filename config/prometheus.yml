@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'aegis-ai'
+    environment: 'production'
+    service: 'aegis-platform'
+
+scrape_configs:
+  - job_name: 'aegis-api'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*|process_.*'
+        action: drop
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:6379']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:5432']
+    scrape_interval: 30s
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    scrape_interval: 30s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+      scheme: http
+      timeout: 10s
+
+rule_files:
+  - 'alerts.yml'
+  - 'recording_rules.yml'

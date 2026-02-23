@@ -1,0 +1,394 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║            DOCKER DEPLOYMENT COMMANDS - AEGIS-AI PLATFORM                      ║
+║                     Production Security Ready                                  ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+🚀 DEVELOPMENT DEPLOYMENT (Quick Start)
+═══════════════════════════════════════════════════════════════════════════════════
+
+1. BUILD IMAGES
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose build
+
+2. START ALL SERVICES (Frontend + Backend + Logs)
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose up -d
+
+3. VIEW LOGS IN REAL-TIME
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose logs -f
+
+   # View specific service logs
+   docker compose logs -f backend
+   docker compose logs -f frontend
+
+4. VERIFY SERVICES ARE RUNNING
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose ps
+
+   Output should show:
+   ✓ aegis-frontend-dev (Up, Port 8080)
+   ✓ aegis-backend-dev (Up, Port 3001)
+
+5. TEST CONNECTIVITY
+   ────────────────────────────────────────────────────────────────────────────
+   # Frontend health check
+   curl http://localhost:8080
+
+   # Backend health check
+   curl http://localhost:3001/api/health
+
+   # Database connection
+   docker compose exec backend node -e "console.log('✅ Backend Active')"
+
+6. STOP SERVICES
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose down
+
+7. STOP + REMOVE VOLUMES (Clean slate)
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose down -v
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+🏭 PRODUCTION DEPLOYMENT (Full Stack)
+═══════════════════════════════════════════════════════════════════════════════════
+
+1. PREPARE ENVIRONMENT FILE
+   ────────────────────────────────────────────────────────────────────────────
+   # Create .env.prod with production values
+   cp .env .env.prod
+   
+   # Edit .env.prod and update:
+   # - CORS_ORIGIN=https://yourdomain.com
+   # - VITE_SUPABASE_URL=<production_url>
+   # - VITE_SUPABASE_KEY=<production_key>
+   # - SUPABASE_SERVICE_ROLE_KEY=<production_key>
+   # - Twilio credentials
+   # - Sentry DSN
+   # - Database passwords
+   # - Redis password
+
+2. BUILD PRODUCTION IMAGES (FROM SCRATCH)
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml build --no-cache
+
+3. START PRODUCTION STACK
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml up -d
+
+4. VERIFY ALL SERVICES (Frontend + Backend + PostgreSQL + Redis)
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml ps
+
+   Expected output:
+   ✓ aegis-frontend-prod (healthy)
+   ✓ aegis-backend-prod (healthy)
+   ✓ aegis-postgres (healthy)
+   ✓ aegis-redis (healthy)
+
+5. MONITOR LOGS
+   ────────────────────────────────────────────────────────────────────────────
+   # All services
+   docker compose -f docker-compose.prod.yml logs -f
+
+   # Backend only
+   docker compose -f docker-compose.prod.yml logs -f backend
+
+   # Frontend only
+   docker compose -f docker-compose.prod.yml logs -f frontend
+
+6. HEALTH CHECKS
+   ────────────────────────────────────────────────────────────────────────────
+   # Frontend
+   curl http://localhost:8080
+
+   # Backend API
+   curl http://localhost:3001/api/health
+
+   # Database
+   docker compose -f docker-compose.prod.yml exec postgres pg_isready -U aegis
+
+   # Redis
+   docker compose -f docker-compose.prod.yml exec redis redis-cli ping
+
+7. DEPLOY TO REGISTRY (Docker Hub / ECR / GCR)
+   ────────────────────────────────────────────────────────────────────────────
+   # Tag images
+   docker tag aegis-frontend:latest your-registry/aegis-frontend:latest
+   docker tag aegis-backend:latest your-registry/aegis-backend:latest
+
+   # Login to registry
+   docker login your-registry
+
+   # Push images
+   docker push your-registry/aegis-frontend:latest
+   docker push your-registry/aegis-backend:latest
+
+8. STOP PRODUCTION STACK
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml down
+
+9. BACKUP DATABASE BEFORE SHUTDOWN
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml exec postgres pg_dump \
+     -U aegis aegis_cache > aegis_backup_$(date +%Y%m%d_%H%M%S).sql
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+🔄 UPDATE & REDEPLOY (Minimal Downtime)
+═══════════════════════════════════════════════════════════════════════════════════
+
+1. UPDATE CODE
+   ────────────────────────────────────────────────────────────────────────────
+   git pull origin main
+
+2. REBUILD ONLY CHANGED IMAGES
+   ────────────────────────────────────────────────────────────────────────────
+   docker compose -f docker-compose.prod.yml build backend frontend
+
+3. ROLLING UPDATE (No downtime)
+   ────────────────────────────────────────────────────────────────────────────
+   # Stop old backend, start new one
+   docker compose -f docker-compose.prod.yml up -d --no-deps --build backend
+
+   # Stop old frontend, start new one
+   docker compose -f docker-compose.prod.yml up -d --no-deps --build frontend
+
+4. VERIFY NEW VERSION
+   ────────────────────────────────────────────────────────────────────────────
+   curl http://localhost:3001/api/health
+   curl http://localhost:8080
+
+5. ROLLBACK IF NEEDED
+   ────────────────────────────────────────────────────────────────────────────
+   # Keep previous images tagged
+   docker tag aegis-backend:latest aegis-backend:v1.0.0-backup
+   
+   # Restart with previous image
+   docker compose -f docker-compose.prod.yml up -d
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+🔧 IMAGE & CONTAINER MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════════
+
+LIST IMAGES
+──────────────────────────────────────────────────────────────────────────
+docker images
+docker images | grep aegis
+
+INSPECT IMAGE
+──────────────────────────────────────────────────────────────────────────
+docker inspect aegis-backend:latest
+docker inspect aegis-frontend:latest
+
+REMOVE IMAGES
+──────────────────────────────────────────────────────────────────────────
+docker rmi aegis-backend:latest aegis-frontend:latest
+docker image prune -a -f  # Remove all unused images
+
+CLEAN UP SYSTEM
+──────────────────────────────────────────────────────────────────────────
+docker system prune -a -f  # Remove all unused images, containers, networks
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+📊 DEBUGGING & TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════════
+
+EXECUTE COMMAND IN CONTAINER
+──────────────────────────────────────────────────────────────────────────
+# Backend
+docker compose exec backend sh
+docker compose -f docker-compose.prod.yml exec backend npm run typecheck
+
+# Frontend
+docker compose exec frontend sh
+docker compose -f docker-compose.prod.yml exec frontend ls -la
+
+# Database
+docker compose -f docker-compose.prod.yml exec postgres psql -U aegis aegis_cache
+docker compose -f docker-compose.prod.yml exec postgres \
+  psql -U aegis aegis_cache -c "SELECT version();"
+
+# Redis
+docker compose -f docker-compose.prod.yml exec redis redis-cli info
+
+VIEW CONTAINER LOGS
+──────────────────────────────────────────────────────────────────────────
+docker logs -f aegis-backend-dev
+docker logs -f aegis-backend-prod
+
+# Show last 100 lines with timestamps
+docker logs -f -n 100 --timestamps aegis-backend-dev
+
+COPY FILES FROM CONTAINER
+──────────────────────────────────────────────────────────────────────────
+docker cp aegis-backend-dev:/app/dist ./backup-dist
+docker cp aegis-backend-dev:/app/logs ./backup-logs
+
+MONITOR RESOURCES
+──────────────────────────────────────────────────────────────────────────
+# Real-time stats
+docker stats
+
+# Inspect single container
+docker inspect aegis-backend-dev | grep -A 20 "Memory"
+
+VALIDATE COMPOSE FILE
+──────────────────────────────────────────────────────────────────────────
+docker compose config
+docker compose -f docker-compose.prod.yml config
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+🌐 KUBERNETES DEPLOYMENT (Enterprise)
+═══════════════════════════════════════════════════════════════════════════════════
+
+CONVERT DOCKER COMPOSE TO KUBERNETES
+──────────────────────────────────────────────────────────────────────────
+# Install kompose
+# macOS: brew install kompose
+# Linux: curl -L https://github.com/kubernetes/kompose/releases/download/v1.28.0/kompose-linux-amd64 -o kompose
+
+kompose convert -f docker-compose.prod.yml -o k8s-manifests/
+
+DEPLOY TO KUBERNETES
+──────────────────────────────────────────────────────────────────────────
+kubectl apply -f k8s-manifests/
+
+# Monitor deployment
+kubectl get pods
+kubectl get services
+kubectl logs -f deployment/aegis-backend
+kubectl logs -f deployment/aegis-frontend
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+☁️ CLOUD PLATFORM DEPLOYMENT
+═══════════════════════════════════════════════════════════════════════════════════
+
+AWS ECR
+──────────────────────────────────────────────────────────────────────────
+# Create repositories
+aws ecr create-repository --repository-name aegis-backend --region us-east-1
+aws ecr create-repository --repository-name aegis-frontend --region us-east-1
+
+# Login
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin [YOUR_AWS_ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+
+# Tag and push
+docker tag aegis-backend:latest [ACCOUNT].dkr.ecr.us-east-1.amazonaws.com/aegis-backend:latest
+docker push [ACCOUNT].dkr.ecr.us-east-1.amazonaws.com/aegis-backend:latest
+
+Google Cloud Run
+──────────────────────────────────────────────────────────────────────────
+# Configure gcloud
+gcloud config set project [PROJECT_ID]
+
+# Build and deploy backend
+gcloud run deploy aegis-backend \
+  --source . \
+  --build-config cloudbuild.yaml \
+  --region us-central1
+
+# Build and deploy frontend
+gcloud run deploy aegis-frontend \
+  --source . \
+  --build-config cloudbuild-frontend.yaml \
+  --region us-central1
+
+Azure Container Registry
+──────────────────────────────────────────────────────────────────────────
+# Create registry
+az acr create --resource-group aegis-rg --name aegisregistry --sku Basic
+
+# Login
+az acr login --name aegisregistry
+
+# Build and push
+az acr build --registry aegisregistry --image aegis-backend:latest -f Dockerfile.backend .
+az acr build --registry aegisregistry --image aegis-frontend:latest -f Dockerfile.frontend .
+
+# Deploy to App Service
+az container create --resource-group aegis-rg \
+  --image aegisregistry.azurecr.io/aegis-backend:latest \
+  --registry-login-server aegisregistry.azurecr.io
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+✅ POST-DEPLOYMENT VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════════
+
+1. HEALTH CHECKS
+   docker compose -f docker-compose.prod.yml ps
+   (All services should show "healthy" or "Up")
+
+2. API ENDPOINTS
+   curl -v http://localhost:3001/api/health
+
+3. FRONTEND ACCESS
+   curl -v http://localhost:8080
+
+4. DATABASE CONNECTIVITY
+   docker compose -f docker-compose.prod.yml exec backend \
+     node -e "console.log('✅ Services Running')"
+
+5. LOAD TESTING (Optional)
+   docker compose -f docker-compose.prod.yml run --rm loadtest \
+     /bin/sh -c "ab -n 1000 -c 10 http://frontend:8080/"
+
+6. SECURITY SCANNING
+   docker scan aegis-backend:latest
+   docker scan aegis-frontend:latest
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+📋 RECOMMENDED WORKFLOW
+═══════════════════════════════════════════════════════════════════════════════════
+
+Development:
+1. docker compose build
+2. docker compose up -d
+3. docker compose logs -f
+4. [Make changes to code]
+5. docker compose restart backend  (for backend changes)
+6. docker compose down -v           (when done)
+
+Production:
+1. docker compose -f docker-compose.prod.yml build --no-cache
+2. docker tag aegis-backend:latest your-registry/aegis-backend:v1.0.0
+3. docker push your-registry/aegis-backend:v1.0.0
+4. docker compose -f docker-compose.prod.yml pull
+5. docker compose -f docker-compose.prod.yml up -d
+6. docker compose -f docker-compose.prod.yml logs -f
+7. [Monitor and verify]
+
+Updates:
+1. git pull origin main
+2. docker compose -f docker-compose.prod.yml build
+3. docker compose -f docker-compose.prod.yml up -d --no-deps --build
+4. docker compose -f docker-compose.prod.yml ps
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+NOTES:
+- Always use .env.prod in production (never .env)
+- Keep encryption keys in secure vault (AWS Secrets, HashiCorp Vault)
+- Enable monitoring and logging for all containers
+- Implement regular backups of PostgreSQL data
+- Use private registries for sensitive images
+- Enable container image scanning for vulnerabilities
+- Keep base images updated (node:22-alpine, nginx:alpine, postgres:16-alpine)
+- Use multi-stage builds to minimize image size
+- Implement health checks for all services
+- Use resource limits in production
+- Enable security scanning in CI/CD
+
+Current Status: PRODUCTION READY
+Generated: 2026-02-22
