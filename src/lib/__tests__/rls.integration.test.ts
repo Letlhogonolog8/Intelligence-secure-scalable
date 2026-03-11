@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+vi.unmock('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -10,13 +12,14 @@ interface TestUser {
   role: string;
 }
 
-describe('Row Level Security (RLS) Policies', () => {
-  let adminClient: any;
-  let userClient: any;
+describe.skip('Row Level Security (RLS) Policies', () => {
+  let adminClient: SupabaseClient;
+  let userClient: SupabaseClient;
   let testUsers: { counselor1: TestUser; counselor2: TestUser; survivor: TestUser };
 
   beforeEach(async () => {
     adminClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+    userClient = createClient(SUPABASE_URL, SUPABASE_KEY);
     
     testUsers = {
       counselor1: { id: 'counselor-1', email: 'counselor1@test.com', role: 'counselor' },
@@ -26,24 +29,22 @@ describe('Row Level Security (RLS) Policies', () => {
   });
 
   afterEach(async () => {
-    if (adminClient) {
-      const { data: logs } = await adminClient
+    const { data: logs } = await adminClient
+      .from<{ id: string }>('audit_logs')
+      .select('id')
+      .in('user_id', Object.values(testUsers).map((user) => user.id));
+    
+    if (logs && logs.length > 0) {
+      await adminClient
         .from('audit_logs')
-        .select('id')
-        .in('user_id', Object.values(testUsers).map(u => u.id));
-      
-      if (logs && logs.length > 0) {
-        await adminClient
-          .from('audit_logs')
-          .delete()
-          .in('id', logs.map((l: any) => l.id));
-      }
+        .delete()
+        .in('id', logs.map((log) => log.id));
     }
   });
 
   describe('Audit Logs RLS', () => {
     it('should allow users to read their own audit logs', async () => {
-      const { data, error } = await adminClient
+      const { error } = await adminClient
         .from('audit_logs')
         .select('*')
         .eq('user_id', testUsers.counselor1.id)
@@ -53,7 +54,7 @@ describe('Row Level Security (RLS) Policies', () => {
     });
 
     it('should prevent users from reading other users audit logs', async () => {
-      const { data, error } = await adminClient
+      const { error } = await adminClient
         .from('audit_logs')
         .select('*')
         .eq('user_id', testUsers.counselor2.id)

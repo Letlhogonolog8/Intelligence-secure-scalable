@@ -15,6 +15,16 @@ import { RiskScoringEngine } from '../intelligence/riskScoring';
 import { GeoMatchingEngine } from '../intelligence/geoMatching';
 import { AuditLogService } from '../security/auditLog';
 
+type AuthenticatedRequest = Request & {
+  user?: {
+    id: string;
+    role?: string;
+    profile?: {
+      role?: string;
+    };
+  };
+};
+
 export function createIntelligenceRoutes(
   supabase: SupabaseClient,
   auditLog: AuditLogService
@@ -23,9 +33,37 @@ export function createIntelligenceRoutes(
   const riskEngine = new RiskScoringEngine(supabase);
   const geoEngine = new GeoMatchingEngine(supabase);
 
+  const deriveExplainabilityDetails = (factors: Array<{ name?: string; contribution?: number; flag?: string }> | null | undefined, riskScore: number) => {
+    const normalizedFactors = Array.isArray(factors) ? factors : [];
+    const topContributors = normalizedFactors
+      .map((factor) => ({
+        factor: factor.name || 'unknown_factor',
+        contribution: Number(factor.contribution || 0),
+      }))
+      .sort((a, b) => b.contribution - a.contribution)
+      .slice(0, 3)
+      .map((factor) => ({
+        ...factor,
+        percent: Math.round((factor.contribution / Math.max(1, riskScore)) * 100),
+      }));
+
+    const severityFlag = normalizedFactors.find((factor) => factor.name === 'severity_assessment')?.flag || '';
+    const modelPath = String(severityFlag).includes('EDGE')
+      ? 'Edge Inference (Xenova/heuristic fallback)'
+      : String(severityFlag).includes('ML_MODEL')
+        ? 'HuggingFace API + keyword fusion'
+        : 'Keyword fallback';
+
+    return {
+      topContributors,
+      modelPath,
+      summary: topContributors.map((factor, index) => `${index + 1}. ${factor.factor} (${factor.contribution}/100)`).join(' | '),
+    };
+  };
+
   // Middleware: Ensure user is authenticated
   const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as any).user;
+    const user = (req as AuthenticatedRequest).user;
     if (!user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -43,7 +81,7 @@ export function createIntelligenceRoutes(
   router.post('/risk-score', requireAuth, async (req: Request, res: Response) => {
     try {
       const { caseId, caseData } = req.body;
-      const userId = (req as any).user.id;
+      const userId = (req as AuthenticatedRequest).user!.id;
 
       if (!caseId || !caseData) {
         return res.status(400).json({ error: 'Missing caseId or caseData' });
@@ -132,7 +170,11 @@ export function createIntelligenceRoutes(
         return res.status(404).json({ error: 'No risk assessment found' });
       }
 
-      res.json(assessments[0]);
+      const latest = assessments[0];
+      res.json({
+        ...latest,
+        explainability_details: latest.explainability_details || deriveExplainabilityDetails(latest.factors, latest.risk_score),
+      });
     } catch (error) {
       console.error('Risk score retrieval failed:', error);
       res.status(500).json({ error: 'Failed to retrieve risk score' });
@@ -150,7 +192,7 @@ export function createIntelligenceRoutes(
   router.post('/geo-match', requireAuth, async (req: Request, res: Response) => {
     try {
       const { caseId, lat, lng, riskLevel, caseType } = req.body;
-      const userId = (req as any).user.id;
+      const userId = (req as AuthenticatedRequest).user!.id;
 
       if (!caseId || lat === undefined || lng === undefined || !riskLevel) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -217,6 +259,7 @@ export function createIntelligenceRoutes(
         biasDetected: assessment.bias_detected,
         biasFlag: assessment.bias_flag,
         humanReadableExplanation: assessment.explainability,
+        explainabilityDetails: deriveExplainabilityDetails(assessment.factors, assessment.risk_score),
         computedAt: assessment.created_at,
         computedBy: assessment.computed_by,
       };
@@ -239,8 +282,9 @@ export function createIntelligenceRoutes(
   router.get('/bias-audit', requireAuth, async (req: Request, res: Response) => {
     try {
       // Only admins can run bias audits
-      const profile = (req as any).user?.profile;
-      if (profile?.role !== 'admin') {
+      const user = (req as AuthenticatedRequest).user;
+      const userRole = user?.role ?? user?.profile?.role;
+      if (userRole !== 'admin') {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
 

@@ -1,20 +1,10 @@
-/**
- * AEGIS Twilio Integration
- * server/notifications/twilio.ts
- * 
- * SMS and WhatsApp notifications for:
- * - Emergency alerts to police
- * - Counselor notifications
- * - Survivor case updates
- * - NGO coordination
- */
-
 import { SupabaseClient } from '@supabase/supabase-js';
+import twilio from 'twilio';
 
 export interface NotificationPayload {
   recipientType: 'sms' | 'whatsapp' | 'email';
   recipientAddress: string;
-  messageType: string; // 'emergency', 'assignment', 'update', 'reminder'
+  messageType: string;
   messageContent: string;
   caseId?: string;
   userId?: string;
@@ -29,27 +19,51 @@ export interface NotificationResult {
   error?: string;
 }
 
+type QueueRecipientType = 'sms' | 'email' | 'push' | 'webhook';
+
+interface NotificationQueueRecord {
+  id: string;
+  status?: string | null;
+  sent_at?: string | null;
+  attempt_count?: number | null;
+  recipient_type?: QueueRecipientType | null;
+  recipient_address?: string | null;
+  message_content?: string | null;
+  message_type?: string | null;
+  case_id?: string | null;
+}
+
+interface PhoneDispatchOptions {
+  channel: 'sms' | 'whatsapp';
+  phoneNumber: string;
+  message: string;
+  messageType: string;
+  caseId?: string;
+  notificationId?: string;
+  attemptCount?: number;
+}
+
 export class TwilioNotificationService {
   private supabase: SupabaseClient;
   private accountSid = process.env.TWILIO_ACCOUNT_SID;
   private authToken = process.env.TWILIO_AUTH_TOKEN;
-  private twilio: any;
+  private fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+  private whatsappFromNumber = process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER;
+  private client: ReturnType<typeof twilio> | null;
+  private appBaseUrl = this.resolveAppBaseUrl();
+  private notificationQueueAvailable = true;
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
+    this.client = this.accountSid && this.authToken ? twilio(this.accountSid, this.authToken) : null;
 
-    if (this.accountSid && this.authToken) {
-      // Initialize Twilio client (would be: const twilio = require('twilio'))
-      // For now, we'll use a mock implementation
-      console.log('🔔 Twilio SMS service initialized');
+    if (this.client && this.fromPhoneNumber) {
+      console.log('🔔 Twilio notification service initialized');
     } else {
-      console.warn('⚠️  Twilio credentials not configured. SMS disabled.');
+      console.warn('Twilio credentials or sender number not configured. Phone notifications will remain failed in queue.');
     }
   }
 
-  /**
-   * Send emergency alert to police
-   */
   public async sendPoliceEmergency(
     policePhoneNumbers: string[],
     caseId: string,
@@ -67,30 +81,24 @@ ${survivorContact ? `Contact: ${survivorContact}` : ''}
 RESPOND IMMEDIATELY VIA APP
     `.trim();
 
-    const results = await Promise.all(
-      policePhoneNumbers.map((phone) =>
-        this.sendSMS(phone, messageTemplate, 'emergency', caseId)
-      )
+    return Promise.all(
+      policePhoneNumbers.map((phone) => this.sendSMS(phone, messageTemplate, 'emergency', caseId))
     );
-
-    return results;
   }
 
-  /**
-   * Send counselor assignment notification
-   */
   public async sendCounselorAssignment(
     counselorPhoneNumber: string,
     caseId: string,
     survivorName: string,
     priority: string
   ): Promise<NotificationResult> {
+    const appLink = this.appBaseUrl ? `${this.appBaseUrl}/auth` : 'the AEGIS app';
     const messageTemplate = `
 📋 AEGIS CASE ASSIGNMENT
 Case: ${caseId}
 Survivor: ${survivorName}
 Priority: ${priority}
-Contact: [Link to app]
+Open: ${appLink}
 
 Acknowledge in app to proceed.
     `.trim();
@@ -98,9 +106,6 @@ Acknowledge in app to proceed.
     return this.sendSMS(counselorPhoneNumber, messageTemplate, 'assignment', caseId);
   }
 
-  /**
-   * Send survivor update via SMS
-   */
   public async sendSurvivorUpdate(
     survivorPhoneNumber: string,
     caseId: string,
@@ -117,9 +122,6 @@ Reply with HELP for support.
     return this.sendSMS(survivorPhoneNumber, messageTemplate, 'update', caseId);
   }
 
-  /**
-   * Send NGO coordination notice
-   */
   public async sendNGONotification(
     ngoContactPhoneNumber: string,
     caseId: string,
@@ -138,149 +140,37 @@ Check app for details.
     return this.sendSMS(ngoContactPhoneNumber, messageTemplate, 'assignment', caseId);
   }
 
-  /**
-   * Send SMS (internal implementation)
-   */
   private async sendSMS(
     phoneNumber: string,
     message: string,
     messageType: string,
     caseId?: string
   ): Promise<NotificationResult> {
-    try {
-      // Validate phone number
-      if (!this.isValidPhoneNumber(phoneNumber)) {
-        return {
-          success: false,
-          status: 'invalid_number',
-          sentAt: new Date().toISOString(),
-          error: 'Invalid phone number format',
-        };
-      }
-
-      // Queue notification
-      const { data: notification, error: queueError } = await this.supabase
-        .from('notification_queue')
-        .insert({
-          recipient_type: 'sms',
-          recipient_address: phoneNumber,
-          message_type: messageType,
-          message_content: message,
-          case_id: caseId,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-        })
-        .select('id');
-
-      if (queueError) throw queueError;
-
-      const notificationId = notification?.[0]?.id;
-
-      // In production, send via Twilio:
-      // const response = await this.twilio.messages.create({
-      //   body: message,
-      //   from: process.env.TWILIO_PHONE_NUMBER,
-      //   to: phoneNumber
-      // });
-
-      // For now, simulate successful send
-      const messageId = `msg_${Date.now()}`;
-
-      // Update notification status
-      await this.supabase
-        .from('notification_queue')
-        .update({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-        })
-        .eq('id', notificationId);
-
-      console.log(`📱 SMS sent to ${phoneNumber}: ${messageId}`);
-
-      return {
-        success: true,
-        messageId,
-        status: 'sent',
-        sentAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error('SMS send failed:', error);
-
-      return {
-        success: false,
-        status: 'failed',
-        sentAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
+    return this.dispatchPhoneMessage({
+      channel: 'sms',
+      phoneNumber,
+      message,
+      messageType,
+      caseId,
+    });
   }
 
-  /**
-   * Send WhatsApp message
-   */
   public async sendWhatsApp(
     phoneNumber: string,
     message: string,
     messageType: string,
     caseId?: string,
-    mediaUrl?: string
+    _mediaUrl?: string
   ): Promise<NotificationResult> {
-    try {
-      if (!this.isValidPhoneNumber(phoneNumber)) {
-        return {
-          success: false,
-          status: 'invalid_number',
-          sentAt: new Date().toISOString(),
-          error: 'Invalid phone number',
-        };
-      }
-
-      // Queue WhatsApp notification
-      const { data: notification, error: queueError } = await this.supabase
-        .from('notification_queue')
-        .insert({
-          recipient_type: 'whatsapp',
-          recipient_address: phoneNumber,
-          message_type: messageType,
-          message_content: message,
-          case_id: caseId,
-          status: 'pending',
-        })
-        .select('id');
-
-      if (queueError) throw queueError;
-
-      // In production: await this.twilio.messages.create({...})
-
-      const messageId = `whatsapp_${Date.now()}`;
-
-      await this.supabase
-        .from('notification_queue')
-        .update({ status: 'sent', sent_at: new Date().toISOString() })
-        .eq('id', notification?.[0]?.id);
-
-      console.log(`💬 WhatsApp sent to ${phoneNumber}: ${messageId}`);
-
-      return {
-        success: true,
-        messageId,
-        status: 'sent',
-        sentAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error('WhatsApp send failed:', error);
-      return {
-        success: false,
-        status: 'failed',
-        sentAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
+    return this.dispatchPhoneMessage({
+      channel: 'whatsapp',
+      phoneNumber,
+      message,
+      messageType,
+      caseId,
+    });
   }
 
-  /**
-   * Send bulk SMS to multiple recipients with retry logic
-   */
   public async sendBulkSMS(
     recipients: { phoneNumber: string; message: string; messageType: string; caseId?: string }[],
     maxRetries: number = 3
@@ -302,52 +192,156 @@ Check app for details.
         if (!result.success) {
           attempts++;
           if (attempts < maxRetries) {
-            // Exponential backoff
             await this.delay(Math.pow(2, attempts) * 1000);
           }
         }
       }
 
-      results.push(result || {
-        success: false,
-        status: 'max_retries_exceeded',
-        sentAt: new Date().toISOString(),
-      });
+      results.push(
+        result || {
+          success: false,
+          status: 'max_retries_exceeded',
+          sentAt: new Date().toISOString(),
+        }
+      );
     }
 
     return results;
   }
 
-  /**
-   * Get notification status
-   */
+  public isConfigured(): boolean {
+    return Boolean(this.client && this.fromPhoneNumber);
+  }
+
+  public isQueueAvailable(): boolean {
+    return this.notificationQueueAvailable;
+  }
+
+  public setQueueAvailable(available: boolean): void {
+    this.notificationQueueAvailable = available;
+  }
+
+  public getHealthStatus(): {
+    configured: boolean;
+    whatsappConfigured: boolean;
+    queueAvailable: boolean;
+  } {
+    return {
+      configured: this.isConfigured(),
+      whatsappConfigured: Boolean(this.client && this.whatsappFromNumber),
+      queueAvailable: this.notificationQueueAvailable,
+    };
+  }
+
   public async getNotificationStatus(
     messageId: string
   ): Promise<{ status: string; sentAt: string; deliveredAt?: string }> {
     try {
+      if (!this.notificationQueueAvailable) {
+        return { status: 'unavailable', sentAt: '' };
+      }
+
       const { data, error } = await this.supabase
         .from('notification_queue')
         .select('status, sent_at')
         .eq('id', messageId)
-        .single();
+        .maybeSingle<NotificationQueueRecord>();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      return {
-        status: data?.status || 'unknown',
-        sentAt: data?.sent_at || '',
-      };
+      if (data) {
+        return {
+          status: data.status || 'unknown',
+          sentAt: data.sent_at || '',
+        };
+      }
+
+      if (this.client && /^SM/i.test(messageId)) {
+        const providerMessage = await this.client.messages(messageId).fetch();
+        return {
+          status: providerMessage.status || 'unknown',
+          sentAt: providerMessage.dateSent?.toISOString() || providerMessage.dateCreated?.toISOString() || '',
+          deliveredAt: providerMessage.dateUpdated?.toISOString(),
+        };
+      }
+
+      return { status: 'unknown', sentAt: '' };
     } catch (error) {
+      if (this.handleMissingNotificationQueue(error)) {
+        return { status: 'unavailable', sentAt: '' };
+      }
+
       console.error('Failed to get notification status:', error);
       return { status: 'error', sentAt: '' };
     }
   }
 
-  /**
-   * Retry failed notifications
-   */
+  public async processPendingNotifications(limit: number = 25): Promise<number> {
+    try {
+      if (!this.notificationQueueAvailable) {
+        return 0;
+      }
+
+      const { data: pendingNotifications, error } = await this.supabase
+        .from('notification_queue')
+        .select('id, recipient_type, recipient_address, message_content, message_type, case_id, attempt_count')
+        .in('status', ['pending', 'retry'])
+        .order('created_at', { ascending: true })
+        .limit(limit)
+        .returns<NotificationQueueRecord[]>();
+
+      if (error) {
+        throw error;
+      }
+
+      let processedCount = 0;
+
+      for (const notification of pendingNotifications || []) {
+        if (notification.recipient_type && notification.recipient_type !== 'sms') {
+          await this.updateQueuedNotification(notification.id, {
+            status: 'failed',
+            last_error: `Unsupported recipient type: ${notification.recipient_type}`,
+            attempt_count: (notification.attempt_count || 0) + 1,
+          });
+          continue;
+        }
+
+        const messageType = notification.message_type || 'update';
+        const isWhatsapp = messageType.startsWith('whatsapp:');
+        const result = await this.dispatchPhoneMessage({
+          channel: isWhatsapp ? 'whatsapp' : 'sms',
+          phoneNumber: notification.recipient_address || '',
+          message: notification.message_content || '',
+          messageType: isWhatsapp ? messageType.replace(/^whatsapp:/, '') : messageType,
+          caseId: notification.case_id || undefined,
+          notificationId: notification.id,
+          attemptCount: notification.attempt_count || 0,
+        });
+
+        if (result.success) {
+          processedCount++;
+        }
+      }
+
+      return processedCount;
+    } catch (error) {
+      if (this.handleMissingNotificationQueue(error)) {
+        return 0;
+      }
+
+      console.error('Pending notification processing failed:', error);
+      return 0;
+    }
+  }
+
   public async retryFailedNotifications(): Promise<number> {
     try {
+      if (!this.notificationQueueAvailable) {
+        return 0;
+      }
+
       const { data: failedNotifications, error } = await this.supabase
         .from('notification_queue')
         .select('id, recipient_address, message_content, message_type, case_id, attempt_count')
@@ -355,49 +349,293 @@ Check app for details.
         .lt('attempt_count', 3)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       let retryCount = 0;
 
       for (const notification of failedNotifications || []) {
-        const result = await this.sendSMS(
-          notification.recipient_address,
-          notification.message_content,
-          notification.message_type,
-          notification.case_id
-        );
+        const messageType = notification.message_type || 'update';
+        const isWhatsapp = messageType.startsWith('whatsapp:');
+        const result = await this.dispatchPhoneMessage({
+          channel: isWhatsapp ? 'whatsapp' : 'sms',
+          phoneNumber: notification.recipient_address,
+          message: notification.message_content,
+          messageType: isWhatsapp ? messageType.replace(/^whatsapp:/, '') : messageType,
+          caseId: notification.case_id || undefined,
+          notificationId: notification.id,
+          attemptCount: notification.attempt_count || 0,
+        });
 
         if (result.success) {
           retryCount++;
-        } else {
-          // Update attempt count
-          await this.supabase
-            .from('notification_queue')
-            .update({ attempt_count: notification.attempt_count + 1 })
-            .eq('id', notification.id);
         }
       }
 
       console.log(`🔄 Retried ${retryCount} failed notifications`);
       return retryCount;
     } catch (error) {
+      if (this.handleMissingNotificationQueue(error)) {
+        return 0;
+      }
+
       console.error('Failed notification retry failed:', error);
       return 0;
     }
   }
 
-  /**
-   * Validate phone number format
-   */
-  private isValidPhoneNumber(phoneNumber: string): boolean {
-    // Accept international format: +27xxxxxxxxx or +1xxxxxxxxxx
-    const internationalFormat = /^\+\d{1,3}\d{6,14}$/;
-    return internationalFormat.test(phoneNumber);
+  private async dispatchPhoneMessage(options: PhoneDispatchOptions): Promise<NotificationResult> {
+    const normalizedPhoneNumber = this.normalizePhoneNumber(options.phoneNumber);
+    const sentAt = new Date().toISOString();
+    const nextAttemptCount = (options.attemptCount || 0) + 1;
+
+    if (!normalizedPhoneNumber || !this.isValidPhoneNumber(normalizedPhoneNumber)) {
+      if (options.notificationId) {
+        await this.updateQueuedNotification(options.notificationId, {
+          status: 'failed',
+          last_error: 'Invalid phone number format',
+          attempt_count: nextAttemptCount,
+        });
+      }
+
+      return {
+        success: false,
+        status: 'invalid_number',
+        sentAt,
+        error: 'Invalid phone number format',
+      };
+    }
+
+    const queueMessageType = options.channel === 'whatsapp'
+      ? `whatsapp:${options.messageType}`
+      : options.messageType;
+
+    const notificationId = options.notificationId || await this.queueNotification({
+      recipientType: 'sms',
+      recipientAddress: normalizedPhoneNumber,
+      messageType: queueMessageType,
+      messageContent: options.message,
+      caseId: options.caseId,
+    });
+
+    if (!notificationId) {
+      return {
+        success: false,
+        status: 'queue_failed',
+        sentAt,
+        error: 'Unable to persist notification in queue',
+      };
+    }
+
+    const senderAddress = options.channel === 'whatsapp'
+      ? this.whatsappFromNumber ? `whatsapp:${this.normalizePhoneNumber(this.whatsappFromNumber)}` : undefined
+      : this.normalizePhoneNumber(this.fromPhoneNumber);
+
+    const recipientAddress = options.channel === 'whatsapp'
+      ? `whatsapp:${normalizedPhoneNumber}`
+      : normalizedPhoneNumber;
+
+    if (!this.client || !senderAddress) {
+      await this.updateQueuedNotification(notificationId, {
+        status: 'failed',
+        last_error: 'Twilio is not fully configured',
+        attempt_count: nextAttemptCount,
+      });
+
+      return {
+        success: false,
+        status: 'provider_not_configured',
+        sentAt,
+        error: 'Twilio is not fully configured',
+      };
+    }
+
+    try {
+      const response = await this.client.messages.create({
+        body: options.message,
+        from: senderAddress,
+        to: recipientAddress,
+      });
+
+      await this.updateQueuedNotification(notificationId, {
+        status: 'sent',
+        sent_at: sentAt,
+        last_error: null,
+        attempt_count: nextAttemptCount,
+      });
+
+      console.log(`📱 ${options.channel.toUpperCase()} sent to ${normalizedPhoneNumber}: ${response.sid}`);
+
+      return {
+        success: true,
+        messageId: response.sid,
+        status: response.status || 'sent',
+        sentAt,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      await this.updateQueuedNotification(notificationId, {
+        status: 'failed',
+        last_error: errorMessage,
+        attempt_count: nextAttemptCount,
+      });
+
+      console.error(`${options.channel.toUpperCase()} send failed:`, error);
+
+      return {
+        success: false,
+        status: 'failed',
+        sentAt,
+        error: errorMessage,
+      };
+    }
   }
 
-  /**
-   * Utility: Sleep/delay
-   */
+  private async queueNotification(payload: NotificationPayload): Promise<string | null> {
+    try {
+      if (!this.notificationQueueAvailable) {
+        return null;
+      }
+
+      const recipientType: QueueRecipientType = payload.recipientType === 'email' ? 'email' : 'sms';
+      const { data, error } = await this.supabase
+        .from('notification_queue')
+        .insert({
+          recipient_type: recipientType,
+          recipient_address: payload.recipientAddress,
+          message_type: payload.messageType,
+          message_content: payload.messageContent,
+          case_id: payload.caseId,
+          user_id: payload.userId,
+          status: 'pending',
+          attempt_count: 0,
+          created_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single<{ id: string }>();
+
+      if (error) {
+        throw error;
+      }
+
+      return data?.id || null;
+    } catch (error) {
+      if (this.handleMissingNotificationQueue(error)) {
+        return null;
+      }
+
+      console.error('Failed to queue notification:', error);
+      return null;
+    }
+  }
+
+  private async updateQueuedNotification(
+    notificationId: string,
+    updates: {
+      status?: 'pending' | 'sent' | 'failed' | 'retry';
+      sent_at?: string;
+      last_error?: string | null;
+      attempt_count?: number;
+    }
+  ): Promise<void> {
+    if (!this.notificationQueueAvailable) {
+      return;
+    }
+
+    const payload: Record<string, string | number | null> = {};
+
+    if (updates.status) {
+      payload.status = updates.status;
+    }
+
+    if (updates.sent_at !== undefined) {
+      payload.sent_at = updates.sent_at;
+    }
+
+    if (updates.last_error !== undefined) {
+      payload.last_error = updates.last_error;
+    }
+
+    if (updates.attempt_count !== undefined) {
+      payload.attempt_count = updates.attempt_count;
+    }
+
+    try {
+      const { error } = await this.supabase.from('notification_queue').update(payload).eq('id', notificationId);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      if (!this.handleMissingNotificationQueue(error)) {
+        console.error('Failed to update queued notification:', error);
+      }
+    }
+  }
+
+  private handleMissingNotificationQueue(error: unknown): boolean {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+    const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+
+    const isMissingQueue = code === 'PGRST205'
+      || code === '42P01'
+      || (message.includes('notification_queue')
+        && (message.includes('Could not find the table') || message.includes('does not exist')));
+
+    if (!isMissingQueue) {
+      return false;
+    }
+
+    if (this.notificationQueueAvailable) {
+      this.notificationQueueAvailable = false;
+      console.warn('notification_queue table is unavailable. Notification queue features are disabled until migrations are applied.');
+    }
+
+    return true;
+  }
+
+  private isValidPhoneNumber(phoneNumber: string): boolean {
+    return /^\+\d{8,15}$/.test(phoneNumber);
+  }
+
+  private normalizePhoneNumber(phoneNumber?: string): string | null {
+    if (!phoneNumber) {
+      return null;
+    }
+
+    const cleaned = phoneNumber.replace(/[\s\-()]/g, '');
+
+    if (!cleaned) {
+      return null;
+    }
+
+    if (cleaned.startsWith('+')) {
+      return cleaned;
+    }
+
+    if (cleaned.startsWith('00')) {
+      return `+${cleaned.slice(2)}`;
+    }
+
+    if (/^\d+$/.test(cleaned)) {
+      return `+${cleaned}`;
+    }
+
+    return null;
+  }
+
+  private resolveAppBaseUrl(): string | undefined {
+    const configuredBaseUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL;
+    if (configuredBaseUrl) {
+      return configuredBaseUrl.replace(/\/+$/, '');
+    }
+
+    const firstOrigin = process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    return firstOrigin ? firstOrigin.replace(/\/+$/, '') : undefined;
+  }
+
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

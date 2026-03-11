@@ -16,14 +16,14 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
 export type USSDAction = 'report' | 'help' | 'status' | 'emergency' | 'back' | 'quit';
-export type Language = 'en' | 'zu' | 'xh' | 'st' | 'af' | 'ss';
+export type Language = 'en' | 'zu' | 'xh' | 'st' | 'af' | 'ss' | 'tn' | 'ts' | 've' | 'nso' | 'nr';
 
 export interface USSDSession {
   sessionId: string;
   phoneNumber: string;
   language: Language;
   currentMenu: string;
-  state: Record<string, any>;
+  state: SessionState;
   createdAt: string;
   lastAccessedAt: string;
   isOffline?: boolean;
@@ -47,10 +47,39 @@ export interface USSDResponse {
   smsFollowUp?: string;
 }
 
+const SUPPORTED_LANGUAGES: Language[] = ['en', 'zu', 'xh', 'st', 'af', 'ss', 'tn', 'ts', 've', 'nso', 'nr'];
+
+type SessionState = Record<string, unknown>;
+type TemplateVariables = Record<string, string | number | boolean | undefined>;
+
+type MenuRegistry = Partial<Record<Language, Record<string, USSDMenuOption[]>>>;
+
+interface TelkomCallbackPayload {
+  subscriber?: string;
+  input?: string;
+  sessionId?: string;
+  language?: Language;
+  phoneNumber?: string;
+  userInput?: string;
+  [key: string]: unknown;
+}
+
+interface ResourceContact {
+  id: string;
+  name: string;
+  phone?: string;
+  location?: string;
+}
+
+interface NearestResources {
+  shelters: ResourceContact[];
+  counselors: ResourceContact[];
+}
+
 export class USSDGateway {
   private supabase: SupabaseClient;
-  private offlineCache: Map<string, any> = new Map();
-  private menus: Record<Language, Record<string, USSDMenuOption[]>> = {} as any;
+  private offlineCache: Map<string, Record<string, unknown>> = new Map();
+  private menus: MenuRegistry = {};
   private telkomApiKey: string;
   private telkomApiUrl: string;
   private telkomUssdCode: string;
@@ -60,8 +89,8 @@ export class USSDGateway {
     this.supabase = supabase;
     this.telkomApiKey = process.env.TELKOM_API_KEY || '';
     this.telkomApiUrl = process.env.TELKOM_API_URL || 'https://api.telkom.co.za/ussd/v1';
-    this.telkomUssdCode = process.env.TELKOM_USSD_CODE || '*180*123#';
-    this.telkomCallbackUrl = process.env.TELKOM_CALLBACK_URL || 'https://your-domain.com/api/ussd/telkom/callback';
+    this.telkomUssdCode = process.env.TELKOM_USSD_CODE || '';
+    this.telkomCallbackUrl = process.env.TELKOM_CALLBACK_URL || '';
     this.initializeMenus();
     this.initializeOfflineCache();
   }
@@ -71,14 +100,21 @@ export class USSDGateway {
    */
   public async sendTelkomResponse(phoneNumber: string, message: string, endSession: boolean = false): Promise<boolean> {
     try {
-      if (!this.telkomApiKey) {
-        console.warn('⚠️  Telkom API key not configured. Skipping Telkom send.');
+      if (!this.telkomApiKey || !this.telkomApiUrl || !this.telkomUssdCode || !this.telkomCallbackUrl) {
+        console.warn('⚠️  Telkom provider configuration incomplete. Skipping Telkom send.');
         return false;
       }
 
       const cleanPhone = phoneNumber.replace(/\D/g, '');
+      if (!cleanPhone) {
+        console.warn('⚠️  Telkom send skipped because subscriber phone number is empty.');
+        return false;
+      }
+
       const payload = {
         subscriber: cleanPhone,
+        serviceCode: this.telkomUssdCode,
+        callbackUrl: this.telkomCallbackUrl,
         text: message,
         end: endSession,
         timestamp: new Date().toISOString(),
@@ -91,6 +127,7 @@ export class USSDGateway {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
@@ -108,14 +145,17 @@ export class USSDGateway {
   /**
    * Handle Telkom callback (webhook from provider)
    */
-  public async handleTelkomCallback(payload: any): Promise<USSDResponse> {
+  public async handleTelkomCallback(payload: TelkomCallbackPayload): Promise<USSDResponse> {
     try {
-      // Telkom uses 'subscriber' instead of phoneNumber
       const { subscriber, input, sessionId, language = 'en' } = payload;
-      const phoneNumber = subscriber || payload.phoneNumber;
-      const userInput = input || payload.userInput;
+      const phoneNumber = subscriber || payload.phoneNumber || '';
+      const userInput = input || payload.userInput || '';
+      const normalizedLanguage = SUPPORTED_LANGUAGES.includes(language) ? language : 'en';
 
-      // Log callback for audit
+      if (!phoneNumber || !sessionId) {
+        throw new Error('Invalid Telkom callback payload: missing phone number or sessionId');
+      }
+
       await this.supabase.from('ussd_callbacks').insert({
         phone_number: phoneNumber,
         provider: 'telkom',
@@ -125,10 +165,7 @@ export class USSDGateway {
         received_at: new Date().toISOString(),
       });
 
-      // Process USSD request
-      const response = await this.handleUSSDRequest(phoneNumber, userInput, language);
-      
-      // Send response back to Telkom
+      const response = await this.handleUSSDRequest(phoneNumber, userInput, normalizedLanguage);
       await this.sendTelkomResponse(phoneNumber, response.text, response.endSession);
 
       return response;
@@ -171,22 +208,28 @@ export class USSDGateway {
     userInput: string,
     language: Language
   ): Promise<USSDResponse> {
-    const trimmedInput = userInput.trim();
+    const trimmedInput = (userInput || '').trim();
 
     // Handle navigation
-    if (trimmedInput === '0') {
+    if (trimmedInput === '0' || trimmedInput === '*') {
       session.currentMenu = 'main';
-    } else if (trimmedInput === '*') {
-      session.currentMenu = 'main';
+      return this.getMenuResponse(session, language);
+    } 
+
+    if (session.currentMenu === 'main') {
+      const option = this.menus[language]?.main?.find((opt) => opt.key === trimmedInput);
+      if (option) {
+        if (option.action === 'emergency') {
+          return await this.handleHelpRequest(session, 'Emergency', language);
+        }
+        session.currentMenu = option.nextMenu;
+      }
     } else if (session.currentMenu === 'report_details') {
-      return await this.handleReportSubmission(session, userInput, language);
+      return await this.handleReportSubmission(session, trimmedInput, language);
     } else if (session.currentMenu === 'help_details') {
-      return await this.handleHelpRequest(session, userInput, language);
+      return await this.handleHelpRequest(session, trimmedInput, language);
     } else if (session.currentMenu === 'case_reference') {
-      return await this.handleCaseStatusQuery(session, userInput, language);
-    } else {
-      // Handle menu selection
-      session.currentMenu = `menu_${trimmedInput}`;
+      return await this.handleCaseStatusQuery(session, trimmedInput, language);
     }
 
     // Get menu content
@@ -205,7 +248,7 @@ export class USSDGateway {
       // Create case
       const caseId = this.generateCaseId();
 
-      const { data: caseRecord, error } = await this.supabase.from('cases').insert({
+      const { error } = await this.supabase.from('cases').insert({
         id: caseId,
         phone_number: session.phoneNumber,
         description: details,
@@ -241,7 +284,7 @@ export class USSDGateway {
         sessionId: session.sessionId,
         menu: 'confirmation',
         text: confirmationText,
-        options: this.menus[language]['end'] || [],
+        options: this.menus[language]?.end || [],
         endSession: true,
         smsFollowUp: `Case ID: ${caseId}\nWe will contact you soon.`,
       };
@@ -290,7 +333,7 @@ export class USSDGateway {
         sessionId: session.sessionId,
         menu: 'help_confirmation',
         text: responseText,
-        options: this.menus[language]['end'] || [],
+        options: this.menus[language]?.end || [],
         endSession: true,
         smsFollowUp: `Help request received. Resources sent via SMS.`,
       };
@@ -324,7 +367,7 @@ export class USSDGateway {
           sessionId: session.sessionId,
           menu: 'case_not_found',
           text: notFoundText,
-          options: this.menus[language]['main'] || [],
+          options: this.menus[language]?.main || [],
           endSession: false,
         };
       }
@@ -339,7 +382,7 @@ export class USSDGateway {
         sessionId: session.sessionId,
         menu: 'case_status_result',
         text: statusText,
-        options: this.menus[language]['main'] || [],
+        options: this.menus[language]?.main || [],
         endSession: false,
       };
     } catch (error) {
@@ -353,7 +396,7 @@ export class USSDGateway {
    */
   private async getMenuResponse(session: USSDSession, language: Language): Promise<USSDResponse> {
     const menuKey = session.currentMenu;
-    const menuOptions = this.menus[language][menuKey];
+    const menuOptions = this.menus[language]?.[menuKey];
 
     if (!menuOptions) {
       return this.getMenuResponse({ ...session, currentMenu: 'main' }, language);
@@ -396,8 +439,8 @@ export class USSDGateway {
           lastAccessedAt: new Date().toISOString(),
         };
       }
-    } catch (error) {
-      // Session doesn't exist - create new one
+    } catch (_error) {
+      void _error;
     }
 
     // Create new session
@@ -453,11 +496,12 @@ export class USSDGateway {
       const message = this.getLocalizedText('sms_case_confirmation', language, { caseId });
 
       const { error } = await this.supabase.from('notification_queue').insert({
-        recipient_phone: phoneNumber,
-        message,
-        channel: 'sms',
+        recipient_type: 'sms',
+        recipient_address: phoneNumber,
+        message_type: 'ussd_confirmation',
+        message_content: message,
         case_id: caseId,
-        status: 'queued',
+        status: 'pending',
         created_at: new Date().toISOString(),
       });
 
@@ -473,27 +517,29 @@ export class USSDGateway {
    */
   private async sendResourceSMS(
     phoneNumber: string,
-    resources: any,
+    resources: NearestResources,
     language: Language
   ): Promise<void> {
     try {
       const shelterText = resources.shelters
         .slice(0, 2)
-        .map((s: any) => `${s.name}: ${s.phone}`)
+        .map((shelter) => `${shelter.name}: ${shelter.phone || 'N/A'}`)
         .join(' | ');
 
       const message = this.getLocalizedText('sms_resources', language, {
         shelters: shelterText,
       });
 
-      await this.supabase.from('notification_queue').insert({
-        recipient_phone: phoneNumber,
-        message,
-        channel: 'sms',
-        status: 'queued',
+      const { error } = await this.supabase.from('notification_queue').insert({
+        recipient_type: 'sms',
+        recipient_address: phoneNumber,
+        message_type: 'ussd_resources',
+        message_content: message,
+        status: 'pending',
         created_at: new Date().toISOString(),
       });
 
+      if (error) throw error;
       console.log(`📬 Resources SMS queued for ${phoneNumber}`);
     } catch (error) {
       console.error('Failed to queue resources SMS:', error);
@@ -503,9 +549,8 @@ export class USSDGateway {
   /**
    * Find nearest resources
    */
-  private async findNearestResources(phoneNumber: string): Promise<any> {
+  private async findNearestResources(_phoneNumber: string): Promise<NearestResources> {
     try {
-      // Default resources (in production: use location-based lookup)
       const { data: shelters } = await this.supabase
         .from('shelters')
         .select('id, name, phone, location')
@@ -513,14 +558,18 @@ export class USSDGateway {
 
       const { data: counselors } = await this.supabase
         .from('profiles')
-        .select('id, name, phone')
+        .select('id, full_name, phone')
         .eq('role', 'counselor')
         .eq('is_active', true)
         .limit(3);
 
       return {
-        shelters: shelters || [],
-        counselors: counselors || [],
+        shelters: (shelters || []) as ResourceContact[],
+        counselors: (counselors || []).map((counselor) => ({
+          id: counselor.id,
+          name: counselor.full_name || 'Counselor',
+          phone: counselor.phone,
+        })),
       };
     } catch (error) {
       console.error('Failed to find resources:', error);
@@ -552,7 +601,7 @@ export class USSDGateway {
   private getLocalizedText(
     key: string,
     language: Language,
-    variables?: Record<string, any>
+    variables?: TemplateVariables
   ): string {
     const texts: Record<string, Record<Language, string>> = {
       confirmation: {
@@ -562,6 +611,11 @@ export class USSDGateway {
         st: 'Kgetsi ya fapano e be e lentswe. ID: {{caseId}}. Thuso e tlo tla ka potlako.',
         af: 'Saak gerapporteer. ID: {{caseId}}. Hulp kom gou.',
         ss: 'Icala liyhalisiwe. Inombolo: {{caseId}}. Incamo imiswele.',
+        tn: 'Kgetsi e begilwe. ID: {{caseId}}. Thuso e tla tla go se kgale.',
+        ts: 'Mhaka yi vikiwile. ID: {{caseId}}. Mpfuno wu ta fika ku nga ri khale.',
+        ve: 'Mufhululu wo vhigiwa. ID: {{caseId}}. Thuso i khou da hu si kale.',
+        nso: 'Mohlala o begilwe. ID: {{caseId}}. Thuso e tla tla e se kgale.',
+        nr: 'Icala libikiwe. ID: {{caseId}}. Isizo liza maduze.',
       },
       help_confirmation: {
         en: 'Help received. {{shelters}} shelters nearby. SMS sent.',
@@ -570,6 +624,11 @@ export class USSDGateway {
         st: 'Thuso e amanelwe. {{shelters}} maatla a mo gaufi. SMS e sentswitswe.',
         af: 'Hulp ontvang. {{shelters}} skuilings naby. SMS gestuur.',
         ss: 'Incamo wamukile. {{shelters}} indawo zokuhlala ekufutshane. SMS ithunyelwe.',
+        tn: 'Thuso e amogetswe. {{shelters}} mafelo a go iphitlha a gaufi. SMS e rometswe.',
+        ts: 'Mpfuno wu amukeriwile. {{shelters}} tindhawu to tumbela ti kusuhi. SMS yi rhumeriwile.',
+        ve: 'Thuso yo tanganedzwa. {{shelters}} fhethu ha u dzumbama hu tsini. SMS yo rumelwa.',
+        nso: 'Thuso e amogetšwe. {{shelters}} mafelo a go iphihla a kgauswi. SMS e rometšwe.',
+        nr: 'Isizo lamukelwe. {{shelters}} iindawo zokuphephela ziseduze. ISMS ithunyelwe.',
       },
       case_not_found: {
         en: 'Case not found. Try again or call 123.',
@@ -578,6 +637,11 @@ export class USSDGateway {
         st: 'Kgetsi ga se bonanwwa. Leka gape kgonwa leina 123.',
         af: 'Saak nie gevind nie. Probeer weer of bel 123.',
         ss: 'Icala akutiwa. Zama futhi kumbe ufakele 123.',
+        tn: 'Kgetsi ga e a bonwa. Leka gape kgotsa leletsa 123.',
+        ts: 'Mhaka a yi kumekanga. Ringeta nakambe kumbe u fonela 123.',
+        ve: 'Mufhululu a wo ngo wanwa. Lingedzani hafhu kana ni founela 123.',
+        nso: 'Mohlala ga se wa hwetšwa. Leka gape goba o letšetše 123.',
+        nr: 'Icala alifumaneki. Linga godu namkha ufonele u-123.',
       },
       case_status: {
         en: 'Case {{caseId}}: {{status}} (Risk: {{riskLevel}})',
@@ -586,6 +650,11 @@ export class USSDGateway {
         st: 'Kgetsi {{caseId}}: {{status}} (Kotsi: {{riskLevel}})',
         af: 'Saak {{caseId}}: {{status}} (Risiko: {{riskLevel}})',
         ss: 'Icala {{caseId}}: {{status}} (Umngcele: {{riskLevel}})',
+        tn: 'Kgetsi {{caseId}}: {{status}} (Kotsi: {{riskLevel}})',
+        ts: 'Mhaka {{caseId}}: {{status}} (Nghozi: {{riskLevel}})',
+        ve: 'Mufhululu {{caseId}}: {{status}} (Khombo: {{riskLevel}})',
+        nso: 'Mohlala {{caseId}}: {{status}} (Kotsi: {{riskLevel}})',
+        nr: 'Icala {{caseId}}: {{status}} (Ingozi: {{riskLevel}})',
       },
       sms_case_confirmation: {
         en: 'AEGIS: Case {{caseId}} received. You will be contacted.',
@@ -594,6 +663,11 @@ export class USSDGateway {
         st: 'AEGIS: Kgetsi {{caseId}} e amanelwe. O tla lebiswa.',
         af: 'AEGIS: Saak {{caseId}} ontvang. U sal gekontak word.',
         ss: 'AEGIS: Icala {{caseId}} liyamukile. Uzonicelwa.',
+        tn: 'AEGIS: Kgetsi {{caseId}} e amogetswe. O tla letsetswa.',
+        ts: 'AEGIS: Mhaka {{caseId}} yi amukeriwile. U ta foneriwa.',
+        ve: 'AEGIS: Mufhululu {{caseId}} wo tanganedzwa. Ni do founelwa.',
+        nso: 'AEGIS: Mohlala {{caseId}} o amogetšwe. O tla letšetšwa.',
+        nr: 'AEGIS: Icala {{caseId}} lamukelwe. Uzakufonelwa.',
       },
       sms_resources: {
         en: 'Shelters: {{shelters}}. Safe houses available 24/7.',
@@ -602,6 +676,11 @@ export class USSDGateway {
         st: 'Maatla: {{shelters}}. Malapa a sa thotloetsi a le gone 24/7.',
         af: 'Skuilings: {{shelters}}. Veilige huise beskikbaar 24/7.',
         ss: 'Amakhaya: {{shelters}}. Indawo eziphakeme zilungile 24/7.',
+        tn: 'Mafelo a go iphitlha: {{shelters}}. Matlo a a sireletsegileng a teng 24/7.',
+        ts: 'Tindhawu to tumbela: {{shelters}}. Tiyindlu leti sirhelelekeke ti kona 24/7.',
+        ve: 'Fhethu ha u dzumbama: {{shelters}}. Nndu dzo tsireledzeaho dzi hone 24/7.',
+        nso: 'Mafelo a go iphihla: {{shelters}}. Dintlo tša polokego di gona 24/7.',
+        nr: 'Iindawo zokuphephela: {{shelters}}. Iindlu eziphephileko zikhona 24/7.',
       },
     };
 
@@ -621,44 +700,68 @@ export class USSDGateway {
     const titles: Record<string, Record<Language, string>> = {
       main: {
         en: 'AEGIS GBV Support\n1. Report Incident\n2. Get Help\n3. Case Status\n4. Emergency Alert\n0. Exit',
-        zu:
-          'Isisebenzi se-AEGIS\n1. Bhala Icala\n2. Thola Usizo\n3. Isimo Secala\n4. Isilindo Lokubhubhiseka\n0. Phuma',
+        zu: 'Isisebenzi se-AEGIS\n1. Bhala Icala\n2. Thola Usizo\n3. Isimo Secala\n4. Isilindo Lokubhubhiseka\n0. Phuma',
         xh: 'Uncedo lwe-AEGIS\n1. Xela Isimangaliso\n2. Fumana Incedo\n3. Imisebenzi Yecala\n4. Ibhaleyilo Yethutyana\n0. Suka',
         st: 'Thuso ya AEGIS\n1. Gaka Ntswakiso\n2. Fumana Thuso\n3. Boemo ba Kgetsi\n4. Ikonokelo ya Ligokotsi\n0. Ema',
         af: 'AEGIS Ondersteuning\n1. Rapporteer Voorval\n2. Kry Hulp\n3. Saakstatus\n4. Noodtoestand\n0. Uitgang',
         ss: 'Incamo ye-AEGIS\n1. Phakamisa Icala\n2. Thola Usizo\n3. Isimo Secala\n4. I-Emergency Alert\n0. Phuma',
+        tn: 'Thuso ya AEGIS\n1. Bega Kgetsi\n2. Kopa Thuso\n3. Boemo jwa Kgetsi\n4. Tlhagiso ya Tshoganetso\n0. Tswa',
+        ts: 'Mpfuno wa AEGIS\n1. Vika Mhaka\n2. Kombela Mpfuno\n3. Xiyimo xa Mhaka\n4. Xivikelo xa xihatla\n0. Huma',
+        ve: 'Thuso ya AEGIS\n1. Vhiga Mufhululu\n2. Humbela Thuso\n3. Tshiimo tsha Mufhululu\n4. Tsevho ya Tshihafu\n0. Bvuma',
+        nso: 'Thuso ya AEGIS\n1. Bega Mohlala\n2. Kgopela Thuso\n3. Boemo bja Mohlala\n4. Temošo ya Tšhoganetšo\n0. Etswa',
+        nr: 'Isizo le-AEGIS\n1. Bika Icala\n2. Funa Isizo\n3. Ubujamo Becala\n4. Isiyeleliso Esiphuthumako\n0. Phuma',
       },
-      menu_1: {
+      report_details: {
         en: 'Describe incident:\nBrief details please.',
         zu: 'Chaza lento okwenzeka:\nUmuntu muncinane.',
         xh: 'Chaza into eyenzeke:\nImininingwane emfutshane.',
         st: 'Thagela mokgatlho:\nThagela bonnyane.',
         af: 'Beskryf voorval:\nKorte besonderhede asseblief.',
         ss: 'Hlathula lokwakwenzela:\nUmuntu muncinane.',
+        tn: 'Tlhalosa tiragalo:\nDintlha tse dikhutshwane tsweetswee.',
+        ts: 'Hlamusela mhaka:\nVuxokoxoko byo koma ndza kombela.',
+        ve: 'Talutshedzani mufhululu:\nZwidodombedzwa zwi pfufhi nga khumbelo.',
+        nso: 'Hlalosa tiragalo:\nDintlha tše dikopana hle.',
+        nr: 'Hlathulula isehlakalo:\nImininingwana emifitjhani ngiyabawa.',
       },
-      menu_2: {
+      help_details: {
         en: 'What help do you need?\n1. Shelter\n2. Counseling\n3. Medical\n4. Police',
         zu: 'Yini usizo okudingayo?\n1. Ikhaya\n2. Ukunandisana\n3. Iziguli\n4. Amapolisa',
         xh: 'Yoluphi uncedo onodinga?\n1. Indawo Yokuhlala\n2. Untetho\n3. Izigqebela\n4. Amapolisa',
         st: 'Thuso efe o nago go e fumana?\n1. Mophato\n2. Kgetsi\n3. Bolwetse\n4. Mapodisi',
         af: 'Watter hulp het u nodig?\n1. Skuiling\n2. Terapie\n3. Mediese\n4. Polisie',
         ss: 'Yini usizo okudingayo?\n1. Ikhaya\n2. Ukunandisana\n3. Iziguli\n4. Amapolisa',
+        tn: 'O tlhoka thuso efe?\n1. Lefelo la go iphitlha\n2. Bogakolodi\n3. Kalafi\n4. Mapodisi',
+        ts: 'U lava mpfuno wihi?\n1. Ndhawu yo tumbela\n2. Ntsundzuxo\n3. Vutshunguri\n4. Maphorisa',
+        ve: 'Ni khou toda thuso ifhio?\n1. Fhethu ha u dzumbama\n2. Vhueletshedzi\n3. Tshihedzwa\n4. Mapholisa',
+        nso: 'O hloka thuso efe?\n1. Lefelo la go iphihla\n2. Keletšo\n3. Kalafo\n4. Maphodisa',
+        nr: 'Udinga isizo elinjani?\n1. Indawo yokuphephela\n2. Ukwelulekwa\n3. Ezamapilo\n4. Amapholisa',
       },
-      menu_3: {
+      case_reference: {
         en: 'Enter case ID or number:',
         zu: 'Faka isithombelo secala noma inombolo:',
         xh: 'Faka ikhowudi yecala okanye inombolo:',
         st: 'Kenya khowudi ya kgetsi kgonwa le nomoro:',
         af: 'Voer saak-ID of nommer in:',
         ss: 'Faka isithombelo secala noma inombolo:',
+        tn: 'Tsenya ID kgotsa nomoro ya kgetsi:',
+        ts: 'Nghenisa ID kumbe nomboro ya mhaka:',
+        ve: 'Dzhenisani ID kana nomboro ya mufhululu:',
+        nso: 'Tsenya ID goba nomoro ya mohlala:',
+        nr: 'Faka i-ID namkha inomboro yecala:',
       },
-      menu_4: {
+      emergency_alert: {
         en: 'Emergency - Police being notified. Stay safe.',
         zu: 'Ibhaleyilo - Amapolisa azotiwe. Hlala naphakeme.',
         xh: 'I-emergency - Amapolisa azonicelwa. Hlala ekhuselekile.',
         st: 'Kotsi - Mapodisi a tla lemoga. Dula a sa lwala.',
         af: 'Noodtoestand - Polisie word in kennis gestel. Bly veilig.',
         ss: 'I-Emergency - Amapolisa azonicelwa. Hlala ekhuselekile.',
+        tn: 'Tshoganetso - Mapodisi a a itsisetswe. Nna o sireletsegile.',
+        ts: 'Xihatla - Maphorisa ya tivisiwile. Tshama u sirhelelekile.',
+        ve: 'Tshihafu - Mapholisa vha khou divhadzwa. Dzudzani no tsireledzea.',
+        nso: 'Tšhoganetšo - Maphodisa a tsebišitšwe. Dula o bolokegile.',
+        nr: 'Isiphuthumako - Amapholisa ayabikelwa. Hlala uphephile.',
       },
       end: {
         en: '0. Back to Menu\n*. Exit',
@@ -667,6 +770,11 @@ export class USSDGateway {
         st: '0. Koma go Menya\n*. Ema',
         af: '0. Terug na Keuzemenu\n*. Uitgang',
         ss: '0. Buya Ekumenyu\n*. Phuma',
+        tn: '0. Boela kwa Menung\n*. Tswa',
+        ts: '0. Tlhela eka Menu\n*. Huma',
+        ve: '0. Vhuyelela kha Menu\n*. Bvuma',
+        nso: '0. Boela go Menu\n*. Etswa',
+        nr: '0. Buyela kuMenyu\n*. Phuma',
       },
     };
 
@@ -677,18 +785,34 @@ export class USSDGateway {
     // Main menu structure (same across languages)
     this.menus.en = {
       main: [
-        { key: '1', label: 'Report Incident', labels: {} as any, nextMenu: 'report_details', action: 'report', requiresInput: true },
-        { key: '2', label: 'Get Help', labels: {} as any, nextMenu: 'help_details', action: 'help', requiresInput: true },
-        { key: '3', label: 'Case Status', labels: {} as any, nextMenu: 'case_reference', action: 'status', requiresInput: true },
-        { key: '4', label: 'Emergency Alert', labels: {} as any, nextMenu: 'emergency_alert', action: 'emergency' },
+        { key: '1', label: 'Report Incident', labels: this.createEmptyLabels(), nextMenu: 'report_details', action: 'report', requiresInput: true },
+        { key: '2', label: 'Get Help', labels: this.createEmptyLabels(), nextMenu: 'help_details', action: 'help', requiresInput: true },
+        { key: '3', label: 'Case Status', labels: this.createEmptyLabels(), nextMenu: 'case_reference', action: 'status', requiresInput: true },
+        { key: '4', label: 'Emergency Alert', labels: this.createEmptyLabels(), nextMenu: 'emergency_alert', action: 'emergency' },
       ],
+      report_details: [],
+      help_details: [],
+      case_reference: [],
+      emergency_alert: [],
+      confirmation: [],
+      help_confirmation: [],
+      case_not_found: [],
+      case_status_result: [],
+      error: [],
       end: [],
     };
 
     // Copy structure to other languages
-    ['zu', 'xh', 'st', 'af', 'ss'].forEach((lang) => {
+    SUPPORTED_LANGUAGES.filter((lang) => lang !== 'en').forEach((lang) => {
       this.menus[lang] = { ...this.menus.en };
     });
+  }
+
+  private createEmptyLabels(): Record<Language, string> {
+    return SUPPORTED_LANGUAGES.reduce<Record<Language, string>>((labels, language) => {
+      labels[language] = '';
+      return labels;
+    }, {} as Record<Language, string>);
   }
 
   private initializeOfflineCache(): void {

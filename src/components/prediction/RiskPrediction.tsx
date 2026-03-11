@@ -10,9 +10,9 @@ import {
   RiskLevel
 } from '@/data/aegisData';
 import {
-  MapPinIcon, AlertTriangleIcon, TrendUpIcon, TrendDownIcon,
-  ActivityIcon, EyeIcon, DownloadIcon, RefreshIcon,
-  SearchIcon, LayersIcon, ClockIcon, ZapIcon
+  MapPinIcon, TrendUpIcon, TrendDownIcon,
+  DownloadIcon, RefreshIcon,
+  SearchIcon
 } from '@/components/ui/AegisIcons';
 
 const RiskPrediction: React.FC = () => {

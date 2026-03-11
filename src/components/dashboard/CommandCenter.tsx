@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import HotspotHeatmap from "@/components/analytics/HotspotHeatmap";
 import {
   useAlertsFeed,
   useContinentalStats,
@@ -11,8 +12,8 @@ import {
 import {
   ShieldIcon, AlertTriangleIcon, UsersIcon, MapPinIcon,
   ActivityIcon, GlobeIcon, TrendUpIcon, TrendDownIcon,
-  DatabaseIcon, ClockIcon, ZapIcon, LayersIcon,
-  CheckCircleIcon, EyeIcon
+  DatabaseIcon, ZapIcon, LayersIcon,
+  CheckCircleIcon
 } from '@/components/ui/AegisIcons';
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -102,7 +103,7 @@ const CommandCenter: React.FC = () => {
   };
 
   const MetricCard: React.FC<MetricCardProps> = ({ icon: Icon, label, value, subValue, color, trend }) => (
-    <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4 hover:border-slate-700/50 transition-all group">
+    <div className="bg-slate-950/60 border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all group">
       <div className="flex items-start justify-between">
         <div className={`p-2 rounded-lg bg-gradient-to-br ${color}`}>
           <Icon className="text-white" size={18} />
@@ -157,34 +158,26 @@ const CommandCenter: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const Sparkline = ({ data, color }: { data: number[]; color: string }) => {
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = max - min || 1;
-    const w = 120;
-    const h = 32;
-    const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
-    return (
-      <svg width={w} height={h} className="opacity-60">
-        <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
-      </svg>
-    );
-  };
-
   return (
-    <div className="p-4 lg:p-6 space-y-6 overflow-y-auto h-full">
+    <div className="min-h-screen bg-[#04060c] text-slate-50 p-4 lg:p-6 space-y-6 overflow-y-auto h-full relative">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-indigo-600/14 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-cyan-600/12 blur-[140px] rounded-full" />
+        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
+      </div>
+      <div className="relative z-10 space-y-6">
       {errorMessage && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-xs text-red-200">
           {errorMessage}
         </div>
       )}
       {isLoadingData && !hasData && (
-        <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4 text-xs text-slate-400">
+        <div className="bg-slate-950/60 border border-white/10 rounded-xl p-4 text-xs text-slate-400">
           Loading live command center data...
         </div>
       )}
       {!isLoadingData && !hasData && (
-        <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4 text-xs text-slate-400">
+        <div className="bg-slate-950/60 border border-white/10 rounded-xl p-4 text-xs text-slate-400">
           No live data available yet. Connect Supabase tables to populate this view.
         </div>
       )}
@@ -289,8 +282,8 @@ const CommandCenter: React.FC = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Continental Risk Map (placeholder) */}
-        <div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+        <div className="lg:col-span-2 bg-slate-950/60 border border-white/10 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <div>
               <h3 className="text-white font-semibold text-sm">Continental Risk Heatmap</h3>
               <p className="text-xs text-slate-500">Real-time risk distribution across Africa</p>
@@ -356,8 +349,8 @@ const CommandCenter: React.FC = () => {
         </div>
 
         {/* Alert Feed */}
-        <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+        <div className="bg-slate-950/60 border border-white/10 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <h3 className="text-white font-semibold text-sm">Live Alert Feed</h3>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -409,8 +402,8 @@ const CommandCenter: React.FC = () => {
       </div>
 
       {/* Regional Breakdown */}
-      <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+      <div className="bg-slate-950/60 border border-white/10 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-white font-semibold text-sm">Regional Risk Assessment</h3>
           <button
             onClick={handleExportReport}
@@ -423,7 +416,7 @@ const CommandCenter: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-800/50">
+              <tr className="border-b border-white/10">
                 <th className="text-left text-[10px] text-slate-500 font-medium uppercase tracking-wider px-4 py-3">Region</th>
                 <th className="text-left text-[10px] text-slate-500 font-medium uppercase tracking-wider px-4 py-3">Country</th>
                 <th className="text-left text-[10px] text-slate-500 font-medium uppercase tracking-wider px-4 py-3">Risk Level</th>
@@ -492,7 +485,7 @@ const CommandCenter: React.FC = () => {
         {Object.entries(continentalStats).map(([key, stats]) => {
           const name = key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
           return (
-            <div key={key} className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4 hover:border-slate-700/50 transition-all">
+            <div key={key} className="bg-slate-950/60 border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all">
               <h4 className="text-sm text-white font-medium mb-3">{name}</h4>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
@@ -529,12 +522,15 @@ const CommandCenter: React.FC = () => {
       </div>
 
       {/* Incident Timeline Chart */}
-      <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4">
+      <div className="bg-slate-950/60 border border-white/10 rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-white font-semibold text-sm">Incident Volume Timeline</h3>
             <p className="text-xs text-slate-500">Daily reported incidents with 14-day forecast</p>
           </div>
+        </div>
+        <div className="mt-6">
+          <HotspotHeatmap compact />
         </div>
         <div className="h-48 flex items-end gap-[2px]">
           {incidentTimeSeries.slice(-60).map((point, i) => {
@@ -563,6 +559,7 @@ const CommandCenter: React.FC = () => {
           <span className="text-indigo-400">Forecast zone</span>
           <span>Today + 14d</span>
         </div>
+      </div>
       </div>
     </div>
   );

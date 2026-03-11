@@ -8,7 +8,15 @@ export interface DatadogConfig {
   version: string;
 }
 
+type DatadogRumModule = typeof import('@datadog/browser-rum');
+type DatadogLogsModule = typeof import('@datadog/browser-logs');
+
 let ddInitialized = false;
+let rumModule: DatadogRumModule | null = null;
+let logsModule: DatadogLogsModule | null = null;
+
+const getRumApi = () => rumModule?.datadogRum;
+const getLogsApi = () => logsModule?.datadogLogs;
 
 export async function initDatadog(): Promise<void> {
   if (ddInitialized) {
@@ -22,8 +30,14 @@ export async function initDatadog(): Promise<void> {
   }
 
   try {
-    const { datadogRum } = await import('@datadog/browser-rum');
-    const { datadogLogs } = await import('@datadog/browser-logs');
+    const rum = await import('@datadog/browser-rum');
+    const logs = await import('@datadog/browser-logs');
+
+    rumModule = rum;
+    logsModule = logs;
+
+    const { datadogRum } = rum;
+    const { datadogLogs } = logs;
 
     const config: DatadogRumInit = {
       applicationId: import.meta.env.VITE_DATADOG_APPLICATION_ID,
@@ -64,17 +78,17 @@ export async function initDatadog(): Promise<void> {
 
 export function trackUserAction(
   name: string,
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 ): void {
-  if (!ddInitialized) return;
+  const rumApi = getRumApi();
+  if (!ddInitialized || !rumApi) return;
 
   try {
-    const { datadogRum } = require('@datadog/browser-rum');
     const action: RumUserAction = {
       name,
       context,
     };
-    datadogRum.addUserAction(action.name, action.context);
+    rumApi.addUserAction(action.name, action.context);
   } catch (error) {
     console.error('Error tracking user action:', error);
   }
@@ -82,13 +96,13 @@ export function trackUserAction(
 
 export function trackError(
   error: Error,
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 ): void {
-  if (!ddInitialized) return;
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !logsApi) return;
 
   try {
-    const { datadogLogs } = require('@datadog/browser-logs');
-    datadogLogs.logger.error(error.message, {
+    logsApi.logger.error(error.message, {
       error: {
         message: error.message,
         stack: error.stack,
@@ -102,14 +116,15 @@ export function trackError(
 
 export function addGlobalContext(
   key: string,
-  value: any
+  value: unknown
 ): void {
-  if (!ddInitialized) return;
+  const rumApi = getRumApi();
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !rumApi || !logsApi) return;
 
   try {
-    const { datadogRum, datadogLogs } = require('@datadog/browser-rum');
-    datadogRum.addRumGlobalContext(key, value);
-    datadogLogs.addLoggerGlobalContext(key, value);
+    rumApi.addRumGlobalContext(key, value);
+    logsApi.addLoggerGlobalContext(key, value);
   } catch (error) {
     console.error('Error adding global context:', error);
   }
@@ -121,16 +136,17 @@ export function setUser(user: {
   email?: string;
   role?: string;
 }): void {
-  if (!ddInitialized) return;
+  const rumApi = getRumApi();
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !rumApi || !logsApi) return;
 
   try {
-    const { datadogRum, datadogLogs } = require('@datadog/browser-rum');
-    datadogRum.setUser({
+    rumApi.setUser({
       id: user.id,
       name: user.name,
       email: user.email,
     });
-    datadogLogs.setUserContext({
+    logsApi.setUserContext({
       id: user.id,
       name: user.name,
       email: user.email,
@@ -143,23 +159,24 @@ export function setUser(user: {
 }
 
 export function clearUser(): void {
-  if (!ddInitialized) return;
+  const rumApi = getRumApi();
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !rumApi || !logsApi) return;
 
   try {
-    const { datadogRum, datadogLogs } = require('@datadog/browser-rum');
-    datadogRum.clearUser();
-    datadogLogs.clearUserContext();
+    rumApi.clearUser();
+    logsApi.clearUserContext();
   } catch (error) {
     console.error('Error clearing user context:', error);
   }
 }
 
 export function startView(name: string): void {
-  if (!ddInitialized) return;
+  const rumApi = getRumApi();
+  if (!ddInitialized || !rumApi) return;
 
   try {
-    const { datadogRum } = require('@datadog/browser-rum');
-    datadogRum.startView({ name });
+    rumApi.startView({ name });
   } catch (error) {
     console.error('Error starting view:', error);
   }
@@ -167,16 +184,16 @@ export function startView(name: string): void {
 
 export async function captureException(
   error: Error,
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 ): Promise<void> {
-  if (!ddInitialized) {
+  const rumApi = getRumApi();
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !rumApi || !logsApi) {
     console.error('Datadog not initialized, cannot capture exception:', error);
     return;
   }
 
   try {
-    const { datadogRum, datadogLogs } = require('@datadog/browser-rum');
-
     const errorContext = {
       error: {
         message: error.message,
@@ -188,50 +205,50 @@ export async function captureException(
       ...context,
     };
 
-    datadogRum.addError(error, errorContext);
-    datadogLogs.logger.error(error.message, errorContext);
+    rumApi.addError(error, errorContext);
+    logsApi.logger.error(error.message, errorContext);
   } catch (err) {
     console.error('Error capturing exception:', err);
   }
 }
 
-export function logInfo(message: string, context?: Record<string, any>): void {
-  if (!ddInitialized) {
+export function logInfo(message: string, context?: Record<string, unknown>): void {
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !logsApi) {
     console.log(message, context);
     return;
   }
 
   try {
-    const { datadogLogs } = require('@datadog/browser-logs');
-    datadogLogs.logger.info(message, context);
+    logsApi.logger.info(message, context);
   } catch (error) {
     console.error('Error logging info:', error);
   }
 }
 
-export function logWarn(message: string, context?: Record<string, any>): void {
-  if (!ddInitialized) {
+export function logWarn(message: string, context?: Record<string, unknown>): void {
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !logsApi) {
     console.warn(message, context);
     return;
   }
 
   try {
-    const { datadogLogs } = require('@datadog/browser-logs');
-    datadogLogs.logger.warn(message, context);
+    logsApi.logger.warn(message, context);
   } catch (error) {
     console.error('Error logging warning:', error);
   }
 }
 
-export function logDebug(message: string, context?: Record<string, any>): void {
-  if (!ddInitialized) {
+export function logDebug(message: string, context?: Record<string, unknown>): void {
+  const logsApi = getLogsApi();
+  if (!ddInitialized || !logsApi) {
     console.debug(message, context);
     return;
   }
 
   try {
-    const { datadogLogs } = require('@datadog/browser-logs');
-    datadogLogs.logger.debug(message, context);
+    logsApi.logger.debug(message, context);
   } catch (error) {
     console.error('Error logging debug:', error);
   }

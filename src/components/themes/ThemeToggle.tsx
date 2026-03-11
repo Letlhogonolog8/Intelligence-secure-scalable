@@ -137,14 +137,3 @@ function applyMotionPreference(reduceMotion: boolean): void {
   }
 }
 
-/**
- * Hook: Use theme
- */
-export const useTheme = () => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('aegis-theme') as Theme | null;
-    return saved || 'dark';
-  });
-
-  return { theme, setTheme };
-};

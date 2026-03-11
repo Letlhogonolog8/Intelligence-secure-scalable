@@ -9,42 +9,44 @@ global:
 scrape_configs:
   - job_name: 'aegis-api'
     static_configs:
-      - targets: ['localhost:3000']
+      - targets: ['host.docker.internal:3001']
     metrics_path: '/metrics'
     scrape_interval: 30s
     scrape_timeout: 10s
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: 'go_.*|process_.*'
-        action: drop
 
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['prometheus:9090']
 
   - job_name: 'redis'
     static_configs:
-      - targets: ['localhost:6379']
+      - targets: ['redis-exporter:9121']
     scrape_interval: 30s
     metrics_path: '/metrics'
 
   - job_name: 'postgres'
     static_configs:
-      - targets: ['localhost:5432']
+      - targets: ['postgres-exporter:9187']
     scrape_interval: 30s
+    metrics_path: '/metrics'
 
   - job_name: 'node'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
     scrape_interval: 30s
 
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ['localhost:9093']
+        - targets: ['alertmanager:9093']
       scheme: http
       timeout: 10s
 

@@ -12,6 +12,7 @@
  * - 99.9% uptime tracking
  */
 
+import { NextFunction, Request, Response } from 'express';
 import prometheus from 'prom-client';
 
 export class MonitoringDashboard {
@@ -241,8 +242,8 @@ export class MonitoringDashboard {
    */
   calculateUptimePercentage(startOfMonth: Date, endOfMonth: Date): number {
     const monthDurationMs = endOfMonth.getTime() - startOfMonth.getTime();
-    const maxDowntimeMs = monthDurationMs * 0.001; // 0.1% downtime for 99.9%
-    
+    const _maxDowntimeMs = monthDurationMs * 0.001; // 0.1% downtime for 99.9%
+
     // In production, track actual downtime from incident reports
     const estimatedDowntimeMs = 0; // Would calculate from incidents
     
@@ -307,7 +308,7 @@ export class MonitoringDashboard {
  * Middleware: Track request metrics
  */
 export function monitoringMiddleware(monitoring: MonitoringDashboard) {
-  return (req: any, res: any, next: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const startTime = Date.now();
     
     res.on('finish', () => {

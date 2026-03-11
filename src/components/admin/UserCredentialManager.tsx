@@ -6,9 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus,
-  Mail,
-  Lock,
-  Shield,
   CheckCircle2,
   XCircle,
   RefreshCw,
@@ -19,10 +16,12 @@ interface UserCredentialManagerProps {
   onSuccess?: () => void;
 }
 
+type StaffRole = 'police' | 'ngo' | 'counselor' | 'analyst';
+
 export const UserCredentialManager: React.FC<UserCredentialManagerProps> = ({ onSuccess }) => {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'police' | 'ngo' | 'counselor' | 'analyst'>('police');
+  const [role, setRole] = useState<StaffRole>('police');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
@@ -122,7 +121,7 @@ export const UserCredentialManager: React.FC<UserCredentialManagerProps> = ({ on
           <label className="block text-sm font-semibold text-slate-300 mb-2">Role</label>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as any)}
+            onChange={(e) => setRole(e.target.value as StaffRole)}
             className="w-full px-4 py-2 rounded-lg bg-slate-950/60 border border-white/10 text-white"
           >
             <option value="police">Police Officer</option>

@@ -19,7 +19,7 @@ export interface AuditLogEntry {
   status: 'success' | 'failure';
   ipAddress: string;
   userAgent: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   timestamp: string;
   hash?: string;
   previousHash?: string;
@@ -128,7 +128,7 @@ export class AuditLogService {
     userId: string,
     resourceId: string,
     resourceType: string,
-    changes: Record<string, any>,
+    changes: Record<string, unknown>,
     ipAddress: string,
     userAgent: string
   ): Promise<void> {
@@ -180,7 +180,7 @@ export class AuditLogService {
     status: 'success' | 'failure',
     ipAddress: string,
     userAgent: string,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     await this.log({
       userId,
@@ -203,7 +203,7 @@ export class AuditLogService {
     severity: 'info' | 'warning' | 'critical',
     ipAddress: string,
     userAgent: string,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     await this.log({
       userId,
@@ -335,7 +335,21 @@ export class AuditLogService {
 
     if (error) throw error;
 
-    return (data || []).map((entry: any) => ({
+    return (data || []).map((entry: {
+      id: string;
+      user_id: string;
+      action: string;
+      module: string;
+      resource_id?: string;
+      resource_type?: string;
+      status: 'success' | 'failure';
+      ip_address: string;
+      user_agent: string;
+      metadata?: Record<string, unknown>;
+      created_at: string;
+      hash?: string;
+      previous_hash?: string;
+    }) => ({
       id: entry.id,
       userId: entry.user_id,
       action: entry.action,

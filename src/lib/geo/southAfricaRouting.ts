@@ -145,7 +145,7 @@ export class SouthAfricaRouting {
         country: 'ZA',
         primary: true,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         server: 'https://sa-api.aegis-ai.co.za',
         region: 'af-south-1',
@@ -173,7 +173,7 @@ export class SouthAfricaRouting {
         latitude: (data.latitude as number) || 0,
         longitude: (data.longitude as number) || 0,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         ip: ip,
         country: 'Unknown',

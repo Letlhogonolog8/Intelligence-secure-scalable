@@ -1,5 +1,17 @@
 // AEGIS Survivor Chat - Updated CORS handling
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1";
+import {
+  getFallbackSupportResponse,
+  getGreetingResponse,
+  inferLanguageFromMessage,
+  isEchoingUserInput,
+  isGreetingMessage,
+  isLowQualityResponse,
+  isMismatchedLanguageResponse,
+  isNearDuplicateResponse,
+  LANGUAGE_LABELS,
+  normalizeLanguageCode,
+} from "./languageQuality.ts";
 
 const buildCorsHeaders = (origin: string | null) => ({
   "Access-Control-Allow-Origin": origin ?? "*",
@@ -56,22 +68,9 @@ SAFETY PROTOCOL:
 - Suggest professional counselor escalation when appropriate
 - Include safety planning elements naturally in conversation
 
-LANGUAGES SUPPORTED: English (en), Swahili (sw), French (fr), Amharic (am), Arabic (ar)`;
+LANGUAGES SUPPORTED: English (en), isiZulu (zu), Afrikaans (af), isiXhosa (xh), Sesotho (st), Setswana (tn), Xitsonga (ts), Tshivenda (ve), Sepedi (nso), isiNdebele (nr), SiSwati (ss), Swahili (sw), French (fr), Amharic (am), Arabic (ar)`;
 
 const textEncoder = new TextEncoder();
-const base64ToBytes = (value: string) => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-};
-
-const bytesToHex = (bytes: Uint8Array) =>
-  Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 
 const withRetry = async <T,>(operation: () => Promise<T>, retries = 2): Promise<T> => {
   let attempt = 0;
@@ -129,14 +128,14 @@ async function detectEmotion(message: string): Promise<string> {
   return "neutral";
 }
 
-function generateSuggestedActions(riskLevel: string): string[] {
-  const actions: Record<string, string[]> = {
+function generateSuggestedActions(riskLevel: string, language: string): string[] {
+  const english: Record<string, string[]> = {
     critical: [
       "Call emergency services (911)",
       "Tell a trusted person",
       "Go to a safe location",
-      "Reach out to crisis counselor",
-      "Create safety plan now",
+      "Reach out to a crisis counselor",
+      "Create a safety plan now",
     ],
     high: [
       "Contact a counselor",
@@ -159,37 +158,154 @@ function generateSuggestedActions(riskLevel: string): string[] {
       "Celebrate your progress",
     ],
   };
-  return actions[riskLevel] || actions.low;
-}
 
-function generateResources(riskLevel: string): string[] {
-  const resources: Record<string, string[]> = {
+  const setswana: Record<string, string[]> = {
     critical: [
-      "🚨 National Domestic Violence Hotline: 1-800-799-7233",
-      "🏥 Emergency Medical Services: 911",
-      "🛡️ Rape Crisis Center: RAINN 1-800-656-4673",
-      "📱 Crisis Text Line: Text HOME to 741741",
+      "Bitsa tirelo ya tshoganyetso ka bonako",
+      "Itsise motho yo o mo ikanyang",
+      "Ya kwa lefelong le le sireletsegileng",
+      "Ikgokaganye le mogakolodi wa seemo sa tshoganyetso",
+      "Dire leano la polokego jaanong",
     ],
     high: [
-      "👥 Counseling Services: Available 24/7",
-      "🏠 Shelter Locator: SafePlace database",
-      "⚖️ Legal Aid: Free legal consultation",
-      "💼 Job Training Programs: Career support",
+      "Ikgokaganye le mogakolodi",
+      "Bua le tsala e o e ikanyang",
+      "Kwala ditiragalo tse di diragetseng",
+      "Rulaganya tsela ya go tswa ka polokego",
+      "Boloka ditokomane tsa botlhokwa",
     ],
     medium: [
-      "📚 Educational Resources on abuse patterns",
-      "💪 Support Group Meetings: Weekly sessions",
-      "🧠 Mental Health Services: Therapy options",
-      "🤝 Community Programs: Social support",
+      "Itlhokomele",
+      "Tsena mo setlhopheng sa tshegetso",
+      "Bua le mogakolodi",
+      "Ithute ka ditshwanelo tsa gago",
+      "Aga maranyane a tshegetso",
+    ],
+    low: [
+      "Tswelela ka loeto lwa phodiso",
+      "Ithute go hema ka khutso",
+      "Tshegetsa tsamaiso ya gago ya tshegetso",
+      "Itumele ka kgatelopele ya gago",
+    ],
+  };
+
+  const zulu: Record<string, string[]> = {
+    critical: [
+      "Shayela usizo oluphuthumayo ngokushesha",
+      "Tshela umuntu omethembayo",
+      "Yiya endaweni ephephile",
+      "Xhumana nomeluleki wesimo esiphuthumayo",
+      "Yenza uhlelo lokuphepha manje",
+    ],
+    high: english.high,
+    medium: english.medium,
+    low: english.low,
+  };
+
+  const afrikaans: Record<string, string[]> = {
+    critical: [
+      "Bel nooddienste onmiddellik",
+      "Vertel iemand wat jy vertrou",
+      "Gaan na 'n veilige plek",
+      "Kontak 'n krisisberader",
+      "Maak nou 'n veiligheidsplan",
+    ],
+    high: english.high,
+    medium: english.medium,
+    low: english.low,
+  };
+
+  const xhosa: Record<string, string[]> = {
+    critical: [
+      "Biza iinkonzo zongxamiseko ngoku",
+      "Xelela umntu omthembayo",
+      "Yiya kwindawo ekhuselekileyo",
+      "Nxibelelana nomcebisi ongxamisekileyo",
+      "Yenza isicwangciso sokhuseleko ngoku",
+    ],
+    high: english.high,
+    medium: english.medium,
+    low: english.low,
+  };
+
+  const sesotho: Record<string, string[]> = {
+    critical: [
+      "Letsetsa ditshebeletso tsa tshohanyetso hanghang",
+      "Bolella motho eo o mo tshepang",
+      "Eya sebakeng se sireletsehileng",
+      "Ikgokahanye le moeletsi wa tshohanyetso",
+      "Etsa moralo wa polokeho hona jwale",
+    ],
+    high: english.high,
+    medium: english.medium,
+    low: english.low,
+  };
+
+  const languageActions: Record<string, Record<string, string[]>> = {
+    en: english,
+    tn: setswana,
+    zu: zulu,
+    af: afrikaans,
+    xh: xhosa,
+    st: sesotho,
+  };
+
+  const selected = languageActions[language] ?? english;
+  return selected[riskLevel] || selected.low;
+}
+
+function generateResources(riskLevel: string, language: string): string[] {
+  const english: Record<string, string[]> = {
+    critical: [
+      "🚨 Emergency services: 112 or local emergency number",
+      "🏥 Nearest hospital emergency unit",
+      "🛡️ Trusted crisis support center",
+      "📱 Contact a trusted person immediately",
+    ],
+    high: [
+      "👥 Counseling services available 24/7",
+      "🏠 Nearby safe shelter options",
+      "⚖️ Legal aid and protection services",
+      "📞 Local survivor support hotline",
+    ],
+    medium: [
+      "📚 Educational resources on abuse patterns",
+      "💪 Support group meetings",
+      "🧠 Mental health services",
+      "🤝 Community support programs",
     ],
     low: [
       "📖 Self-help resources and guides",
-      "🎯 Personal development courses",
-      "🌟 Wellness and mindfulness programs",
+      "🧘 Mindfulness and wellness exercises",
+      "🌱 Personal growth tools",
       "💝 Self-care recommendations",
     ],
   };
-  return resources[riskLevel] || resources.low;
+
+  const setswana: Record<string, string[]> = {
+    critical: [
+      "🚨 Tirelo ya tshoganyetso: 112 kgotsa nomoro ya lefelo la gago",
+      "🏥 Karolo ya tshoganyetso kwa bookelong jo bo gaufi",
+      "🛡️ Lefelo la tshegetso la seemo sa tshoganyetso",
+      "📱 Ikopanye le motho yo o mo ikanyang ka bonako",
+    ],
+    high: [
+      "👥 Tirelo ya boeletsibagolo e teng motshegare le bosigo",
+      "🏠 Mafelo a bolulo jo bo sireletsegileng a a gaufi",
+      "⚖️ Tirelo ya thuso ya semolao",
+      "📞 Nomoro ya tshegetso ya batswasetlhabelo",
+    ],
+    medium: english.medium,
+    low: english.low,
+  };
+
+  const languageResources: Record<string, Record<string, string[]>> = {
+    en: english,
+    tn: setswana,
+  };
+
+  const selected = languageResources[language] ?? english;
+  return selected[riskLevel] || selected.low;
 }
 
 async function encryptMessage(message: string, key: string): Promise<string> {
@@ -255,10 +371,17 @@ Deno.serve(async (req: Request) => {
       message,
       conversation_history = [],
       session_id,
-      language = "en",
-      consent_granted,
+      language: requestedLanguage,
+      consent_granted: _consentGranted,
       request_type = "chat",
     } = body;
+
+    const messageLanguage = inferLanguageFromMessage(message ?? "");
+    const selectedLanguage = normalizeLanguageCode(requestedLanguage);
+    const responseLanguage = selectedLanguage === "en" && messageLanguage !== "en"
+      ? messageLanguage
+      : selectedLanguage;
+    const responseLanguageName = LANGUAGE_LABELS[responseLanguage] ?? "English";
 
     if (request_type === "delete_data") {
         // Simple mock for now, can be expanded
@@ -275,28 +398,58 @@ Deno.serve(async (req: Request) => {
     const { level: riskLevel, score: riskScore } = await analyzeRiskLevel(message);
     const emotion = await detectEmotion(message);
 
-    // 2. Get AI Response
-    const groqResponse = await withRetry(async () => {
-      const payload = {
-        model: groqModel,
-        messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation_history, { role: "user", content: message }],
-        temperature: 0.4,
-        max_tokens: 1024,
-      };
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${groqApiKey}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
-      const data = await res.json();
-      return data?.choices?.[0]?.message?.content;
-    });
+    const shouldUseGreeting = isGreetingMessage(message);
+    const previousAssistantMessage = [...conversation_history]
+      .reverse()
+      .find((entry) => entry.role === "assistant")?.content;
 
-    if (!groqResponse) throw new Error("Failed to get AI response");
+    let finalResponseText = "";
+
+    if (shouldUseGreeting) {
+      finalResponseText = getGreetingResponse(responseLanguage);
+    } else {
+      const groqResponse = await withRetry(async () => {
+        const payload = {
+          model: groqModel,
+          messages: [
+            {
+              role: "system",
+              content: `${SYSTEM_PROMPT}\n\nLANGUAGE REQUIREMENT: Respond in ${responseLanguageName} (${responseLanguage}) and keep the full response in that language unless the user explicitly asks to switch. Keep the response concise, clear, and natural. Do not repeat phrases or lines. Do not echo or paraphrase the user's message verbatim.`
+            },
+            ...conversation_history,
+            { role: "user", content: message }
+          ],
+          temperature: 0.2,
+          max_tokens: 420,
+        };
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${groqApiKey}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content;
+      });
+
+      if (!groqResponse) throw new Error("Failed to get AI response");
+
+      finalResponseText = String(groqResponse).trim();
+      if (
+        isLowQualityResponse(finalResponseText) ||
+        isMismatchedLanguageResponse(finalResponseText, responseLanguage) ||
+        isEchoingUserInput(finalResponseText, message)
+      ) {
+        finalResponseText = getFallbackSupportResponse(responseLanguage, riskLevel, message);
+      }
+
+      if (previousAssistantMessage && isNearDuplicateResponse(finalResponseText, previousAssistantMessage)) {
+        finalResponseText = getFallbackSupportResponse(responseLanguage, riskLevel, message);
+      }
+    }
 
     // 3. Encrypt message content
     const encryptedMessage = await encryptMessage(message, chatEncryptionKey);
@@ -320,15 +473,15 @@ Deno.serve(async (req: Request) => {
       console.warn("Failed to store message:", storageError);
     }
 
-    const suggestedActions = generateSuggestedActions(riskLevel);
-    const resources = generateResources(riskLevel);
+    const suggestedActions = generateSuggestedActions(riskLevel, responseLanguage);
+    const resources = generateResources(riskLevel, responseLanguage);
     
     // Return response in the format the frontend expects
     return new Response(
       JSON.stringify({
         success: true,
         response: {
-          message: groqResponse,
+          message: finalResponseText,
           risk_level: riskLevel,
           risk_score: riskScore,
           emotion_detected: emotion,
@@ -336,7 +489,8 @@ Deno.serve(async (req: Request) => {
           resources: resources,
           safety_alert: riskLevel === 'critical'
         },
-        session_id: newSessionId
+        session_id: newSessionId,
+        language: responseLanguage
       }),
       { headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) } }
     );

@@ -1,26 +1,16 @@
-/**
- * USSD Load Testing Framework
- * server/testing/ussdLoadTest.ts
- * 
- * Enterprise load testing for national-scale USSD deployment:
- * - Concurrent user simulation
- * - Real-world traffic patterns
- * - Performance metrics collection
- * - Bottleneck identification
- * - Capacity planning
- */
-
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export interface LoadTestConfig {
   testId: string;
   concurrentUsers: number;
   requestsPerUser: number;
-  requestDelay?: number; // milliseconds between requests
-  duration?: number; // test duration in seconds
-  rampUpTime?: number; // seconds to reach full load
-  menus?: string[]; // menus to test
-  languages?: string[]; // languages to test
+  requestDelay?: number;
+  duration?: number;
+  rampUpTime?: number;
+  menus?: string[];
+  languages?: string[];
+  endpointUrl?: string;
+  requestTimeoutMs?: number;
 }
 
 export interface LoadTestMetrics {
@@ -37,9 +27,39 @@ export interface LoadTestMetrics {
   p95ResponseTime: number;
   p99ResponseTime: number;
   requestsPerSecond: number;
-  throughput: number; // requests/minute
-  duration: number; // seconds
+  throughput: number;
+  duration: number;
   errorBreakdown: Record<string, number>;
+}
+
+interface GeneratedRequest {
+  userId: string;
+  phoneNumber: string;
+  userInput: string;
+  language: string;
+  menu: string;
+  timestamp: number;
+}
+
+interface LoadTestRequestResult extends GeneratedRequest {
+  success: boolean;
+  responseTime?: number;
+  error?: string;
+}
+
+interface StressTestResult {
+  testId: string;
+  results: LoadTestMetrics[];
+  maxSuccessfulUsers: number;
+  successfulRunsCount: number;
+}
+
+interface LoadTestRecord {
+  test_id: string;
+  concurrent_users: number;
+  requests_per_user: number;
+  total_requests: number;
+  status: string;
 }
 
 export class USSDLoadTest {
@@ -51,42 +71,29 @@ export class USSDLoadTest {
     this.supabase = supabase;
   }
 
-  /**
-   * Run load test with specified configuration
-   */
   public async runLoadTest(config: LoadTestConfig): Promise<LoadTestMetrics> {
     console.log(`🚀 Starting load test: ${config.testId}`);
     console.log(`   Concurrent users: ${config.concurrentUsers}`);
     console.log(`   Requests per user: ${config.requestsPerUser}`);
 
+    this.responseTimes = [];
+    this.errors.clear();
+
     const startTime = Date.now();
 
-    // Create test record in database
-    const testRecord = await this.createTestRecord(config);
+    await this.createTestRecord(config);
 
-    // Generate test requests
     const requests = this.generateRequests(config);
-
-    // Execute requests with rate limiting
     const results = await this.executeRequests(requests, config);
-
     const duration = (Date.now() - startTime) / 1000;
-
-    // Calculate metrics
     const metrics = this.calculateMetrics(config, results, duration);
 
-    // Store metrics
     await this.storeMetrics(metrics);
-
-    // Generate report
     this.printReport(metrics);
 
     return metrics;
   }
 
-  /**
-   * Run sustained load test
-   */
   public async runSustainedLoadTest(
     concurrentUsers: number,
     durationSeconds: number
@@ -100,7 +107,7 @@ export class USSDLoadTest {
     const config: LoadTestConfig = {
       testId,
       concurrentUsers,
-      requestsPerUser: Math.ceil(durationSeconds * 2), // ~2 requests/user/second
+      requestsPerUser: Math.ceil(durationSeconds * 2),
       duration: durationSeconds,
       requestDelay: 500,
     };
@@ -108,9 +115,6 @@ export class USSDLoadTest {
     return this.runLoadTest(config);
   }
 
-  /**
-   * Run spike test (sudden traffic increase)
-   */
   public async runSpikeTest(
     baselineUsers: number,
     peakUsers: number,
@@ -131,15 +135,12 @@ export class USSDLoadTest {
     return this.runLoadTest(config);
   }
 
-  /**
-   * Run stress test (push to failure)
-   */
   public async runStressTest(
     startUsers: number,
     incrementUsers: number,
     incrementInterval: number,
     maxUsers: number = 10000
-  ): Promise<any> {
+  ): Promise<StressTestResult> {
     const testId = `stress_${Date.now()}`;
 
     console.log(`💥 Running stress test: ${startUsers} → ${maxUsers} users`);
@@ -160,15 +161,12 @@ export class USSDLoadTest {
       const metrics = await this.runLoadTest(config);
       results.push(metrics);
 
-      // Stop if failure rate exceeds threshold
       if (metrics.successRate < 95) {
         console.log(`⚠️  Failure rate exceeded 5% threshold at ${currentUsers} users`);
         break;
       }
 
       currentUsers += incrementUsers;
-
-      // Wait between test iterations
       await this.sleep(incrementInterval * 1000);
     }
 
@@ -180,9 +178,6 @@ export class USSDLoadTest {
     };
   }
 
-  /**
-   * Run endurance test (extended duration)
-   */
   public async runEnduranceTest(
     concurrentUsers: number,
     durationMinutes: number
@@ -193,7 +188,7 @@ export class USSDLoadTest {
 
     const results: LoadTestMetrics[] = [];
     const iterations = durationMinutes;
-    const durationPerIteration = 60; // 1 minute per iteration
+    const durationPerIteration = 60;
 
     for (let i = 0; i < iterations; i++) {
       console.log(
@@ -215,18 +210,10 @@ export class USSDLoadTest {
     return results;
   }
 
-  /**
-   * Run realistic scenario test
-   */
   public async runScenarioTest(): Promise<LoadTestMetrics> {
     const testId = `scenario_${Date.now()}`;
 
-    console.log(`🎬 Running realistic scenario test`);
-
-    // Simulate real-world usage patterns
-    // Peak hours: 9-5 (20% of daily volume)
-    // Off-peak: evenings (50% of daily volume)
-    // Night: late night (30% of daily volume)
+    console.log('🎬 Running realistic scenario test');
 
     const scenarios = [
       { name: 'Peak Hour', users: 500, requests: 20, weight: 0.2 },
@@ -249,39 +236,43 @@ export class USSDLoadTest {
       const metrics = await this.runLoadTest(config);
 
       if (!totalMetrics) {
-        totalMetrics = metrics;
+        totalMetrics = { ...metrics };
       } else {
-        // Aggregate metrics
         totalMetrics.totalRequests += metrics.totalRequests;
         totalMetrics.successfulRequests += metrics.successfulRequests;
         totalMetrics.failedRequests += metrics.failedRequests;
+        totalMetrics.successRate = (totalMetrics.successfulRequests / totalMetrics.totalRequests) * 100;
       }
     }
 
-    return totalMetrics!;
+    return totalMetrics as LoadTestMetrics;
   }
 
-  // Private helper methods
-
-  private async createTestRecord(config: LoadTestConfig): Promise<any> {
+  private async createTestRecord(config: LoadTestConfig): Promise<LoadTestRecord | null> {
     try {
-      const { data } = await this.supabase.from('ussd_load_test_metrics').insert({
+      const record: LoadTestRecord = {
         test_id: config.testId,
         concurrent_users: config.concurrentUsers,
         requests_per_user: config.requestsPerUser,
         total_requests: config.concurrentUsers * config.requestsPerUser,
         status: 'running',
-      });
+      };
 
-      return data;
+      const { error } = await this.supabase.from('ussd_load_test_metrics').insert(record);
+
+      if (error) {
+        throw error;
+      }
+
+      return record;
     } catch (error) {
       console.error('Failed to create test record:', error);
       return null;
     }
   }
 
-  private generateRequests(config: LoadTestConfig): any[] {
-    const requests: any[] = [];
+  private generateRequests(config: LoadTestConfig): GeneratedRequest[] {
+    const requests: GeneratedRequest[] = [];
 
     for (let userIndex = 0; userIndex < config.concurrentUsers; userIndex++) {
       const phoneNumber = `27${String(userIndex).padStart(9, '0')}`;
@@ -306,30 +297,27 @@ export class USSDLoadTest {
     return requests;
   }
 
-  private async executeRequests(requests: any[], config: LoadTestConfig): Promise<any[]> {
-    const results: any[] = [];
-    const batches: Promise<any>[] = [];
-
-    // Execute in batches to simulate concurrent users
+  private async executeRequests(
+    requests: GeneratedRequest[],
+    config: LoadTestConfig
+  ): Promise<LoadTestRequestResult[]> {
+    const batches: Promise<LoadTestRequestResult[]>[] = [];
     const batchSize = config.concurrentUsers;
 
     for (let i = 0; i < requests.length; i += batchSize) {
       const batch = requests.slice(i, i + batchSize);
 
       const batchPromise = Promise.all(
-        batch.map(async (req) => {
+        batch.map(async (request): Promise<LoadTestRequestResult> => {
           try {
             const startTime = Date.now();
-
-            // Simulate USSD request
-            await this.simulateUSSDRequest(req);
-
+            await this.simulateUSSDRequest(request, config);
             const responseTime = Date.now() - startTime;
 
             this.responseTimes.push(responseTime);
 
             return {
-              ...req,
+              ...request,
               success: true,
               responseTime,
             };
@@ -338,7 +326,7 @@ export class USSDLoadTest {
             this.errors.set(errorType, (this.errors.get(errorType) || 0) + 1);
 
             return {
-              ...req,
+              ...request,
               success: false,
               error: String(error),
             };
@@ -348,7 +336,6 @@ export class USSDLoadTest {
 
       batches.push(batchPromise);
 
-      // Add delay between batches for ramp-up
       if (config.rampUpTime && i < requests.length - batchSize) {
         const batchDelay = (config.rampUpTime * 1000) / (requests.length / batchSize);
         await this.sleep(batchDelay);
@@ -359,30 +346,54 @@ export class USSDLoadTest {
     return allResults.flat();
   }
 
-  private async simulateUSSDRequest(request: any): Promise<void> {
-    // Simulate network latency and processing time
-    const networkLatency = Math.random() * 100 + 50; // 50-150ms
-    const processingTime = Math.random() * 200 + 100; // 100-300ms
+  private async simulateUSSDRequest(request: GeneratedRequest, config?: LoadTestConfig): Promise<void> {
+    const endpointUrl = config?.endpointUrl || process.env.USSD_LOAD_TEST_URL;
 
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(), networkLatency + processingTime);
+    if (endpointUrl) {
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: request.phoneNumber,
+          userInput: request.userInput,
+          language: request.language,
+        }),
+        signal: AbortSignal.timeout(config?.requestTimeoutMs || 10000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      return;
+    }
+
+    const networkLatency = Math.random() * 100 + 50;
+    const processingTime = Math.random() * 200 + 100;
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, networkLatency + processingTime);
     });
   }
 
   private calculateMetrics(
     config: LoadTestConfig,
-    results: any[],
+    results: LoadTestRequestResult[],
     duration: number
   ): LoadTestMetrics {
-    const successful = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
-
+    const successful = results.filter((result) => result.success).length;
+    const failed = results.filter((result) => !result.success).length;
     const sortedTimes = [...this.responseTimes].sort((a, b) => a - b);
 
     const percentile = (p: number) => {
       const index = Math.ceil((p / 100) * sortedTimes.length) - 1;
-      return sortedTimes[Math.max(0, index)];
+      return sortedTimes[Math.max(0, index)] || 0;
     };
+
+    const totalResponseTime = sortedTimes.reduce((sum, time) => sum + time, 0);
+    const safeDuration = Math.max(duration, 1);
 
     return {
       testId: config.testId,
@@ -390,15 +401,15 @@ export class USSDLoadTest {
       totalRequests: results.length,
       successfulRequests: successful,
       failedRequests: failed,
-      successRate: (successful / results.length) * 100,
-      avgResponseTime: sortedTimes.reduce((a, b) => a + b, 0) / sortedTimes.length,
+      successRate: results.length > 0 ? (successful / results.length) * 100 : 0,
+      avgResponseTime: sortedTimes.length > 0 ? totalResponseTime / sortedTimes.length : 0,
       minResponseTime: sortedTimes[0] || 0,
       maxResponseTime: sortedTimes[sortedTimes.length - 1] || 0,
       p50ResponseTime: percentile(50),
       p95ResponseTime: percentile(95),
       p99ResponseTime: percentile(99),
-      requestsPerSecond: results.length / duration,
-      throughput: (results.length / duration) * 60,
+      requestsPerSecond: results.length / safeDuration,
+      throughput: (results.length / safeDuration) * 60,
       duration,
       errorBreakdown: Object.fromEntries(this.errors),
     };
@@ -438,56 +449,25 @@ Concurrent Users: ${metrics.concurrentUsers}
 THROUGHPUT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Total Requests: ${metrics.totalRequests}
-Successful: ${metrics.successfulRequests} (${metrics.successRate.toFixed(2)}%)
-Failed: ${metrics.failedRequests}
-Requests/Second: ${metrics.requestsPerSecond.toFixed(2)}
-Throughput: ${metrics.throughput.toFixed(2)} req/min
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESPONSE TIMES (milliseconds)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Min: ${metrics.minResponseTime.toFixed(2)} ms
-Avg: ${metrics.avgResponseTime.toFixed(2)} ms
-Median (p50): ${metrics.p50ResponseTime.toFixed(2)} ms
-p95: ${metrics.p95ResponseTime.toFixed(2)} ms
-p99: ${metrics.p99ResponseTime.toFixed(2)} ms
-Max: ${metrics.maxResponseTime.toFixed(2)} ms
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ERROR BREAKDOWN
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${
-  Object.entries(metrics.errorBreakdown)
-    .map(([error, count]) => `${error}: ${count}`)
-    .join('\n')
-}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${
-  metrics.successRate >= 99
-    ? '✅ EXCELLENT: System performing optimally'
-    : metrics.successRate >= 95
-      ? '✓ GOOD: System performing well'
-      : metrics.successRate >= 90
-        ? '⚠️  WARNING: Consider optimization'
-        : '❌ CRITICAL: System needs immediate attention'
-}
-╚════════════════════════════════════════════════════════════════╝
-    `);
+Successful: ${metrics.successfulRequests} (${metrics.successRate.toFixed(2)}%)`);
   }
 
   private generateInput(menu: string): string {
-    const inputs: Record<string, string> = {
-      main: '1',
-      report_details: 'Domestic violence incident',
-      help_details: '1',
-      case_reference: 'CASE20260222ABC123',
-    };
-
-    return inputs[menu] || '1';
+    switch (menu) {
+      case 'main':
+        return '1';
+      case 'report_details':
+        return 'Need urgent help';
+      case 'help_details':
+        return '2';
+      case 'case_reference':
+        return 'CASE123';
+      default:
+        return '0';
+    }
   }
 
-  private sleep(ms: number): Promise<void> {
+  private async sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

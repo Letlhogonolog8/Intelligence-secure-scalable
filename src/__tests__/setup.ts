@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { expect, afterEach, vi, beforeAll } from 'vitest';
+import { afterEach, vi, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
 // ============================================================================
@@ -17,26 +17,26 @@ beforeAll(() => {
           return arr;
         },
         subtle: {
-          generateKey: async (algorithm: Record<string, unknown>) => {
+          generateKey: async (_algorithm: Record<string, unknown>) => {
             return { privateKey: {}, publicKey: {} };
           },
           deriveKey: async (
-            algorithm: Record<string, unknown>,
-            baseKey: CryptoKey,
-            derivedKeyType: Record<string, unknown>
+            _algorithm: Record<string, unknown>,
+            _baseKey: CryptoKey,
+            _derivedKeyType: Record<string, unknown>
           ) => {
             return {};
           },
-          encrypt: async (algorithm: Record<string, unknown>, key: CryptoKey, data: Uint8Array) => {
+          encrypt: async (_algorithm: Record<string, unknown>, _key: CryptoKey, _data: Uint8Array) => {
             return new ArrayBuffer(0);
           },
-          decrypt: async (algorithm: Record<string, unknown>, key: CryptoKey, data: Uint8Array) => {
+          decrypt: async (_algorithm: Record<string, unknown>, _key: CryptoKey, _data: Uint8Array) => {
             return new ArrayBuffer(0);
           },
           importKey: async (
-            format: string,
-            key: Uint8Array,
-            algorithm: Record<string, unknown>
+            _format: string,
+            _key: Uint8Array,
+            _algorithm: Record<string, unknown>
           ) => {
             return {};
           },
@@ -81,14 +81,37 @@ vi.mock('@supabase/supabase-js', () => ({
       signUp: vi.fn(),
       signOut: vi.fn(),
     },
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: {}, error: null }),
-    })),
+    from: vi.fn(() => {
+      type MockSupabaseResult = { data: Record<string, unknown> | []; error: null };
+      type MockSupabaseBuilder = {
+        select: () => MockSupabaseBuilder;
+        insert: () => MockSupabaseBuilder;
+        update: () => MockSupabaseBuilder;
+        delete: () => MockSupabaseBuilder;
+        eq: () => MockSupabaseBuilder;
+        neq: () => MockSupabaseBuilder;
+        in: () => MockSupabaseBuilder;
+        limit: () => MockSupabaseBuilder;
+        order: () => MockSupabaseBuilder;
+        single: () => Promise<MockSupabaseResult>;
+        then: (resolve: (val: MockSupabaseResult) => void) => void;
+      };
+
+      const builder: MockSupabaseBuilder = {
+        select: vi.fn(() => builder),
+        insert: vi.fn(() => builder),
+        update: vi.fn(() => builder),
+        delete: vi.fn(() => builder),
+        eq: vi.fn(() => builder),
+        neq: vi.fn(() => builder),
+        in: vi.fn(() => builder),
+        limit: vi.fn(() => builder),
+        order: vi.fn(() => builder),
+        single: vi.fn(() => Promise.resolve({ data: {}, error: null })),
+        then: (resolve: (val: MockSupabaseResult) => void) => resolve({ data: [], error: null }),
+      };
+      return builder;
+    }),
   })),
 }));
 

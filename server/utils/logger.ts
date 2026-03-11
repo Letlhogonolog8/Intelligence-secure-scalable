@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 
-export interface LogContext {
+type LogMetadata = Record<string, unknown>;
+
+export interface LogContext extends LogMetadata {
   requestId?: string;
   userId?: string;
   timestamp: string;
   level: 'debug' | 'info' | 'warn' | 'error';
   message: string;
   service: string;
-  [key: string]: any;
 }
 
 export class Logger {
@@ -30,18 +31,19 @@ export class Logger {
   }
 
   private formatLog(context: LogContext): string {
+    const { timestamp, level, service, requestId, userId, message, ...rest } = context;
     return JSON.stringify({
-      timestamp: context.timestamp,
-      level: context.level,
-      service: context.service,
-      requestId: context.requestId,
-      userId: context.userId,
-      message: context.message,
-      ...context,
+      timestamp,
+      level,
+      service,
+      requestId,
+      userId,
+      message,
+      ...rest,
     });
   }
 
-  debug(message: string, context: any = {}, requestId?: string): void {
+  debug(message: string, context: LogMetadata = {}, requestId?: string): void {
     if (this.shouldLog('debug')) {
       const logContext: LogContext = {
         level: 'debug',
@@ -55,7 +57,7 @@ export class Logger {
     }
   }
 
-  info(message: string, context: any = {}, requestId?: string): void {
+  info(message: string, context: LogMetadata = {}, requestId?: string): void {
     if (this.shouldLog('info')) {
       const logContext: LogContext = {
         level: 'info',
@@ -69,7 +71,7 @@ export class Logger {
     }
   }
 
-  warn(message: string, context: any = {}, requestId?: string): void {
+  warn(message: string, context: LogMetadata = {}, requestId?: string): void {
     if (this.shouldLog('warn')) {
       const logContext: LogContext = {
         level: 'warn',
@@ -83,7 +85,7 @@ export class Logger {
     }
   }
 
-  error(message: string, error?: Error | any, context: any = {}, requestId?: string): void {
+  error(message: string, error?: unknown, context: LogMetadata = {}, requestId?: string): void {
     if (this.shouldLog('error')) {
       const logContext: LogContext = {
         level: 'error',
@@ -114,7 +116,7 @@ export class Logger {
   logSecurityEvent(
     event: string,
     severity: 'low' | 'medium' | 'high' | 'critical',
-    context: any,
+    context: LogMetadata,
     requestId?: string
   ): void {
     this.warn(`SECURITY: ${event}`, {

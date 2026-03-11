@@ -1,4 +1,4 @@
-import { Pool, PoolConfig } from 'pg';
+import { Pool, PoolConfig, QueryResult, QueryResultRow } from 'pg';
 
 let pool: Pool | null = null;
 
@@ -25,7 +25,6 @@ export function initializePool(config: DatabasePoolConfig): Pool {
     idleTimeoutMillis: config.idleTimeoutMillis || 30000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 2000,
     application_name: 'aegis-ai-backend',
-    statement_cache_size: 0,
   };
 
   pool = new Pool(poolConfig);
@@ -72,7 +71,7 @@ export async function getPoolStats() {
   };
 }
 
-export async function executeQuery(query: string, params?: any[]) {
+export async function executeQuery<T extends QueryResultRow = QueryResultRow>(query: string, params?: unknown[]): Promise<QueryResult<T>> {
   const client = await getPool().connect();
   try {
     return await client.query(query, params);
@@ -86,7 +85,7 @@ export async function beginTransaction() {
   try {
     await client.query('BEGIN');
     return {
-      query: (query: string, params?: any[]) => client.query(query, params),
+      query: <T extends QueryResultRow = QueryResultRow>(query: string, params?: unknown[]) => client.query<T>(query, params),
       commit: () => client.query('COMMIT'),
       rollback: () => client.query('ROLLBACK'),
       release: () => client.release(),

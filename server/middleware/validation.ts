@@ -22,16 +22,18 @@ export const schemas = {
   }),
 
   ussdCallback: Joi.object({
-    phoneNumber: Joi.string().required().pattern(/^\+?[\d\s\-()]+$/),
+    phoneNumber: Joi.string().pattern(/^\+?[\d\s\-()]+$/).optional(),
+    subscriber: Joi.string().pattern(/^\+?[\d\s\-()]+$/).optional(),
     sessionId: Joi.string().required(),
-    userInput: Joi.string().required().max(180),
-    language: Joi.string().valid('en', 'zu', 'xh', 'st', 'tn').optional(),
-  }),
+    userInput: Joi.string().max(180).optional().allow(''),
+    input: Joi.string().max(180).optional().allow(''),
+    language: Joi.string().valid('en', 'zu', 'xh', 'st', 'tn', 'ss', 'af', 'ts', 've', 'nso', 'nr').optional(),
+  }).or('phoneNumber', 'subscriber').or('userInput', 'input'),
 
   ussdTest: Joi.object({
     phoneNumber: Joi.string().required().pattern(/^\+?[\d\s\-()]+$/),
     userInput: Joi.string().required().max(180),
-    language: Joi.string().valid('en', 'zu', 'xh', 'st', 'tn').optional(),
+    language: Joi.string().valid('en', 'zu', 'xh', 'st', 'tn', 'ss', 'af', 'ts', 've', 'nso', 'nr').optional(),
   }),
 
   authVerify: Joi.object({

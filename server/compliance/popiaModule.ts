@@ -32,7 +32,7 @@ export interface DataSubjectRequest {
   submitted_at: string;
   completed_at?: string;
   denial_reason?: string;
-  completion_details?: Record<string, any>;
+  completion_details?: Record<string, unknown>;
 }
 
 export class POPIAComplianceModule {
@@ -207,7 +207,7 @@ export class POPIAComplianceModule {
   /**
    * Compile access report for data subject
    */
-  async generateAccessReport(userId: string): Promise<Record<string, any>> {
+  async generateAccessReport(userId: string): Promise<Record<string, unknown>> {
     const [profile, messages, auditLogs, consentRecords] = await Promise.all([
       this.supabase.from('user_profiles').select('*').eq('id', userId).single(),
       this.supabase.from('chat_messages').select('*').eq('sender_id', userId),
@@ -254,7 +254,7 @@ export class POPIAComplianceModule {
   /**
    * Get POPIA compliance report (for audits)
    */
-  async getComplianceReport(startDate: Date, endDate: Date): Promise<Record<string, any>> {
+  async getComplianceReport(startDate: Date, endDate: Date): Promise<Record<string, unknown>> {
     const dateRange = {
       start: startDate.toISOString(),
       end: endDate.toISOString(),

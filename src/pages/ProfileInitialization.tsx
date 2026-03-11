@@ -22,7 +22,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { UserRole } from "@/types/auth";
 import { ROLE_AUTH_POLICIES, canSelfRegister } from "@/lib/roleAuthPolicy";
-import { supabase } from "@/lib/supabase";
+import { createUsernameUser, supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -62,7 +62,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signUpWithPassword, signInWithPassword, signOut, user: currentUser } = useAuth();
+  const { signInWithPassword, signOut, user: currentUser } = useAuth();
   const resolvedRole = role ?? (searchParams.get("role") as UserRole | null);
   const policy = resolvedRole ? ROLE_AUTH_POLICIES[resolvedRole] : undefined;
   const activeRole = policy ? resolvedRole : null;
@@ -275,12 +275,10 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
     const fullName = activeRole === "survivor" ? survivorName.trim() : `${firstName} ${lastName}`.trim();
     const isActive = !(policy?.requiresApproval ?? false);
 
-    const { data: createData, error: createError } = await supabase.functions.invoke("create_username_user", {
-      body: {
-        username: systemAlias.trim(),
-        password,
-        full_name: fullName,
-      },
+    const { data: createData, error: createError } = await createUsernameUser({
+      username: systemAlias.trim(),
+      password,
+      full_name: fullName,
     });
 
     if (createError || createData?.success === false || !createData?.user_id) {
@@ -376,11 +374,6 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
       handleProfileCreated(profile);
     }, 900);
     setLoading(false);
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   };
 
   const roleSpecificFields = {

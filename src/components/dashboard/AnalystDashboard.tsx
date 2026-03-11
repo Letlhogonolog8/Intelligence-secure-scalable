@@ -1,7 +1,7 @@
 import { 
-  useAlertsFeed, 
-  useFairnessMetrics, 
-  useIncidentTimeSeries, 
+  useAlertsFeed,
+  useFairnessMetrics,
+  useIncidentTimeSeries,
   usePolicyScenarios, 
   useUserProfile,
   useAnomalyAlerts,
@@ -14,21 +14,18 @@ import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
 import { 
-  LineChart, 
-  Line, 
   BarChart, 
   Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
   Cell,
   AreaChart,
   Area
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { AegisIcons } from "@/components/ui/AegisIcons";
+import HotspotHeatmap from "@/components/analytics/HotspotHeatmap";
 
 const AnalystDashboard: React.FC = () => {
   const { setActiveModule } = useAppStore();
@@ -48,12 +45,6 @@ const AnalystDashboard: React.FC = () => {
   const totalMetrics = fairnessMetrics.length;
   const passCount = fairnessMetrics.filter((metric) => metric.status === "pass").length;
   const passRate = totalMetrics ? Math.round((passCount / totalMetrics) * 100) : 0;
-  const averageScore = totalMetrics
-    ? Math.round(fairnessMetrics.reduce((total, metric) => total + metric.score, 0) / totalMetrics)
-    : 0;
-  const averageImpact = policyScenarios.length
-    ? Math.round(policyScenarios.reduce((total, scenario) => total + scenario.impact, 0) / policyScenarios.length)
-    : 0;
   const trendLatest = incidentTimeSeries[incidentTimeSeries.length - 1];
   const trendPrevious = incidentTimeSeries[incidentTimeSeries.length - 2];
   const trendDelta = trendLatest && trendPrevious ? trendLatest.value - trendPrevious.value : 0;
@@ -65,9 +56,14 @@ const AnalystDashboard: React.FC = () => {
   const scenarioPreview = policyScenarios.slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 px-6 py-8 [background:radial-gradient(1200px_circle_at_20%_0%,rgba(99,102,241,0.16),transparent_45%),radial-gradient(1000px_circle_at_80%_10%,rgba(14,165,233,0.12),transparent_40%)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8">
-        <section className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-6 shadow-lg">
+    <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-indigo-600/14 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-cyan-600/12 blur-[140px] rounded-full" />
+        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
+      </div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 relative z-10">
+        <section className="rounded-2xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Insight Operations</p>
@@ -82,7 +78,7 @@ const AnalystDashboard: React.FC = () => {
         </section>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-slate-800/60 bg-slate-900/60 transition-all hover:bg-slate-900/80">
+          <Card className="border-white/10 bg-slate-950/70 transition-all hover:bg-slate-900/80">
             <div className="p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-400">Algorithmic Trust</p>
               {isLoadingData ? (
@@ -96,35 +92,35 @@ const AnalystDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-slate-800/60 bg-slate-900/60 transition-all hover:bg-slate-900/80">
+          <Card className="border-white/10 bg-slate-950/70 transition-all hover:bg-slate-900/80">
             <div className="p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-400">Model Precision</p>
               {isLoadingData ? (
                 <Skeleton className="mt-3 h-8 w-16 bg-slate-800/60" />
               ) : (
                 <>
-                  <p className="text-3xl font-semibold mt-2">{systemMetrics?.modelsDeployed ?? 12}</p>
+                  <p className="text-3xl font-semibold mt-2">{systemMetrics?.modelsDeployed ?? 0}</p>
                   <p className="text-xs text-slate-500 mt-2 font-mono uppercase">Active Agents</p>
                 </>
               )}
             </div>
           </Card>
 
-          <Card className="border-slate-800/60 bg-slate-900/60 transition-all hover:bg-slate-900/80">
+          <Card className="border-white/10 bg-slate-950/70 transition-all hover:bg-slate-900/80">
             <div className="p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-400">Data Throughput</p>
               {isLoadingData ? (
                 <Skeleton className="mt-3 h-8 w-16 bg-slate-800/60" />
               ) : (
                 <>
-                  <p className="text-3xl font-semibold mt-2">{systemMetrics?.dataPointsProcessed ?? "4.2M"}</p>
+                  <p className="text-3xl font-semibold mt-2">{systemMetrics?.dataPointsProcessed ?? "-"}</p>
                   <p className="text-xs text-slate-500 mt-2 font-mono uppercase">Signals / 24h</p>
                 </>
               )}
             </div>
           </Card>
 
-          <Card className="border-slate-800/60 bg-slate-900/60 transition-all hover:bg-slate-900/80">
+          <Card className="border-white/10 bg-slate-950/70 transition-all hover:bg-slate-900/80">
             <div className="p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-400">Threat Vectors</p>
               {isLoadingData ? (
@@ -142,7 +138,7 @@ const AnalystDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card className="border-slate-800/70 bg-slate-900/50">
+          <Card className="border-white/10 bg-slate-950/60">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -202,7 +198,7 @@ const AnalystDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-slate-800/70 bg-slate-900/50">
+          <Card className="border-white/10 bg-slate-950/60">
             <div className="p-6">
               <h2 className="text-lg font-semibold mb-1">Algorithmic Fairness Breakdown</h2>
               <p className="text-sm text-slate-400 mb-6">Bias assessment across protected demographic groups.</p>
@@ -242,7 +238,7 @@ const AnalystDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Card className="border-slate-800/70 bg-slate-900/50">
+          <Card className="border-white/10 bg-slate-950/60">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Anomaly Intelligence</h2>
               <p className="text-sm text-slate-400">Real-time detection of irregular data patterns.</p>
@@ -281,7 +277,7 @@ const AnalystDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-slate-800/70 bg-slate-900/50">
+          <Card className="border-white/10 bg-slate-950/60">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Policy Simulation Intelligence</h2>
               <p className="text-sm text-slate-400">Forecasting impact of legislative interventions.</p>
@@ -319,7 +315,7 @@ const AnalystDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-slate-800/70 bg-slate-900/50">
+          <Card className="border-white/10 bg-slate-950/60">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Realtime Alerts</h2>
               <p className="text-sm text-slate-400">Critical signal updates for analysts.</p>
@@ -344,7 +340,7 @@ const AnalystDashboard: React.FC = () => {
           </Card>
         </div>
 
-        <Card className="border-slate-800/70 bg-slate-900/50">
+        <Card className="border-white/10 bg-slate-950/60">
           <div className="p-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -369,6 +365,9 @@ const AnalystDashboard: React.FC = () => {
             </div>
           </div>
         </Card>
+
+        {/* GBV Hotspot Heatmap */}
+        <HotspotHeatmap />
       </div>
     </div>
   );

@@ -189,13 +189,14 @@ export class IntrusionDetectionSystem {
     if (!recentAlerts) return false;
 
     // If same IP has 20+ alerts in 1 minute, likely DDoS
-    const alertsByIp = recentAlerts.reduce(
+    const alertsByIp = recentAlerts.reduce<Record<string, number>>(
       (acc, alert) => {
-        const ip = (alert as any).source_ip;
+        const typedAlert = alert as Pick<SecurityAlert, 'source_ip'>;
+        const ip = typedAlert.source_ip;
         acc[ip] = (acc[ip] || 0) + 1;
         return acc;
       },
-      {} as Record<string, number>
+      {}
     );
 
     const isDDoS = Object.values(alertsByIp).some((count) => count >= 20);
@@ -210,7 +211,7 @@ export class IntrusionDetectionSystem {
   /**
    * Get security dashboard data
    */
-  async getSecurityDashboard(): Promise<Record<string, any>> {
+  async getSecurityDashboard(): Promise<Record<string, unknown>> {
     const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const [allAlerts, criticalAlerts, byType] = await Promise.all([

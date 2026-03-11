@@ -1,28 +1,47 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import axios from 'axios';
 import { APIClient } from '@/lib/apiClient';
 
-vi.mock('axios');
-vi.mock('@supabase/auth-helpers-js', () => ({
-  getSession: vi.fn(),
+const mockAxiosInstance = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+  patch: vi.fn(),
+  interceptors: {
+    request: { use: vi.fn() },
+    response: { use: vi.fn() },
+  },
+}));
+
+vi.mock('axios', () => {
+  return {
+    default: {
+      create: vi.fn(() => mockAxiosInstance),
+    },
+  };
+});
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(),
+    },
+  },
 }));
 
 describe('APIClient', () => {
   let apiClient: APIClient;
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  };
+  let assignSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (axios.create as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockAxiosInstance);
+    assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
     apiClient = new APIClient();
   });
 
@@ -98,20 +117,9 @@ describe('APIClient', () => {
         message: 'Unauthorized',
       };
 
-      mockAxiosInstance.interceptors.response.use.mockImplementation(
-        (successHandler: unknown, errorHandler: unknown) => {
-          try {
-            (errorHandler as (error: unknown) => void)(error);
-          } catch (e) {
-            void e;
-          }
-        }
-      );
-
-      expect(() => {
-        const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0] as [unknown, (error: unknown) => void];
-        errorHandler(error);
-      }).not.toThrow();
+      const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0];
+      expect(() => errorHandler(error)).toThrow('Unauthorized');
+      expect(assignSpy).toHaveBeenCalledWith('/auth/login');
     });
 
     it('should handle 429 Rate Limited error', () => {
@@ -126,7 +134,7 @@ describe('APIClient', () => {
       expect(() => {
         const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0];
         errorHandler(error);
-      }).not.toThrow();
+      }).toThrow();
     });
 
     it('should handle network errors', () => {
@@ -135,7 +143,7 @@ describe('APIClient', () => {
       expect(() => {
         const [, errorHandler] = mockAxiosInstance.interceptors.response.use.mock.calls[0];
         errorHandler(error);
-      }).not.toThrow();
+      }).toThrow();
     });
   });
 
@@ -145,8 +153,8 @@ describe('APIClient', () => {
         access_token: 'test-token-123',
       };
 
-      const { getSession } = await import('@supabase/auth-helpers-js');
-      (getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: mockSession } });
+      const { supabase } = await import('@/lib/supabase');
+      (supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: mockSession } });
 
       const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
       
@@ -157,8 +165,8 @@ describe('APIClient', () => {
     });
 
     it('should not add authorization header if no session', async () => {
-      const { getSession } = await import('@supabase/auth-helpers-js');
-      (getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null } });
+      const { supabase } = await import('@/lib/supabase');
+      (supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null } });
 
       const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
       

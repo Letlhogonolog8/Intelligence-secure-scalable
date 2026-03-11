@@ -37,7 +37,7 @@ export class EncryptionService {
       throw new Error('Encryption key required. Set ENCRYPTION_KEY environment variable.');
     }
 
-    const keyBuffer = masterKey || Buffer.from(process.env.ENCRYPTION_KEY!, 'hex');
+    const keyBuffer = masterKey || Buffer.from(process.env.ENCRYPTION_KEY!.trim(), 'hex');
 
     if (keyBuffer.length !== 32) {
       throw new Error('Encryption key must be 32 bytes for AES-256');
@@ -54,7 +54,7 @@ export class EncryptionService {
   /**
    * Encrypt sensitive data
    */
-  public encrypt(plaintext: string | Record<string, any>): EncryptedData {
+  public encrypt(plaintext: string | Record<string, unknown>): EncryptedData {
     const data = typeof plaintext === 'string' ? plaintext : JSON.stringify(plaintext);
     const iv = crypto.randomBytes(16);
 
@@ -62,7 +62,7 @@ export class EncryptionService {
     let encrypted = cipher.update(data, 'utf8', 'hex');
     encrypted += cipher.final('hex');
 
-    const authTag = (cipher as any).getAuthTag();
+    const authTag = (cipher as crypto.CipherGCM).getAuthTag();
 
     return {
       ciphertext: encrypted,
@@ -88,7 +88,7 @@ export class EncryptionService {
       Buffer.from(encryptedData.iv, 'hex')
     );
 
-    (decipher as any).setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+    (decipher as crypto.DecipherGCM).setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
 
     let decrypted = decipher.update(encryptedData.ciphertext, 'hex', 'utf8');
     decrypted += decipher.final('utf8');

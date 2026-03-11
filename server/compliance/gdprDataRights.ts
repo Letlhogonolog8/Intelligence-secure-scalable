@@ -22,7 +22,7 @@ export interface GDPRRequest {
   submitted_at: string;
   deadline_at: string; // 30 days per GDPR
   completed_at?: string;
-  response_details?: Record<string, any>;
+  response_details?: Record<string, unknown>;
 }
 
 export class GDPRDataRightsEngine {
@@ -37,7 +37,7 @@ export class GDPRDataRightsEngine {
    * Process right to access request
    * Returns personal data in structured format
    */
-  async processAccessRequest(userId: string): Promise<Record<string, any>> {
+  async processAccessRequest(userId: string): Promise<Record<string, unknown>> {
     const [
       profile,
       messages,
@@ -105,7 +105,7 @@ export class GDPRDataRightsEngine {
    */
   async processRectificationRequest(
     userId: string,
-    corrections: Record<string, any>
+    corrections: Record<string, unknown>
   ): Promise<void> {
     const allowedFields = ['full_name', 'email', 'phone', 'address'];
 
@@ -115,7 +115,7 @@ export class GDPRDataRightsEngine {
       .reduce((obj, key) => {
         obj[key] = corrections[key];
         return obj;
-      }, {} as Record<string, any>);
+      }, {} as Record<string, unknown>);
 
     if (Object.keys(safeCorrections).length === 0) {
       throw new Error('No valid fields to rectify');
@@ -292,7 +292,7 @@ export class GDPRDataRightsEngine {
    * Check GDPR deadline compliance
    * Ensure response within 30 days
    */
-  async checkDeadlineCompliance(): Promise<Record<string, any>> {
+  async checkDeadlineCompliance(): Promise<Record<string, unknown>> {
     const { data: pendingRequests } = await this.supabase
       .from('gdpr_requests')
       .select('*')
@@ -314,7 +314,7 @@ export class GDPRDataRightsEngine {
   /**
    * Generate GDPR audit trail (for regulatory inspections)
    */
-  async generateGDPRAuditTrail(startDate: Date, endDate: Date): Promise<Record<string, any>> {
+  async generateGDPRAuditTrail(startDate: Date, endDate: Date): Promise<Record<string, unknown>> {
     const { data: requests } = await this.supabase
       .from('gdpr_requests')
       .select('*')
@@ -388,7 +388,7 @@ export class GDPRDataRightsEngine {
   /**
    * Helper: Group requests by right
    */
-  private groupByRight(requests: any[]): Record<string, number> {
+  private groupByRight(requests: GDPRRequest[]): Record<string, number> {
     return requests.reduce(
       (acc, req) => {
         acc[req.right] = (acc[req.right] || 0) + 1;

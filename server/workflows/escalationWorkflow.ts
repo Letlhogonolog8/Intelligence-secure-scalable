@@ -1,38 +1,70 @@
-/**
- * AEGIS Escalation Workflow Engine
- * server/workflows/escalationWorkflow.ts
- * 
- * Orchestrates the complete emergency escalation process:
- * 1. Case creation/update trigger
- * 2. Risk assessment
- * 3. Resource assignment (geo-matching)
- * 4. Multi-channel notifications
- * 5. Status tracking
- */
-
 import { SupabaseClient } from '@supabase/supabase-js';
-import { RiskScoringEngine } from '../intelligence/riskScoring';
-import { GeoMatchingEngine } from '../intelligence/geoMatching';
-import { TwilioNotificationService } from '../notifications/twilio';
+import { AssignmentResult, GeoAssignment, GeoMatchingEngine } from '../intelligence/geoMatching';
+import { RiskAssessment, RiskScoringEngine } from '../intelligence/riskScoring';
+import { NotificationResult, TwilioNotificationService } from '../notifications/twilio';
 import { AuditLogService } from '../security/auditLog';
 import { EventBus } from '../events/eventEmitter';
 
+export interface EscalationCaseData {
+  description?: string;
+  region?: string;
+  lat?: number;
+  lng?: number;
+  type?: string;
+  location?: string;
+  offenderId?: string;
+  reportedAt?: Date | string;
+  survivorPhone?: string;
+  survivorName?: string;
+  counselorPhone?: string;
+  survivorData?: Record<string, unknown>;
+}
+
 export interface EscalationRequest {
   caseId: string;
-  caseData: any;
+  caseData: EscalationCaseData;
   triggeredBy: string;
   reason?: string;
+}
+
+export interface EscalationNotification {
+  type: 'police_emergency' | 'counselor_assignment' | 'survivor_update' | 'ngo_coordination';
+  sentAt: string;
+  result?: NotificationResult;
+  results?: NotificationResult[];
 }
 
 export interface EscalationResult {
   escalationId: string;
   status: 'initiated' | 'in_progress' | 'completed' | 'failed';
-  riskAssessment: any;
-  assignments: any;
-  notifications: any[];
+  riskAssessment: RiskAssessment;
+  assignments: AssignmentResult | null;
+  notifications: EscalationNotification[];
   timestamp: string;
   completionTime?: number;
 }
+
+interface ResolvedNotificationContacts {
+  policePhones: string[];
+  counselorPhone?: string;
+  ngoPhones: Record<string, string>;
+}
+
+interface ProfileContactRecord {
+  phone?: string | null;
+}
+
+interface OrganizationContactRecord {
+  phone?: string | null;
+}
+
+const DEFAULT_POLICE_CONTACTS: Record<string, string[]> = {
+  ZA: ['+27114909000'],
+  BW: ['+2673917911'],
+  KE: ['+254800722722'],
+  EU: [],
+  IN: [],
+};
 
 export class EscalationWorkflow {
   private supabase: SupabaseClient;
@@ -58,9 +90,6 @@ export class EscalationWorkflow {
     this.eventBus = eventBus;
   }
 
-  /**
-   * Execute full escalation workflow
-   */
   public async processEscalation(request: EscalationRequest): Promise<EscalationResult> {
     const startTime = Date.now();
     const escalationId = `esc_${Date.now()}`;
@@ -68,40 +97,34 @@ export class EscalationWorkflow {
     console.log(`🚨 Starting escalation workflow for case ${request.caseId}`);
 
     try {
-      // Step 1: Risk Assessment
-      const riskAssessment = await this.riskEngine.assessCaseRisk(
-        request.caseId,
-        request.caseData
-      );
+      const riskAssessment = await this.riskEngine.assessCaseRisk(request.caseId, request.caseData);
 
       console.log(`✅ Risk assessment: ${riskAssessment.riskLevel} (${riskAssessment.riskScore})`);
 
-      // Step 2: Check if escalation is warranted
       if (!this.isEscalationRequired(riskAssessment)) {
         return {
           escalationId,
           status: 'completed',
           riskAssessment,
-          assignments: [],
+          assignments: null,
           notifications: [],
           timestamp: new Date().toISOString(),
           completionTime: Date.now() - startTime,
         };
       }
 
-      // Step 3: Resource Assignment
-      const { lat, lng } = request.caseData;
+      const assignmentLat = request.caseData.lat ?? 0;
+      const assignmentLng = request.caseData.lng ?? 0;
       const assignments = await this.geoEngine.assignResources(
         request.caseId,
-        lat,
-        lng,
+        assignmentLat,
+        assignmentLng,
         riskAssessment.riskLevel,
         request.caseData.type || 'gbv'
       );
 
       console.log(`✅ Resources assigned: ${assignments.primary.resourceName}`);
 
-      // Step 4: Send Notifications
       const notifications = await this.sendNotifications(
         request.caseId,
         riskAssessment,
@@ -111,8 +134,7 @@ export class EscalationWorkflow {
 
       console.log(`✅ Notifications sent: ${notifications.length}`);
 
-      // Step 5: Create escalation event
-      const escalationEvent = await this.createEscalationEvent(
+      await this.createEscalationEvent(
         request.caseId,
         escalationId,
         riskAssessment,
@@ -121,7 +143,6 @@ export class EscalationWorkflow {
         request.reason
       );
 
-      // Step 6: Emit event for real-time updates
       await this.eventBus.emitAsync('escalation:triggered', {
         escalationId,
         caseId: request.caseId,
@@ -131,7 +152,6 @@ export class EscalationWorkflow {
         timestamp: new Date().toISOString(),
       });
 
-      // Step 7: Log action
       await this.auditLog.log({
         userId: request.triggeredBy,
         action: 'escalation_processed',
@@ -162,7 +182,6 @@ export class EscalationWorkflow {
     } catch (error) {
       console.error('❌ Escalation workflow failed:', error);
 
-      // Log failure
       await this.auditLog.log({
         userId: request.triggeredBy,
         action: 'escalation_failed',
@@ -183,65 +202,87 @@ export class EscalationWorkflow {
     }
   }
 
-  /**
-   * Check if escalation is required based on risk
-   */
-  private isEscalationRequired(riskAssessment: any): boolean {
-    // Escalate if risk level is high or critical
+  private isEscalationRequired(riskAssessment: RiskAssessment): boolean {
     return ['high', 'critical'].includes(riskAssessment.riskLevel);
   }
 
-  /**
-   * Send notifications to all relevant parties
-   */
   private async sendNotifications(
     caseId: string,
-    riskAssessment: any,
-    assignments: any,
-    caseData: any
-  ): Promise<any[]> {
-    const notifications: any[] = [];
+    riskAssessment: RiskAssessment,
+    assignments: AssignmentResult,
+    caseData: EscalationCaseData
+  ): Promise<EscalationNotification[]> {
+    const notifications: EscalationNotification[] = [];
+    const contacts = await this.resolveNotificationContacts(assignments, caseData);
+    const incidentLocation = this.resolveIncidentLocation(caseData);
 
     try {
-      // 1. Emergency alert to police (if high/critical)
       if (['high', 'critical'].includes(riskAssessment.riskLevel)) {
-        const policeResult = await this.notificationService.sendPoliceEmergency(
-          ['+27123456789'], // Would be fetched from assignments.primary.phoneNumbers
-          caseId,
-          riskAssessment.riskLevel,
-          caseData.location || 'TBD',
-          caseData.survivorPhone
-        );
+        if (contacts.policePhones.length > 0) {
+          const policeResult = await this.notificationService.sendPoliceEmergency(
+            contacts.policePhones,
+            caseId,
+            riskAssessment.riskLevel,
+            incidentLocation,
+            caseData.survivorPhone
+          );
 
-        notifications.push({
-          type: 'police_emergency',
-          results: policeResult,
-          sentAt: new Date().toISOString(),
-        });
+          notifications.push({
+            type: 'police_emergency',
+            results: policeResult,
+            sentAt: new Date().toISOString(),
+          });
+        } else {
+          notifications.push({
+            type: 'police_emergency',
+            results: [
+              {
+                success: false,
+                status: 'missing_recipient',
+                sentAt: new Date().toISOString(),
+                error: 'No police contacts resolved for escalation',
+              },
+            ],
+            sentAt: new Date().toISOString(),
+          });
+        }
       }
 
-      // 2. Counselor assignment
       if (assignments.primary.resourceType === 'counselor') {
-        const counselorResult = await this.notificationService.sendCounselorAssignment(
-          caseData.counselorPhone || '+27123456789',
-          caseId,
-          caseData.survivorName || 'Survivor',
-          riskAssessment.riskLevel
-        );
+        if (contacts.counselorPhone) {
+          const counselorResult = await this.notificationService.sendCounselorAssignment(
+            contacts.counselorPhone,
+            caseId,
+            caseData.survivorName || 'Survivor',
+            riskAssessment.riskLevel
+          );
 
-        notifications.push({
-          type: 'counselor_assignment',
-          result: counselorResult,
-          sentAt: new Date().toISOString(),
-        });
+          notifications.push({
+            type: 'counselor_assignment',
+            result: counselorResult,
+            sentAt: new Date().toISOString(),
+          });
+        } else {
+          notifications.push({
+            type: 'counselor_assignment',
+            result: {
+              success: false,
+              status: 'missing_recipient',
+              sentAt: new Date().toISOString(),
+              error: `No counselor contact resolved for resource ${assignments.primary.resourceId}`,
+            },
+            sentAt: new Date().toISOString(),
+          });
+        }
       }
 
-      // 3. Survivor notification (if appropriate)
-      if (riskAssessment.riskLevel === 'medium') {
+      if (caseData.survivorPhone) {
         const survivorResult = await this.notificationService.sendSurvivorUpdate(
           caseData.survivorPhone,
           caseId,
-          'A counselor has been assigned to your case. They will contact you shortly.'
+          riskAssessment.riskLevel === 'critical'
+            ? 'Your case has been escalated for immediate emergency response. Stay in a safe place if possible.'
+            : 'Your case has been escalated and a response team has been notified. You will be contacted shortly.'
         );
 
         notifications.push({
@@ -251,24 +292,39 @@ export class EscalationWorkflow {
         });
       }
 
-      // 4. NGO coordination
-      if (assignments.secondary.length > 0) {
-        for (const secondary of assignments.secondary) {
-          if (secondary.resourceType === 'ngo') {
-            const ngoResult = await this.notificationService.sendNGONotification(
-              secondary.contactPhone || '+27123456789',
-              caseId,
-              'Shelter/Support',
-              riskAssessment.riskLevel
-            );
+      const ngoAssignments = [assignments.primary, ...assignments.secondary].filter(
+        (assignment): assignment is GeoAssignment => assignment.resourceType === 'ngo'
+      );
 
-            notifications.push({
-              type: 'ngo_coordination',
-              result: ngoResult,
+      for (const ngoAssignment of ngoAssignments) {
+        const ngoPhone = contacts.ngoPhones[ngoAssignment.resourceId];
+
+        if (!ngoPhone) {
+          notifications.push({
+            type: 'ngo_coordination',
+            result: {
+              success: false,
+              status: 'missing_recipient',
               sentAt: new Date().toISOString(),
-            });
-          }
+              error: `No NGO contact resolved for resource ${ngoAssignment.resourceId}`,
+            },
+            sentAt: new Date().toISOString(),
+          });
+          continue;
         }
+
+        const ngoResult = await this.notificationService.sendNGONotification(
+          ngoPhone,
+          caseId,
+          ngoAssignment.resourceName,
+          riskAssessment.riskLevel
+        );
+
+        notifications.push({
+          type: 'ngo_coordination',
+          result: ngoResult,
+          sentAt: new Date().toISOString(),
+        });
       }
     } catch (error) {
       console.error('Notification send error:', error);
@@ -277,18 +333,130 @@ export class EscalationWorkflow {
     return notifications;
   }
 
-  /**
-   * Create escalation event record
-   */
+  private async resolveNotificationContacts(
+    assignments: AssignmentResult,
+    caseData: EscalationCaseData
+  ): Promise<ResolvedNotificationContacts> {
+    const policePhones = this.sanitizePhoneList([
+      ...this.parsePhoneList(process.env.ESCALATION_POLICE_CONTACTS),
+      ...this.getRegionalPoliceContacts(),
+    ]);
+
+    let counselorPhone = this.normalizePhoneNumber(caseData.counselorPhone);
+    if (!counselorPhone && assignments.primary.resourceType === 'counselor') {
+      counselorPhone = await this.lookupCounselorPhone(assignments.primary.resourceId);
+    }
+
+    const ngoPhones: Record<string, string> = {};
+    const ngoAssignments = [assignments.primary, ...assignments.secondary].filter(
+      (assignment): assignment is GeoAssignment => assignment.resourceType === 'ngo'
+    );
+
+    for (const ngoAssignment of ngoAssignments) {
+      const ngoPhone = await this.lookupOrganizationPhone(ngoAssignment.resourceId);
+      if (ngoPhone) {
+        ngoPhones[ngoAssignment.resourceId] = ngoPhone;
+      }
+    }
+
+    return {
+      policePhones,
+      counselorPhone,
+      ngoPhones,
+    };
+  }
+
+  private async lookupCounselorPhone(resourceId: string): Promise<string | undefined> {
+    try {
+      const { data } = await this.supabase
+        .from('profiles')
+        .select('phone')
+        .eq('id', resourceId)
+        .maybeSingle<ProfileContactRecord>();
+
+      return this.normalizePhoneNumber(data?.phone);
+    } catch (error) {
+      console.error(`Failed to resolve counselor phone for ${resourceId}:`, error);
+      return undefined;
+    }
+  }
+
+  private async lookupOrganizationPhone(resourceId: string): Promise<string | undefined> {
+    try {
+      const { data } = await this.supabase
+        .from('organizations')
+        .select('phone')
+        .eq('id', resourceId)
+        .maybeSingle<OrganizationContactRecord>();
+
+      return this.normalizePhoneNumber(data?.phone);
+    } catch (error) {
+      console.error(`Failed to resolve organization phone for ${resourceId}:`, error);
+      return undefined;
+    }
+  }
+
+  private resolveIncidentLocation(caseData: EscalationCaseData): string {
+    if (caseData.location) {
+      return caseData.location;
+    }
+
+    if (typeof caseData.lat === 'number' && typeof caseData.lng === 'number') {
+      return `${caseData.lat}, ${caseData.lng}`;
+    }
+
+    return caseData.region || 'Unspecified location';
+  }
+
+  private getCountryCode(): string {
+    return (process.env.COUNTRY_CODE || process.env.VITE_COUNTRY_CODE || 'ZA').toUpperCase();
+  }
+
+  private getRegionalPoliceContacts(): string[] {
+    return DEFAULT_POLICE_CONTACTS[this.getCountryCode()] || DEFAULT_POLICE_CONTACTS.ZA;
+  }
+
+  private parsePhoneList(value?: string): string[] {
+    if (!value) {
+      return [];
+    }
+
+    return value
+      .split(',')
+      .map((phone) => phone.trim())
+      .filter(Boolean);
+  }
+
+  private sanitizePhoneList(phoneNumbers: Array<string | undefined | null>): string[] {
+    return [...new Set(phoneNumbers.map((phone) => this.normalizePhoneNumber(phone)).filter(Boolean) as string[])];
+  }
+
+  private normalizePhoneNumber(phoneNumber?: string | null): string | undefined {
+    if (!phoneNumber) {
+      return undefined;
+    }
+
+    const cleaned = phoneNumber.replace(/[\s\-()]/g, '');
+    const normalized = cleaned.startsWith('+')
+      ? cleaned
+      : cleaned.startsWith('00')
+        ? `+${cleaned.slice(2)}`
+        : /^\d+$/.test(cleaned)
+          ? `+${cleaned}`
+          : undefined;
+
+    return normalized && /^\+\d{8,15}$/.test(normalized) ? normalized : undefined;
+  }
+
   private async createEscalationEvent(
     caseId: string,
     escalationId: string,
-    riskAssessment: any,
-    assignments: any,
+    riskAssessment: RiskAssessment,
+    assignments: AssignmentResult,
     triggeredBy: string,
     reason?: string
-  ): Promise<any> {
-    const { data, error } = await this.supabase.from('escalation_events').insert({
+  ): Promise<void> {
+    const { error } = await this.supabase.from('escalation_events').insert({
       id: escalationId,
       case_id: caseId,
       triggered_by: triggeredBy,
@@ -300,18 +468,19 @@ export class EscalationWorkflow {
         riskScore: riskAssessment.riskScore,
         confidence: riskAssessment.confidence,
         factors: riskAssessment.factors,
-        assignedResources: [assignments.primary.resourceId, ...assignments.secondary.map((a: any) => a.resourceId)],
+        assignedResources: [
+          assignments.primary.resourceId,
+          ...assignments.secondary.map((assignment) => assignment.resourceId),
+        ],
       },
       created_at: new Date().toISOString(),
     });
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      throw error;
+    }
   }
 
-  /**
-   * Handle escalation acknowledgment
-   */
   public async acknowledgeEscalation(
     escalationId: string,
     acknowledgedBy: string
@@ -326,9 +495,10 @@ export class EscalationWorkflow {
         })
         .eq('id', escalationId);
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      // Emit acknowledgment event
       await this.eventBus.emitAsync('escalation:acknowledged', {
         escalationId,
         acknowledgedBy,
@@ -343,9 +513,6 @@ export class EscalationWorkflow {
     }
   }
 
-  /**
-   * Resolve escalation
-   */
   public async resolveEscalation(
     escalationId: string,
     resolution: string,
@@ -361,7 +528,9 @@ export class EscalationWorkflow {
         })
         .eq('id', escalationId);
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       await this.eventBus.emitAsync('escalation:resolved', {
         escalationId,

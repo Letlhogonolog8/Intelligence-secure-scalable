@@ -2,9 +2,8 @@ import React, { useEffect, useState } from 'react';
 
 import { usePolicyScenarios } from '@/data/aegisData';
 import {
-  BrainIcon, PlayIcon, PauseIcon, RefreshIcon,
-  BarChartIcon, TrendDownIcon, DownloadIcon, CheckCircleIcon,
-  ClockIcon, ZapIcon, LayersIcon
+  PlayIcon, PauseIcon, DownloadIcon, CheckCircleIcon,
+  LayersIcon
 } from '@/components/ui/AegisIcons';
 
 const PolicySimulation: React.FC = () => {

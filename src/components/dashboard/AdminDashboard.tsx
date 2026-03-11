@@ -1,14 +1,13 @@
 import { useMemo, useState } from "react";
-import { 
-  useAlertsFeed, 
-  useAuditLogs, 
-  useIncidentTimeSeries, 
-  useSystemMetrics, 
-  useUserProfile, 
+import {
+  useAlertsFeed,
+  useAuditLogs,
+  useIncidentTimeSeries,
+  useSystemMetrics,
+  useUserProfile,
   useUserProfiles,
   useEscalationReviews,
   useDeletionRequests,
-  AuditLog
 } from "@/data/aegisData";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,54 +16,49 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore } from "@/store/appStore";
 import { supabase } from "@/lib/supabase";
-import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip as RechartsTooltip, 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   AreaChart,
-  Area
+  Area,
 } from 'recharts';
-import { 
-  Shield, 
-  Activity, 
-  Users, 
-  AlertTriangle, 
-  Search, 
-  Database, 
-  Lock, 
-  Clock, 
-  Settings, 
-  LayoutDashboard, 
+import {
+  Shield,
+  Activity,
+  Users,
+  AlertTriangle,
+  Search,
+  Database,
+  Lock,
+  Clock,
+  LayoutDashboard,
   FileText,
   RefreshCw,
-  MoreVertical,
   CheckCircle2,
   XCircle,
   AlertCircle,
   Cpu,
   Globe,
   Zap,
-  Fingerprint
+  Fingerprint,
 } from "lucide-react";
 
 const AdminDashboard: React.FC = () => {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
   const isAdmin = profile?.role === "admin";
   const { setActiveModule } = useAppStore();
-  const resolvedRole = (profile?.role ?? "admin") as UserRole;
-  const permissions = PERMISSIONS[resolvedRole];
-  
+
   const { data: users = [], isLoading: usersLoading } = useUserProfiles({ enabled: isAdmin, staleTime: 60000, limit: 250 });
   const { data: systemMetrics, isLoading: metricsLoading } = useSystemMetrics({ enabled: isAdmin, staleTime: 10000, refetchInterval: 30000 });
   const { data: incidentTimeSeries = [], isLoading: incidentsLoading } = useIncidentTimeSeries({ enabled: isAdmin, staleTime: 15000, refetchInterval: 30000 });
   const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ enabled: isAdmin, staleTime: 5000, refetchInterval: 15000, limit: 12 });
   const { data: auditLogs = [], isLoading: auditLoading } = useAuditLogs({ enabled: isAdmin, staleTime: 15000, refetchInterval: 30000, limit: 10 });
-  const { data: escalations = [], isLoading: escalationsLoading } = useEscalationReviews({ enabled: isAdmin, limit: 5 });
-  const { data: deletionRequests = [], isLoading: deletionsLoading } = useDeletionRequests({ enabled: isAdmin, limit: 5 });
+  const { isLoading: escalationsLoading } = useEscalationReviews({ enabled: isAdmin, limit: 5 });
+  const { isLoading: deletionsLoading } = useDeletionRequests({ enabled: isAdmin, limit: 5 });
 
   const [caseLookupId, setCaseLookupId] = useState("");
   const [caseLookupResult, setCaseLookupResult] = useState<{
@@ -84,12 +78,8 @@ const AdminDashboard: React.FC = () => {
 
   const handleExportReport = () => setActiveModule("reporting");
   const handleReviewActivity = () => setActiveModule("admin_console");
-  const handleManageRoles = () => setActiveModule("admin_console");
   const handleReviewFeed = () => setActiveModule("command_center");
   const handleViewTasks = () => setActiveModule("admin_console");
-  const handleConfigureUsers = () => setActiveModule("admin_console");
-  const handleConfigureOrganizations = () => setActiveModule("admin_console");
-  const handleConfigureSettings = () => setActiveModule("governance");
 
   const activeUsersCount = useMemo(() => users.filter((u) => u.isActive).length, [users]);
   const criticalAlertsCount = useMemo(() => alertsFeed.filter((a) => a.type === "critical").length, [alertsFeed]);
@@ -159,13 +149,14 @@ const AdminDashboard: React.FC = () => {
     <div className="min-h-screen bg-[#050810] text-slate-50 px-6 py-8 relative overflow-hidden">
       {/* Background Gradients */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-rose-600/10 blur-[120px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/12 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-rose-600/12 blur-[140px] rounded-full" />
+        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
       </div>
 
       <div className="mx-auto flex max-w-7xl flex-col gap-8 relative z-10">
         {/* Header Section */}
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between bg-slate-900/40 p-8 rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl">
+        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between bg-slate-950/60 p-8 rounded-3xl border border-white/15 backdrop-blur-xl shadow-2xl">
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
@@ -192,7 +183,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Global Key Metrics */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="group border-white/10 bg-slate-900/40 p-6 backdrop-blur-md transition-all hover:border-blue-500/30">
+          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-blue-500/30">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
                 <Users className="h-6 w-6 text-blue-400" />
@@ -204,7 +195,7 @@ const AdminDashboard: React.FC = () => {
             <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tighter">Verified across 12 regions</p>
           </Card>
 
-          <Card className="group border-white/10 bg-slate-900/40 p-6 backdrop-blur-md transition-all hover:border-emerald-500/30">
+          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-emerald-500/30">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
                 <Database className="h-6 w-6 text-emerald-400" />
@@ -212,11 +203,11 @@ const AdminDashboard: React.FC = () => {
               <span className="bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase text-emerald-400 border border-emerald-500/20 rounded-full">System OK</span>
             </div>
             <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Infrastructure</h3>
-            {isLoadingData ? <Skeleton className="h-10 w-32 bg-white/5 mt-2" /> : <p className="text-4xl font-black text-white">{systemMetrics?.systemUptime ?? 99.9}%</p>}
+            {isLoadingData ? <Skeleton className="h-10 w-32 bg-white/5 mt-2" /> : <p className="text-4xl font-black text-white">{systemMetrics?.systemUptime ?? 0}%</p>}
             <p className="text-[10px] text-emerald-500 mt-2 font-bold uppercase tracking-tighter">Uptime: 24h average</p>
           </Card>
 
-          <Card className="group border-white/10 bg-slate-900/40 p-6 backdrop-blur-md transition-all hover:border-purple-500/30">
+          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-purple-500/30">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
                 <Lock className="h-6 w-6 text-purple-400" />
@@ -228,7 +219,7 @@ const AdminDashboard: React.FC = () => {
             <p className="text-[10px] text-purple-400 mt-2 font-bold uppercase tracking-tighter">Zero-trust architecture active</p>
           </Card>
 
-          <Card className="group border-white/10 bg-slate-900/40 p-6 backdrop-blur-md transition-all hover:border-rose-500/30">
+          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-rose-500/30">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 group-hover:bg-rose-500/20 transition-colors">
                 <AlertTriangle className="h-6 w-6 text-rose-400" />
@@ -245,7 +236,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Operational Intelligence & Incident Pulse */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="border-white/10 bg-slate-900/40 shadow-2xl backdrop-blur-xl flex flex-col lg:col-span-2 overflow-hidden">
+          <Card className="border-white/15 bg-slate-950/60 shadow-2xl backdrop-blur-xl flex flex-col lg:col-span-2 overflow-hidden">
             <div className="p-8 border-b border-white/5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
@@ -308,7 +299,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden">
+          <Card className="border-white/15 bg-slate-950/60 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden">
             <div className="p-8 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
@@ -324,14 +315,14 @@ const AdminDashboard: React.FC = () => {
                     <Zap className="h-3.5 w-3.5 text-amber-400" />
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Latency</p>
                   </div>
-                  <p className="text-3xl font-black text-white">42ms</p>
+                  <p className="text-3xl font-black text-white">{systemMetrics?.avgResponseTime || "-"}</p>
                 </div>
                 <div className="p-5 rounded-2xl bg-slate-950/60 border border-white/5 group hover:border-blue-500/20 transition-all">
                   <div className="flex items-center gap-2 mb-3">
                     <Globe className="h-3.5 w-3.5 text-blue-400" />
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Nodes</p>
                   </div>
-                  <p className="text-3xl font-black text-white">12</p>
+                  <p className="text-3xl font-black text-white">{systemMetrics?.countriesActive || "-"}</p>
                 </div>
               </div>
               
@@ -374,7 +365,7 @@ const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Enterprise Case Lookup */}
-        <Card className="border-white/10 bg-slate-900/40 shadow-2xl backdrop-blur-xl overflow-hidden">
+        <Card className="border-white/15 bg-slate-950/60 shadow-2xl backdrop-blur-xl overflow-hidden">
           <div className="p-8">
             <div className="flex items-center gap-3 mb-8">
               <Search className="h-6 w-6 text-blue-400" />
@@ -432,7 +423,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Audit, Alerts, and System Tasks */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="border-white/10 bg-slate-900/40 backdrop-blur-xl">
+          <Card className="border-white/15 bg-slate-950/60 backdrop-blur-xl">
             <div className="p-6 flex items-center justify-between border-b border-white/5">
               <div className="flex items-center gap-3">
                 <FileText className="h-5 w-5 text-blue-400" />
@@ -495,7 +486,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 backdrop-blur-xl">
+          <Card className="border-white/15 bg-slate-950/60 backdrop-blur-xl">
             <div className="p-6 flex items-center justify-between border-b border-white/5">
               <div className="flex items-center gap-3">
                 <AlertCircle className="h-5 w-5 text-rose-400" />
@@ -521,7 +512,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 backdrop-blur-xl">
+          <Card className="border-white/15 bg-slate-950/60 backdrop-blur-xl">
             <div className="p-6 flex items-center justify-between border-b border-white/5">
               <div className="flex items-center gap-3">
                 <Clock className="h-5 w-5 text-emerald-400" />
@@ -563,7 +554,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Global Security & AI Governance */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-          <Card className="border-white/10 bg-slate-900/40 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-indigo-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("admin_console")}>
+          <Card className="border-white/15 bg-slate-950/60 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-indigo-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("admin_console")}>
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <Clock className="h-20 w-20 text-indigo-500" />
             </div>
@@ -579,7 +570,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("governance")}>
+          <Card className="border-white/15 bg-slate-950/60 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("governance")}>
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <ShieldCheck className="h-20 w-20 text-emerald-500" />
             </div>
@@ -595,7 +586,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-orange-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("admin_console")}>
+          <Card className="border-white/15 bg-slate-950/60 p-8 backdrop-blur-xl relative overflow-hidden group hover:border-orange-500/30 transition-all cursor-pointer" onClick={() => setActiveModule("admin_console")}>
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <Smartphone className="h-20 w-20 text-orange-500" />
             </div>

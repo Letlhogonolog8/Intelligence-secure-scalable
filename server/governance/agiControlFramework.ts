@@ -23,7 +23,7 @@ export interface AIRecommendation {
   recommendation: DecisionAction;
   confidence: number; // 0-100
   reasoning: string;
-  factorsConsidered: Record<string, any>;
+  factorsConsidered: Record<string, unknown>;
   potentialRisks: string[];
   ethicalConcerns: string[];
   timestamp: string;
@@ -78,7 +78,7 @@ export class AGIControlFramework {
       };
 
       // Store decision in database
-      const { data, error } = await this.supabase.from('agi_decisions').insert({
+      const { error } = await this.supabase.from('agi_decisions').insert({
         id: decisionRecord.id,
         type: decisionRecord.type,
         status: decisionRecord.status,
@@ -426,7 +426,7 @@ ${record.executed_at ? '✓ Decision executed' : '⏳ Awaiting execution'}
 
   // Private helper methods
 
-  private async executeByType(type: DecisionType, record: any): Promise<string> {
+  private async executeByType(type: DecisionType, _record: DecisionRecord): Promise<string> {
     switch (type) {
       case 'escalation':
         return 'Emergency escalation executed - police notified';
@@ -462,7 +462,7 @@ ${record.executed_at ? '✓ Decision executed' : '⏳ Awaiting execution'}
   private async logDecision(
     record: DecisionRecord,
     action: string,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     try {
       await this.supabase.from('decision_audit_logs').insert({

@@ -25,16 +25,33 @@ export type EventType =
   | 'dispatch:created'
   | 'dispatch:updated';
 
+type EventPayload = Record<string, unknown> & {
+  userId?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  retryable?: boolean;
+  idempotencyKey?: string;
+};
+
+interface EventMetadata {
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  retryable: boolean;
+  idempotencyKey?: string;
+}
+
+interface EventLogRow {
+  event_type: EventType;
+  created_at: string;
+  user_id?: string;
+  data: EventPayload;
+  metadata?: EventMetadata;
+}
+
 export interface AegisEvent {
   type: EventType;
   timestamp: string;
   userId?: string;
-  data: Record<string, any>;
-  metadata?: {
-    priority: 'low' | 'medium' | 'high' | 'critical';
-    retryable: boolean;
-    idempotencyKey?: string;
-  };
+  data: EventPayload;
+  metadata?: EventMetadata;
 }
 
 export class EventBus {
@@ -50,16 +67,16 @@ export class EventBus {
   /**
    * Emit an event with automatic persistence
    */
-  public async emitAsync(eventType: EventType, data: any, metadata?: AegisEvent['metadata']): Promise<void> {
+  public async emitAsync(eventType: EventType, data: EventPayload, metadata?: EventMetadata): Promise<void> {
     const event: AegisEvent = {
       type: eventType,
       timestamp: new Date().toISOString(),
       userId: data.userId,
       data,
       metadata: {
-        priority: data.priority || 'medium',
+        priority: (data.priority as EventMetadata['priority'] | undefined) || 'medium',
         retryable: data.retryable !== false,
-        idempotencyKey: data.idempotencyKey || `${eventType}-${Date.now()}`,
+        idempotencyKey: (data.idempotencyKey as string | undefined) || `${eventType}-${Date.now()}`,
         ...metadata,
       },
     };
@@ -160,8 +177,8 @@ export class EventBus {
 
     if (error) throw error;
 
-    return (data || []).map((row: any) => ({
-      type: row.event_type as EventType,
+    return (data as EventLogRow[] | null || []).map((row) => ({
+      type: row.event_type,
       timestamp: row.created_at,
       userId: row.user_id,
       data: row.data,
@@ -191,17 +208,17 @@ export class EventBus {
   public async getEventStats(): Promise<Record<EventType, number>> {
     const { data, error } = await this.supabase
       .from('events_log')
-      .select('event_type')
-      .then(({ data }) => {
-        const stats: Record<string, number> = {};
-        (data || []).forEach((row: any) => {
-          stats[row.event_type] = (stats[row.event_type] || 0) + 1;
-        });
-        return { data: stats, error: null };
-      });
+      .select('event_type');
 
     if (error) throw error;
-    return data as Record<EventType, number>;
+
+    const stats: Record<EventType, number> = {} as Record<EventType, number>;
+    (data as EventLogRow[] | null || []).forEach((row) => {
+      const currentCount = stats[row.event_type] ?? 0;
+      stats[row.event_type] = currentCount + 1;
+    });
+
+    return stats;
   }
 }
 

@@ -16,7 +16,7 @@ import path from 'path';
 export interface CachedSession {
   id: string;
   phoneNumber: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   timestamp: number;
   synced: boolean;
 }
@@ -421,7 +421,7 @@ export class OfflineCache {
 
   // Private file I/O methods
 
-  private readFile(filepath: string): any {
+  private readFile(filepath: string): unknown {
     try {
       if (!fs.existsSync(filepath)) {
         return [];
@@ -435,7 +435,7 @@ export class OfflineCache {
     }
   }
 
-  private writeFile(filepath: string, data: any): void {
+  private writeFile(filepath: string, data: unknown): void {
     try {
       fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (error) {

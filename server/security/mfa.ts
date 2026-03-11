@@ -86,7 +86,7 @@ export class MFAService {
   /**
    * Disable MFA for user
    */
-  public async disableMFA(userId: string, password: string): Promise<boolean> {
+  public async disableMFA(userId: string, _password: string): Promise<boolean> {
     try {
       const { error } = await this.supabase
         .from('mfa_credentials')
@@ -284,7 +284,7 @@ export class MFAService {
     }
   }
 
-  private async logMFAEvent(userId: string, event: string, metadata?: any): Promise<void> {
+  private async logMFAEvent(userId: string, event: string, metadata?: Record<string, unknown>): Promise<void> {
     try {
       await this.supabase.from('audit_logs').insert({
         user_id: userId,

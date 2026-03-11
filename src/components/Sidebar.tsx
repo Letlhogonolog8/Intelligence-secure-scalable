@@ -4,13 +4,12 @@ import { useAppStore } from '@/store/appStore';
 import { UserRole } from '@/lib/roleConfig';
 import { 
   getRoleSpecificSidebarConfig, 
-  filterModulesByQuery,
   type SidebarSection 
 } from '@/components/sidebar/RoleSpecificSidebarBuilder';
 import {
   ShieldIcon, ActivityIcon, MessageCircleIcon, MapPinIcon,
   ScaleIcon, BrainIcon, LockIcon, SettingsIcon, GlobeIcon,
-  ChevronRightIcon, SearchIcon, StarIcon, AlertTriangleIcon, CheckCircleIcon, XIcon,
+  ChevronRightIcon, SearchIcon, StarIcon, AlertTriangleIcon, CheckCircleIcon,
   BarChartIcon, FileTextIcon, HeartIcon
 } from '@/components/ui/AegisIcons';
 
@@ -60,7 +59,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   userRole 
 }) => {
   const { sidebarSearchQuery, setSidebarSearchQuery, recentModules, favoriteModules, toggleFavoriteModule, moduleActivities } = useAppStore();
-  const [showSearch, setShowSearch] = useState(false);
   const [tooltip, setTooltip] = useState<{
     label: string;
     description: string;

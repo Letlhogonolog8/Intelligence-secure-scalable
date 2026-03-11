@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import { ROLE_DEFINITIONS, UserRole } from "@/lib/roleConfig";
 import { useAppStore } from "@/store/appStore";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 interface HeaderProps {
   activeModule: ModuleType;
@@ -423,6 +424,10 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
         <div className="hidden lg:flex items-center gap-1.5 text-slate-500">
           <ClockIcon size={14} />
           <span className="text-xs font-mono">{formattedTime}</span>
+        </div>
+
+        <div className="hidden sm:block border-l border-slate-800 pl-3">
+          <LanguageSwitcher />
         </div>
 
         {/* Alerts */}

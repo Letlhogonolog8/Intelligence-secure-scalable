@@ -18,26 +18,42 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
 
   /**
    * POST /api/ussd/process
-   * Process USSD request
-   * Body: { phoneNumber, userInput, language? }
+   * Process USSD request (Supports standard JSON and Africa's Talking format)
+   * Body: { phoneNumber, userInput/text, sessionId, language? }
    */
   router.post('/process', async (req: Request, res: Response) => {
     try {
-      const { phoneNumber, userInput, language = 'en' } = req.body;
+      // Africa's Talking sends: sessionId, serviceCode, phoneNumber, text
+      const { phoneNumber, text, sessionId: _sessionId, language = 'en' } = req.body;
+      const userInput = text !== undefined ? text : req.body.userInput;
 
       if (!phoneNumber || userInput === undefined) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields: phoneNumber, userInput',
+          error: 'Missing required fields: phoneNumber, userInput/text',
         });
       }
 
       // Validate language
-      const validLanguages = ['en', 'zu', 'xh', 'st', 'af', 'ss'];
+      const validLanguages = ['en', 'zu', 'xh', 'st', 'af', 'ss', 'tn', 'ts', 've', 'nso', 'nr'];
       const lang = validLanguages.includes(language) ? (language as Language) : 'en';
 
       const ussdResponse = await ussdGateway.handleUSSDRequest(phoneNumber, userInput, lang);
 
+      // Check if it's an Africa's Talking request (usually sent as form-urlencoded with 'text' and 'sessionId')
+      const isAfricasTalking = req.body.text !== undefined || req.headers['content-type'] === 'application/x-www-form-urlencoded';
+
+      if (isAfricasTalking) {
+        // Africa's Talking requires response to start with CON (continue) or END
+        const prefix = ussdResponse.endSession ? 'END ' : 'CON ';
+        
+        // The ussdGateway already builds the full menu text (including options), 
+        // so we don't need to append them again.
+        res.set('Content-Type', 'text/plain');
+        return res.send(`${prefix}${ussdResponse.text}`);
+      }
+
+      // Default JSON response for local testing or other gateways
       res.json({
         success: true,
         sessionId: ussdResponse.sessionId,
@@ -51,6 +67,13 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('USSD processing error:', error);
+      
+      const isAfricasTalking = req.body.text !== undefined || req.headers['content-type'] === 'application/x-www-form-urlencoded';
+      if (isAfricasTalking) {
+        res.set('Content-Type', 'text/plain');
+        return res.send('END An error occurred. Please try again.');
+      }
+      
       res.status(500).json({
         success: false,
         error: 'Failed to process USSD request',
@@ -65,7 +88,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    */
   router.post('/sms-fallback', async (req: Request, res: Response) => {
     try {
-      const { phoneNumber, message, reason } = req.body;
+      const { phoneNumber, message, reason: _reason } = req.body;
 
       if (!phoneNumber || !message) {
         return res.status(400).json({
@@ -122,13 +145,11 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
   router.post('/offline-sync', async (req: Request, res: Response) => {
     try {
       const stats = await offlineCache.syncWithServer(
-        async (caseData) => {
-          // Sync cases to database
-          return true; // In production: actual sync
+        async (_caseData) => {
+          return true;
         },
-        async (message) => {
-          // Send queued messages
-          return true; // In production: actual send
+        async (_message) => {
+          return true;
         }
       );
 
@@ -250,7 +271,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    */
   router.post('/emergency', async (req: Request, res: Response) => {
     try {
-      const { phoneNumber, description, location } = req.body;
+      const { phoneNumber, description: _description, location: _location } = req.body;
 
       if (!phoneNumber) {
         return res.status(400).json({
@@ -327,7 +348,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       const { concurrentUsers = 100, requestsPerUser = 10 } = req.body;
 
       // Simulate concurrent USSD requests
-      const results: any[] = [];
+      const results: Array<{ userId: string; requestId: number; responseTime: number; success: boolean }> = [];
       let successCount = 0;
       let failureCount = 0;
 
@@ -347,7 +368,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
               success: true,
             });
             successCount++;
-          } catch (error) {
+          } catch (_error) {
             failureCount++;
           }
         }

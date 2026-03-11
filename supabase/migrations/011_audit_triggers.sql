@@ -202,7 +202,7 @@ BEGIN
   ORDER BY al.changed_at DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION get_user_activity(
   p_user_id UUID,
@@ -228,7 +228,7 @@ BEGIN
   ORDER BY al.changed_at DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION get_table_activity(
   p_table_name TEXT,
@@ -256,7 +256,7 @@ BEGIN
   ORDER BY al.changed_at DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================================================
 -- AUDIT LOG CLEANUP FUNCTION
@@ -278,7 +278,7 @@ BEGIN
   
   RETURN QUERY SELECT v_deleted_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- Schedule cleanup of old audit logs (requires pg_cron extension)
 -- Runs daily at 2 AM UTC, keeps last 90 days

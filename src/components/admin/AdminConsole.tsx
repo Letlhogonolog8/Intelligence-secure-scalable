@@ -11,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -29,7 +28,7 @@ import {
   getErrorMessage
 } from "@/data/aegisData";
 import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/lib/supabase";
+import { createUsernameUser, supabase } from "@/lib/supabase";
 import { logError, logInfo } from "@/lib/logger";
 import { useAppStore } from "@/store/appStore";
 import { toast } from "sonner";
@@ -235,12 +234,10 @@ const AdminConsole: React.FC = () => {
     try {
       logInfo("Invoking create_username_user Edge Function");
       // 1. Create the Auth user via Edge Function
-      const { data: createData, error: createError } = await supabase.functions.invoke("create_username_user", {
-        body: {
-          username: provisionForm.username.trim(),
-          password: provisionForm.password,
-          full_name: provisionForm.fullName.trim(),
-        },
+      const { data: createData, error: createError } = await createUsernameUser({
+        username: provisionForm.username.trim(),
+        password: provisionForm.password,
+        full_name: provisionForm.fullName.trim(),
       });
 
       if (createError || createData?.success === false) {

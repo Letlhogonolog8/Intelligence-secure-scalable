@@ -13,7 +13,7 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { AlertTriangle, Download, CheckCircle2 } from 'lucide-react';
 
 const fairnessData = [
   { demographic: 'Age 18-25', passRate: 94, bias: 2 },

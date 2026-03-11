@@ -7,13 +7,12 @@ import {
   Shield,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   Mail,
   RefreshCw,
 } from 'lucide-react';
 
 export const MFAEnforcementPanel: React.FC = () => {
-  const { data: users = [], isLoading } = useUserProfiles({ limit: 250 });
+  const { data: users = [] } = useUserProfiles({ limit: 250 });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 

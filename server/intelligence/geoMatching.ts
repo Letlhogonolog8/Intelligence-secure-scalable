@@ -1,33 +1,44 @@
-/**
- * AEGIS Geo-Matching Intelligence Engine
- * server/intelligence/geoMatching.ts
- * 
- * Intelligent resource assignment using:
- * - Geospatial proximity matching
- * - Capacity and availability scoring
- * - Response time prediction
- * - Workload balancing
- */
-
 import { SupabaseClient } from '@supabase/supabase-js';
+
+export type ResourceType = 'police_station' | 'shelter' | 'counselor' | 'ngo';
+
+export interface ResourceMetadata {
+  utilization?: number;
+  capacity?: number;
+  region?: string | null;
+}
 
 export interface GeoAssignment {
   resourceId: string;
-  resourceType: 'police_station' | 'shelter' | 'counselor' | 'ngo';
+  resourceType: ResourceType;
   resourceName: string;
   distanceKm: number;
   estimatedResponseMinutes: number;
-  capacityScore: number; // 0-100 (higher = more available)
-  priorityScore: number; // 0-100 (composite score for selection)
+  capacityScore: number;
+  priorityScore: number;
   lat: number;
   lng: number;
-  metadata?: any;
+  metadata?: ResourceMetadata;
 }
 
 export interface AssignmentResult {
   primary: GeoAssignment;
   secondary: GeoAssignment[];
   reasoning: string;
+}
+
+interface ResourceRecord {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  region?: string | null;
+}
+
+interface CapacityRecord {
+  available_capacity?: number | null;
+  total_capacity?: number | null;
+  current_load?: number | null;
 }
 
 export class GeoMatchingEngine {
@@ -38,18 +49,14 @@ export class GeoMatchingEngine {
     this.supabase = supabase;
   }
 
-  /**
-   * Find optimal resources for a case
-   */
   public async assignResources(
     caseId: string,
     lat: number,
     lng: number,
     riskLevel: 'low' | 'medium' | 'high' | 'critical',
-    caseType: string
+    _caseType: string
   ): Promise<AssignmentResult> {
     try {
-      // Get all available resources
       const [policeStations, shelters, counselors, ngos] = await Promise.all([
         this.getPoliceStations(),
         this.getShelters(),
@@ -57,63 +64,51 @@ export class GeoMatchingEngine {
         this.getNGOs(),
       ]);
 
-      // Score and rank each resource type
-      const scoredPolice = await Promise.all(
-        policeStations.map((station) =>
-          this.scoreResource(station, lat, lng, 'police_station', riskLevel)
-        )
-      );
+      const [scoredPolice, scoredShelters, scoredCounselors, scoredNGOs] = await Promise.all([
+        Promise.all(policeStations.map((station) => this.scoreResource(station, lat, lng, 'police_station', riskLevel))),
+        Promise.all(shelters.map((shelter) => this.scoreResource(shelter, lat, lng, 'shelter', riskLevel))),
+        Promise.all(counselors.map((counselor) => this.scoreResource(counselor, lat, lng, 'counselor', riskLevel))),
+        Promise.all(ngos.map((ngo) => this.scoreResource(ngo, lat, lng, 'ngo', riskLevel))),
+      ]);
 
-      const scoredShelters = await Promise.all(
-        shelters.map((shelter) =>
-          this.scoreResource(shelter, lat, lng, 'shelter', riskLevel)
-        )
-      );
+      const bestPolice = this.pickTopAssignment(scoredPolice);
+      const bestShelter = this.pickTopAssignment(scoredShelters);
+      const bestCounselor = this.pickTopAssignment(scoredCounselors);
+      const bestNGO = this.pickTopAssignment(scoredNGOs);
 
-      const scoredCounselors = await Promise.all(
-        counselors.map((counselor) =>
-          this.scoreResource(counselor, lat, lng, 'counselor', riskLevel)
-        )
-      );
-
-      const scoredNGOs = await Promise.all(
-        ngos.map((ngo) => this.scoreResource(ngo, lat, lng, 'ngo', riskLevel))
-      );
-
-      // Select best matches
-      const bestPolice = scoredPolice.sort((a, b) => b.priorityScore - a.priorityScore)[0];
-      const bestShelter = scoredShelters.sort((a, b) => b.priorityScore - a.priorityScore)[0];
-      const bestCounselor = scoredCounselors.sort((a, b) => b.priorityScore - a.priorityScore)[0];
-
-      // Primary assignment depends on risk level
-      let primary: GeoAssignment;
       const secondaryAssignments: GeoAssignment[] = [];
+      let primary: GeoAssignment | undefined;
 
       if (riskLevel === 'critical') {
-        // Critical: Police first, with shelter and counselor support
-        primary = bestPolice;
+        primary = bestPolice ?? bestCounselor ?? bestShelter ?? bestNGO;
         if (bestShelter) secondaryAssignments.push(bestShelter);
         if (bestCounselor) secondaryAssignments.push(bestCounselor);
+        if (bestNGO) secondaryAssignments.push(bestNGO);
       } else if (riskLevel === 'high') {
-        // High: Balanced approach
-        primary = bestCounselor;
+        primary = bestCounselor ?? bestPolice ?? bestShelter ?? bestNGO;
         if (bestPolice) secondaryAssignments.push(bestPolice);
         if (bestShelter) secondaryAssignments.push(bestShelter);
+        if (bestNGO) secondaryAssignments.push(bestNGO);
       } else {
-        // Medium/Low: Counselor primary
-        primary = bestCounselor;
+        primary = bestCounselor ?? bestShelter ?? bestNGO ?? bestPolice;
         if (bestShelter) secondaryAssignments.push(bestShelter);
+        if (bestNGO) secondaryAssignments.push(bestNGO);
       }
 
-      // Record assignments in database
-      await this.recordAssignments(caseId, primary, secondaryAssignments);
+      if (!primary) {
+        throw new Error('No eligible resources available for assignment');
+      }
 
-      const reasoning = this.generateAssignmentReasoning(primary, secondaryAssignments, riskLevel);
+      const deduplicatedSecondary = secondaryAssignments.filter(
+        (assignment) => assignment.resourceId !== primary.resourceId
+      );
+
+      await this.recordAssignments(caseId, primary, deduplicatedSecondary);
 
       return {
         primary,
-        secondary: secondaryAssignments,
-        reasoning,
+        secondary: deduplicatedSecondary,
+        reasoning: this.generateAssignmentReasoning(primary, deduplicatedSecondary, riskLevel),
       };
     } catch (error) {
       console.error('Geo-matching failed:', error);
@@ -121,32 +116,26 @@ export class GeoMatchingEngine {
     }
   }
 
-  /**
-   * Score a resource based on multiple factors
-   */
+  private pickTopAssignment(assignments: GeoAssignment[]): GeoAssignment | undefined {
+    return [...assignments].sort((a, b) => b.priorityScore - a.priorityScore)[0];
+  }
+
   private async scoreResource(
-    resource: any,
+    resource: ResourceRecord,
     incidentLat: number,
     incidentLng: number,
-    resourceType: string,
-    riskLevel: string
+    resourceType: ResourceType,
+    riskLevel: 'low' | 'medium' | 'high' | 'critical'
   ): Promise<GeoAssignment> {
-    // Distance scoring (closer = better)
     const distanceKm = this.calculateDistance(incidentLat, incidentLng, resource.lat, resource.lng);
-    const distanceScore = Math.max(0, 100 - distanceKm * 5); // Degrades by 5 points per km
+    const distanceScore = Math.max(0, 100 - distanceKm * 5);
 
-    // Capacity scoring
     const { capacity, utilization } = await this.getCapacityMetrics(resource.id, resourceType);
     const capacityScore = Math.max(0, 100 - utilization);
 
-    // Response time prediction
     const estimatedResponseMinutes = this.predictResponseTime(distanceKm, resourceType);
     const responseScore = Math.max(0, 100 - estimatedResponseMinutes);
-
-    // Availability bonus
     const availabilityBonus = capacity > 0 ? 10 : 0;
-
-    // Risk-aware weighting
     const weights = this.getWeights(resourceType, riskLevel);
 
     const priorityScore = Math.round(
@@ -158,9 +147,9 @@ export class GeoMatchingEngine {
 
     return {
       resourceId: resource.id,
-      resourceType: resourceType as any,
+      resourceType,
       resourceName: resource.name,
-      distanceKm: parseFloat(distanceKm.toFixed(2)),
+      distanceKm: Number(distanceKm.toFixed(2)),
       estimatedResponseMinutes,
       capacityScore,
       priorityScore,
@@ -169,13 +158,11 @@ export class GeoMatchingEngine {
       metadata: {
         utilization,
         capacity,
+        region: resource.region,
       },
     };
   }
 
-  /**
-   * Calculate Haversine distance between two coordinates
-   */
   private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
     const toRad = (deg: number) => (deg * Math.PI) / 180;
     const dLat = toRad(lat2 - lat1);
@@ -192,12 +179,9 @@ export class GeoMatchingEngine {
     return this.EARTH_RADIUS_KM * c;
   }
 
-  /**
-   * Get capacity metrics for a resource
-   */
   private async getCapacityMetrics(
     resourceId: string,
-    resourceType: string
+    resourceType: ResourceType
   ): Promise<{ capacity: number; utilization: number }> {
     try {
       const { data } = await this.supabase
@@ -205,59 +189,50 @@ export class GeoMatchingEngine {
         .select('available_capacity, total_capacity, current_load')
         .eq('resource_id', resourceId)
         .eq('resource_type', resourceType)
-        .single();
+        .single<CapacityRecord>();
 
       if (!data) {
-        return { capacity: 1, utilization: 0 }; // Default: available
+        return { capacity: 1, utilization: 0 };
       }
 
-      const utilization = (data.current_load / data.total_capacity) * 100;
+      const totalCapacity = Math.max(1, data.total_capacity ?? 1);
+      const currentLoad = data.current_load ?? 0;
+      const utilization = (currentLoad / totalCapacity) * 100;
 
       return {
-        capacity: data.available_capacity,
+        capacity: data.available_capacity ?? 1,
         utilization,
       };
     } catch (error) {
       console.error('Capacity metrics retrieval failed:', error);
-      return { capacity: 1, utilization: 50 }; // Default middle-ground
+      return { capacity: 1, utilization: 50 };
     }
   }
 
-  /**
-   * Predict response time based on distance and resource type
-   */
-  private predictResponseTime(distanceKm: number, resourceType: string): number {
-    // Base response times (minutes)
-    const baseResponseTimes = {
+  private predictResponseTime(distanceKm: number, resourceType: ResourceType): number {
+    const baseResponseTimes: Record<ResourceType, number> = {
       police_station: 15,
       shelter: 30,
       counselor: 45,
       ngo: 60,
     };
 
-    const baseTime = baseResponseTimes[resourceType as keyof typeof baseResponseTimes] || 60;
-
-    // Add time based on distance (assume 40 km/h average speed)
-    const travelTime = (distanceKm / 40) * 60; // Convert to minutes
-
-    // Random delay factor (0-5 minutes)
+    const baseTime = baseResponseTimes[resourceType] ?? 60;
+    const travelTime = (distanceKm / 40) * 60;
     const delayFactor = Math.random() * 5;
 
     return Math.round(baseTime + travelTime + delayFactor);
   }
 
-  /**
-   * Get weighting for scoring based on context
-   */
   private getWeights(
-    resourceType: string,
-    riskLevel: string
+    _resourceType: ResourceType,
+    riskLevel: 'low' | 'medium' | 'high' | 'critical'
   ): { distance: number; capacity: number; response: number } {
     if (riskLevel === 'critical') {
       return {
-        distance: 0.5, // Distance is critical
+        distance: 0.5,
         capacity: 0.2,
-        response: 0.3, // Fast response is critical
+        response: 0.3,
       };
     }
 
@@ -269,18 +244,14 @@ export class GeoMatchingEngine {
       };
     }
 
-    // Medium/Low
     return {
       distance: 0.3,
-      capacity: 0.5, // Prefer available resources
+      capacity: 0.5,
       response: 0.2,
     };
   }
 
-  /**
-   * Retrieve police stations
-   */
-  private async getPoliceStations(): Promise<any[]> {
+  private async getPoliceStations(): Promise<ResourceRecord[]> {
     const { data, error } = await this.supabase
       .from('police_stations')
       .select('id, name, lat, lng, region');
@@ -290,13 +261,10 @@ export class GeoMatchingEngine {
       return [];
     }
 
-    return data || [];
+    return (data ?? []) as ResourceRecord[];
   }
 
-  /**
-   * Retrieve shelters
-   */
-  private async getShelters(): Promise<any[]> {
+  private async getShelters(): Promise<ResourceRecord[]> {
     const { data, error } = await this.supabase
       .from('shelters')
       .select('id, name, lat, lng, region');
@@ -306,13 +274,10 @@ export class GeoMatchingEngine {
       return [];
     }
 
-    return data || [];
+    return (data ?? []) as ResourceRecord[];
   }
 
-  /**
-   * Retrieve available counselors
-   */
-  private async getCounselors(): Promise<any[]> {
+  private async getCounselors(): Promise<ResourceRecord[]> {
     const { data, error } = await this.supabase
       .from('profiles')
       .select('id, full_name, lat, lng')
@@ -324,16 +289,15 @@ export class GeoMatchingEngine {
       return [];
     }
 
-    return (data || []).map((c) => ({
-      ...c,
-      name: c.full_name,
-    }));
+    return (data ?? []).map((counselor) => ({
+      id: counselor.id,
+      name: counselor.full_name,
+      lat: counselor.lat,
+      lng: counselor.lng,
+    })) as ResourceRecord[];
   }
 
-  /**
-   * Retrieve NGO organizations
-   */
-  private async getNGOs(): Promise<any[]> {
+  private async getNGOs(): Promise<ResourceRecord[]> {
     const { data, error } = await this.supabase
       .from('organizations')
       .select('id, name, lat, lng')
@@ -345,12 +309,9 @@ export class GeoMatchingEngine {
       return [];
     }
 
-    return data || [];
+    return (data ?? []) as ResourceRecord[];
   }
 
-  /**
-   * Record assignments in database
-   */
   private async recordAssignments(
     caseId: string,
     primary: GeoAssignment,
@@ -367,8 +328,8 @@ export class GeoMatchingEngine {
         location_lng: assignment.lng,
         distance_km: assignment.distanceKm,
         estimated_response_time_minutes: assignment.estimatedResponseMinutes,
-        capacity_utilization: assignment.metadata?.utilization || 0,
-        assignment_reason: assignment === primary ? 'PRIMARY' : 'SECONDARY',
+        capacity_utilization: assignment.metadata?.utilization ?? 0,
+        assignment_reason: assignment.resourceId === primary.resourceId ? 'PRIMARY' : 'SECONDARY',
       }))
     );
 
@@ -378,28 +339,25 @@ export class GeoMatchingEngine {
     }
   }
 
-  /**
-   * Generate human-readable reasoning for assignments
-   */
   private generateAssignmentReasoning(
     primary: GeoAssignment,
     secondary: GeoAssignment[],
-    riskLevel: string
+    riskLevel: 'low' | 'medium' | 'high' | 'critical'
   ): string {
     return `
 Primary Assignment: ${primary.resourceName} (${primary.resourceType})
 - Distance: ${primary.distanceKm}km
 - Estimated Response: ${primary.estimatedResponseMinutes} minutes
-- Available Capacity: ${primary.metadata?.capacity} units
+- Available Capacity: ${primary.metadata?.capacity ?? 0} units
 
-Secondary Assignments: ${secondary.map((s) => s.resourceName).join(', ') || 'None'}
+Secondary Assignments: ${secondary.map((assignment) => assignment.resourceName).join(', ') || 'None'}
 
 Risk Level: ${riskLevel}
 Assignment Strategy: ${this.getStrategyName(riskLevel)}
     `.trim();
   }
 
-  private getStrategyName(riskLevel: string): string {
+  private getStrategyName(riskLevel: 'low' | 'medium' | 'high' | 'critical'): string {
     switch (riskLevel) {
       case 'critical':
         return 'Emergency Response (Police prioritized)';

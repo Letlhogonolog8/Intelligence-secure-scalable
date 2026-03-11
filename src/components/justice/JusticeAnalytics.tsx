@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useJusticeBottlenecks, useJusticeCases, useJusticeConvictions, RISK_COLORS, RiskLevel } from '@/data/aegisData';
 import {
-  ScaleIcon, ClockIcon, TrendUpIcon, TrendDownIcon,
-  SearchIcon, DownloadIcon, EyeIcon, CheckCircleIcon,
-  AlertTriangleIcon, BarChartIcon, FileTextIcon, XIcon
+  SearchIcon, DownloadIcon, EyeIcon,
+  AlertTriangleIcon, XIcon
 } from '@/components/ui/AegisIcons';
 
 const JusticeAnalytics: React.FC = () => {

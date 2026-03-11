@@ -35,7 +35,7 @@ BEGIN
   
   RETURN encoded_result;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
 
 CREATE OR REPLACE FUNCTION decrypt_text(
   ciphertext TEXT,
@@ -61,7 +61,7 @@ BEGIN
   
   RETURN result;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
 
 -- ============================================================================
 -- ADD ENCRYPTED COLUMNS TO TABLES
@@ -147,7 +147,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS encrypt_user_profile_pii_trigger ON user_profiles;
 CREATE TRIGGER encrypt_user_profile_pii_trigger
@@ -181,7 +181,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS encrypt_survivor_pii_trigger ON survivors;
 CREATE TRIGGER encrypt_survivor_pii_trigger
@@ -193,7 +193,8 @@ EXECUTE FUNCTION encrypt_survivor_pii();
 -- VIEWS FOR TRANSPARENT DECRYPTION
 -- ============================================================================
 
-CREATE OR REPLACE VIEW user_profiles_decrypted AS
+CREATE OR REPLACE VIEW user_profiles_decrypted
+WITH (security_invoker = true) AS
 SELECT
   id,
   organization_id,

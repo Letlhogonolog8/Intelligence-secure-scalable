@@ -69,7 +69,7 @@ export class PerformanceMonitor {
         error: false,
       });
       return result;
-    } catch (error) {
+    } catch (_error) {
       const duration = performance.now() - start;
       this.recordMetric({
         name,
@@ -78,7 +78,7 @@ export class PerformanceMonitor {
         tags,
         error: true,
       });
-      throw error;
+      throw _error;
     }
   }
 
@@ -102,7 +102,7 @@ export class PerformanceMonitor {
         error: false,
       });
       return result;
-    } catch (error) {
+    } catch (_error) {
       const duration = performance.now() - start;
       this.recordMetric({
         name,
@@ -111,7 +111,7 @@ export class PerformanceMonitor {
         tags,
         error: true,
       });
-      throw error;
+      throw _error;
     }
   }
 
@@ -243,7 +243,7 @@ export class WebVitalsTracker {
         this.vitals.lcp = lastEntry.renderTime || lastEntry.loadTime;
       });
       lcpObserver.observe({ entryTypes: ["largest-contentful-paint"] });
-    } catch (e) {
+    } catch (_error) {
       console.debug("LCP tracking unavailable");
     }
 
@@ -256,7 +256,7 @@ export class WebVitalsTracker {
         });
       });
       fidObserver.observe({ entryTypes: ["first-input"] });
-    } catch (e) {
+    } catch (_error) {
       console.debug("FID tracking unavailable");
     }
 
@@ -272,7 +272,7 @@ export class WebVitalsTracker {
         });
       });
       clsObserver.observe({ entryTypes: ["layout-shift"] });
-    } catch (e) {
+    } catch (_error) {
       console.debug("CLS tracking unavailable");
     }
 

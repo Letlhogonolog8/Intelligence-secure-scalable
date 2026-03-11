@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabase';
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
-  ClockIcon,
-  FileTextIcon,
   HeartIcon,
   LockIcon,
   MicIcon,
@@ -32,7 +31,37 @@ interface ChatMessage {
   safetyAlert?: boolean;
 }
 
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean;
+  0: {
+    transcript: string;
+  };
+};
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error: string;
+};
+
+type BrowserSpeechRecognitionInstance = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognitionInstance;
+
 const SurvivorSupport: React.FC = () => {
+  const { i18n } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -99,14 +128,30 @@ const SurvivorSupport: React.FC = () => {
     try {
       const url = new URL(env.VITE_SUPABASE_URL);
       const projectRef = url.hostname.split('.')[0] ?? '';
-      const payload = JSON.parse(atob(env.VITE_SUPABASE_KEY.split('.')[1] ?? '')) as { ref?: string };
-      if (payload.ref && payload.ref !== projectRef) {
-        return 'Supabase project key does not match the configured project URL.';
+      const keyParts = env.VITE_SUPABASE_KEY.split('.');
+
+      if (keyParts.length === 3) {
+        const payload = JSON.parse(atob(keyParts[1] ?? '')) as { ref?: string };
+        if (payload.ref && payload.ref !== projectRef) {
+          return 'Supabase project key does not match the configured project URL.';
+        }
       }
     } catch {
       return 'Unable to validate Supabase configuration. Please verify the project URL and anon key.';
     }
     return null;
+  };
+
+  const handleSessionExpired = async () => {
+    await supabase.auth.signOut();
+    setSessionId(null);
+    setMessages(prev => [...prev, {
+      id: `error-${Date.now()}`,
+      role: 'assistant',
+      content: 'Your secure chat session expired. Please sign in again, then continue where you left off.',
+      timestamp: new Date(),
+      riskLevel: 'medium',
+    }]);
   };
 
   const sendMessage = async (text?: string) => {
@@ -150,6 +195,16 @@ const SurvivorSupport: React.FC = () => {
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
 
+      const isJwtToken = (token: string | null | undefined) => {
+        if (!token) {
+          return false;
+        }
+        if (token.startsWith('sb_publishable_')) {
+          return false;
+        }
+        return token.split('.').length === 3;
+      };
+
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
         console.error('Failed to load session for chat request', sessionError);
@@ -158,31 +213,27 @@ const SurvivorSupport: React.FC = () => {
       const now = Math.floor(Date.now() / 1000);
       const { session } = sessionData;
       const isExpired = session?.expires_at ? session.expires_at <= now : false;
-      let accessToken = session?.access_token;
+      let accessToken = isJwtToken(session?.access_token) ? session?.access_token : undefined;
 
-      if (isExpired) {
+      if (isExpired || !accessToken) {
         const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
           console.error('Failed to refresh session for chat request', refreshError);
         }
-        accessToken = refreshedData.session?.access_token;
+        const refreshedToken = refreshedData.session?.access_token;
+        accessToken = isJwtToken(refreshedToken) ? refreshedToken : accessToken;
       }
 
-      const isProd = import.meta.env.PROD;
       if (!accessToken) {
-        if (!isProd && env.VITE_SUPABASE_KEY) {
-          accessToken = env.VITE_SUPABASE_KEY;
-        } else {
-          setMessages(prev => [...prev, {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: 'Your session has expired. Please sign in again to continue.',
-            timestamp: new Date(),
-            riskLevel: 'medium',
-          }]);
-          setIsLoading(false);
-          return;
-        }
+        setMessages(prev => [...prev, {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: 'Please sign in to continue secure chat support.',
+          timestamp: new Date(),
+          riskLevel: 'medium',
+        }]);
+        setIsLoading(false);
+        return;
       }
 
       const buildHeaders = (token: string) => {
@@ -195,11 +246,13 @@ const SurvivorSupport: React.FC = () => {
         return headers;
       };
 
+      const activeLanguage = (i18n.resolvedLanguage || i18n.language || 'en').split('-')[0] || 'en';
+
       const invokeChat = (token: string) => supabase.functions.invoke('aegis-survivor-chat', {
         body: {
           message: messageText,
           conversation_history: conversationHistory,
-          language: 'en',
+          language: activeLanguage,
           session_id: sessionId ?? undefined,
           consent_granted: consentGranted,
           consent_type: 'data_processing',
@@ -208,11 +261,41 @@ const SurvivorSupport: React.FC = () => {
         headers: buildHeaders(token),
       });
 
-      const { data, error } = await invokeChat(accessToken);
+      let { data, error } = await invokeChat(accessToken);
 
-      if (error) throw error;
+      const responseContext = (error as { context?: unknown } | null)?.context;
+      if (error && responseContext instanceof Response && responseContext.status === 401) {
+        const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.error('Failed to refresh session after 401 response', refreshError);
+        }
+        const refreshedToken = refreshedData.session?.access_token;
+        if (isJwtToken(refreshedToken)) {
+          ({ data, error } = await invokeChat(refreshedToken));
+        }
+      }
+
+      if (error) {
+        const maybeContext = (error as { context?: unknown }).context;
+        if (maybeContext instanceof Response) {
+          const responseText = await maybeContext.clone().text().catch(() => '');
+          const responseSnippet = responseText ? ` - ${responseText.slice(0, 500)}` : '';
+          if (maybeContext.status === 401) {
+            await handleSessionExpired();
+            return;
+          }
+          throw new Error(`Edge Function HTTP ${maybeContext.status} ${maybeContext.statusText}${responseSnippet}`);
+        }
+        throw new Error(error.message || 'Edge Function execution failed');
+      }
       if (data?.success === false) {
-        throw new Error(data.error || 'Edge Function execution failed');
+        const dataError = data.error || 'Edge Function execution failed';
+        const isAuthError = /invalid token|missing authorization token|jwt/i.test(dataError);
+        if (isAuthError) {
+          await handleSessionExpired();
+          return;
+        }
+        throw new Error(dataError);
       }
 
       const nextSessionId = data?.session_id ?? sessionId;
@@ -239,10 +322,13 @@ const SurvivorSupport: React.FC = () => {
       }
     } catch (err) {
       console.error('Chat error:', err);
+      const errorDetail = err instanceof Error ? err.message : String(err);
+      const isDevelopment = env.VITE_ENV === 'development';
+      const fallbackMessage = "I'm experiencing a brief connection issue, but I'm still here for you. If you're in immediate danger, please contact emergency services. You can also try sending your message again.";
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: "I'm experiencing a brief connection issue, but I'm still here for you. If you're in immediate danger, please contact emergency services. You can also try sending your message again.",
+        content: isDevelopment ? `${fallbackMessage} (Debug: ${errorDetail})` : fallbackMessage,
         timestamp: new Date(),
         riskLevel: 'medium',
       }]);
@@ -264,8 +350,20 @@ const SurvivorSupport: React.FC = () => {
       return;
     }
 
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const speechWindow = window as Window & {
+      webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+      SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    };
+    const SpeechRecognition = speechWindow.webkitSpeechRecognition || speechWindow.SpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Speech recognition not supported in this browser. Try Chrome, Edge, or Safari.');
+      return;
+    }
+
     const recognition = new SpeechRecognition();
+    let recognizedText = '';
+
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
@@ -274,31 +372,32 @@ const SurvivorSupport: React.FC = () => {
       setInput('🎤 Listening...');
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: BrowserSpeechRecognitionEvent) => {
       let interimTranscript = '';
       let finalTranscript = '';
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
+          finalTranscript += `${transcript} `;
         } else {
           interimTranscript += transcript;
         }
       }
 
-      setInput(finalTranscript || interimTranscript);
+      recognizedText = (finalTranscript || interimTranscript).trim();
+      setInput(recognizedText);
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: BrowserSpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
       setInput('');
       alert(`Microphone error: ${event.error}`);
     };
 
     recognition.onend = () => {
-      if (input && input !== '🎤 Listening...') {
-        sendMessage(input);
+      if (recognizedText) {
+        void sendMessage(recognizedText);
       } else {
         setInput('');
       }

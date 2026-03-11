@@ -1,24 +1,14 @@
-# ============================================================================
-# AEGIS-AI Kubernetes Deployment Manifests
-# Deployments for frontend and backend services
-# ============================================================================
-
----
-# ============================================================================
-# Frontend Deployment
-# ============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aegis-frontend
-  namespace: default
+  namespace: aegis
   labels:
     app: aegis
     component: frontend
     version: "1.0.0"
   annotations:
     description: "AEGIS-AI Frontend Deployment"
-
 spec:
   replicas: 3
   strategy:
@@ -26,177 +16,140 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-  
   selector:
     matchLabels:
       app: aegis
       component: frontend
-
   template:
     metadata:
       labels:
         app: aegis
         component: frontend
       annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
-
+        prometheus.io/scrape: "false"
     spec:
       serviceAccountName: aegis-frontend
-      
-      # Security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
         fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
-
-      # Pod disruption budget
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - aegis
-              topologyKey: kubernetes.io/hostname
-
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - aegis
+                topologyKey: kubernetes.io/hostname
       containers:
-      - name: frontend
-        image: aegis-ai/frontend:1.0.0
-        imagePullPolicy: IfNotPresent
-
-        # Ports
-        ports:
-        - name: http
-          containerPort: 80
-          protocol: TCP
-        - name: https
-          containerPort: 443
-          protocol: TCP
-
-        # Environment variables
-        env:
-        - name: VITE_API_URL
-          value: "/api"
-        - name: VITE_ENV
-          value: "production"
-        - name: NODE_ENV
-          value: "production"
-
-        # Security context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-            add:
-            - NET_BIND_SERVICE
-
-        # Resource limits
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-
-        # Probes
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 10
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
-
-        # Volume mounts
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-        - name: var-run
-          mountPath: /var/run
-        - name: var-cache-nginx
-          mountPath: /var/cache/nginx
-        - name: var-log-nginx
-          mountPath: /var/log/nginx
-
-      # Volumes
+        - name: frontend
+          image: aegis-ai/frontend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          env:
+            - name: VITE_API_URL
+              value: "/api"
+            - name: VITE_ENV
+              value: "production"
+            - name: NODE_ENV
+              value: "production"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: var-run
+              mountPath: /var/run
+            - name: var-cache-nginx
+              mountPath: /var/cache/nginx
+            - name: var-log-nginx
+              mountPath: /var/log/nginx
       volumes:
-      - name: tmp
-        emptyDir: {}
-      - name: var-run
-        emptyDir: {}
-      - name: var-cache-nginx
-        emptyDir: {}
-      - name: var-log-nginx
-        emptyDir: {}
-
-      # Pod termination grace period
+        - name: tmp
+          emptyDir: {}
+        - name: var-run
+          emptyDir: {}
+        - name: var-cache-nginx
+          emptyDir: {}
+        - name: var-log-nginx
+          emptyDir: {}
       terminationGracePeriodSeconds: 30
-
 ---
-# ============================================================================
-# Frontend Service
-# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: aegis-frontend
-  namespace: default
+  namespace: aegis
   labels:
     app: aegis
     component: frontend
-
 spec:
   type: ClusterIP
   selector:
     app: aegis
     component: frontend
-  
   ports:
-  - name: http
-    port: 80
-    targetPort: http
-    protocol: TCP
-  - name: https
-    port: 443
-    targetPort: https
-    protocol: TCP
-
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
 ---
-# ============================================================================
-# Backend Deployment
-# ============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aegis-backend
-  namespace: default
+  namespace: aegis
   labels:
     app: aegis
     component: backend
     version: "1.0.0"
   annotations:
     description: "AEGIS-AI Backend API Deployment"
-
 spec:
   replicas: 3
   strategy:
@@ -204,12 +157,10 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-
   selector:
     matchLabels:
       app: aegis
       component: backend
-
   template:
     metadata:
       labels:
@@ -219,204 +170,120 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3001"
         prometheus.io/path: "/metrics"
-
     spec:
       serviceAccountName: aegis-backend
-
-      # Security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
         fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
-
-      # Pod anti-affinity for distribution
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - aegis
-              topologyKey: kubernetes.io/hostname
-
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - aegis
+                topologyKey: kubernetes.io/hostname
       containers:
-      - name: backend
-        image: aegis-ai/backend:1.0.0
-        imagePullPolicy: IfNotPresent
-
-        # Ports
-        ports:
-        - name: api
-          containerPort: 3001
-          protocol: TCP
-
-        # Environment variables
-        env:
-        - name: NODE_ENV
-          value: "production"
-        - name: PORT
-          value: "3001"
-        - name: VITE_SUPABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: aegis-secrets
-              key: supabase-url
-        - name: VITE_SUPABASE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aegis-secrets
-              key: supabase-anon-key
-        - name: SUPABASE_SERVICE_ROLE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aegis-secrets
-              key: supabase-service-key
-        - name: ENCRYPTION_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aegis-secrets
-              key: encryption-key
-        - name: CHAT_ENCRYPTION_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aegis-secrets
-              key: chat-encryption-key
-
-        # Security context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-
-        # Resource limits
-        resources:
-          requests:
-            cpu: 200m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-
-        # Probes
-        livenessProbe:
-          httpGet:
-            path: /api/health
-            port: api
-          initialDelaySeconds: 15
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: api
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
-
-        # Volume mounts
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-        - name: logs
-          mountPath: /app/logs
-
-      # Volumes
+        - name: backend
+          image: aegis-ai/backend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: api
+              containerPort: 3001
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3001"
+          envFrom:
+            - configMapRef:
+                name: aegis-config
+            - secretRef:
+                name: aegis-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: api
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /app/logs
       volumes:
-      - name: tmp
-        emptyDir: {}
-      - name: logs
-        emptyDir: {}
-
-      # Pod termination grace period
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
       terminationGracePeriodSeconds: 30
-
 ---
-# ============================================================================
-# Backend Service
-# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: aegis-backend
-  namespace: default
+  namespace: aegis
   labels:
     app: aegis
     component: backend
-
 spec:
   type: ClusterIP
   selector:
     app: aegis
     component: backend
-
   ports:
-  - name: api
-    port: 3001
-    targetPort: api
-    protocol: TCP
-
+    - name: api
+      port: 3001
+      targetPort: api
+      protocol: TCP
 ---
-# ============================================================================
-# ServiceAccount for Frontend
-# ============================================================================
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: aegis-frontend
-  namespace: default
-
+  namespace: aegis
 ---
-# ============================================================================
-# ServiceAccount for Backend
-# ============================================================================
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: aegis-backend
-  namespace: default
-
----
-# ============================================================================
-# Secrets (should be created separately with actual values)
-# ============================================================================
-apiVersion: v1
-kind: Secret
-metadata:
-  name: aegis-secrets
-  namespace: default
-type: Opaque
-stringData:
-  supabase-url: "https://your-project.supabase.co"
-  supabase-anon-key: "YOUR_ANON_KEY"
-  supabase-service-key: "YOUR_SERVICE_KEY"
-  encryption-key: "YOUR_ENCRYPTION_KEY"
-  chat-encryption-key: "YOUR_CHAT_ENCRYPTION_KEY"
-
----
-# ============================================================================
-# ConfigMap for shared configuration
-# ============================================================================
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: aegis-config
-  namespace: default
-data:
-  LOG_LEVEL: "info"
-  CORS_ORIGIN: "https://aegis-ai.co.za"
-  VITE_ENV: "production"
-  VITE_DATADOG_ENV: "production"
-  VITE_DATADOG_SERVICE: "aegis-web"
-  DEPLOYMENT_REGION: "af-south-1"
-  COUNTRY_CODE: "ZA"
+  namespace: aegis

@@ -1,3 +1,4 @@
+import { Request, Response } from 'express';
 import client from 'prom-client';
 
 client.collectDefaultMetrics();
@@ -127,7 +128,7 @@ export const taskProcessingTime = new client.Histogram({
   buckets: [100, 500, 1000, 5000, 10000],
 });
 
-export const metricsHandler = async (_req: any, res: any) => {
+export const metricsHandler = async (_req: Request, res: Response) => {
   res.set('Content-Type', client.register.contentType);
   res.end(await client.register.metrics());
 };

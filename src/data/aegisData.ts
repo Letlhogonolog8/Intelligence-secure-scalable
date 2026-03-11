@@ -914,10 +914,6 @@ const fetchUserProfiles = async (options?: FetchOptions & { role?: string }) => 
   return (data ?? []).map((row) => mapUserProfile(row as Record<string, unknown>))
 }
 
-const fetchPoliceOfficers = async (options?: FetchOptions) => {
-  return fetchUserProfiles({ ...options, role: "police" })
-}
-
 const fetchOrganization = async (organizationId: string) => {
   if (!hasSupabase) return null as Organization | null
   const { data, error } = await supabase

@@ -42,7 +42,7 @@ interface USSDResponse {
 
 async function handleUSSDRequest(req: USSDRequest): Promise<USSDResponse> {
   try {
-    const { sessionId, phoneNumber, text } = req;
+    const { phoneNumber, text } = req;
 
     // Validate phone number
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -91,7 +91,7 @@ async function handleUSSDRequest(req: USSDRequest): Promise<USSDResponse> {
 async function getOrCreateSession(phoneNumber: string) {
   try {
     // Try to get existing active session
-    const { data: existingSession, error: fetchError } = await supabase
+    const { data: existingSession, error: _fetchError } = await supabase
       .from("ussd_sessions")
       .select("*")
       .eq("phone_number", phoneNumber)

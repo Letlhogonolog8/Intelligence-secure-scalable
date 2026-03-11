@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { AGIControlFramework, AIRecommendation, DecisionAction } from '../governance/agiControlFramework';
+import { AGIControlFramework, AIRecommendation, DecisionAction, DecisionType } from '../governance/agiControlFramework';
 
 export function createAGIGovernanceRoutes(agiFramework: AGIControlFramework): Router {
   const router = Router();
@@ -166,8 +166,9 @@ export function createAGIGovernanceRoutes(agiFramework: AGIControlFramework): Ro
     try {
       const { type, status, limit = 100 } = req.query;
 
+      const decisionType = typeof type === 'string' ? (type as DecisionType) : undefined;
       const decisions = await agiFramework.getDecisionHistory(
-        type as any,
+        decisionType,
         status as string,
         parseInt(limit as string)
       );
@@ -247,7 +248,7 @@ export function createAGIGovernanceRoutes(agiFramework: AGIControlFramework): Ro
         });
       }
 
-      const results: any[] = [];
+      const results: Array<{ decisionId: string; success: boolean; status?: string; error?: string }> = [];
 
       for (const decisionId of decisions) {
         try {

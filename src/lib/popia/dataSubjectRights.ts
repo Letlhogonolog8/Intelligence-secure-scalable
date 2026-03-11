@@ -76,7 +76,7 @@ export class DataSubjectRightsManager {
 
       await this.logAccessRequest(survivorId);
       return dataExport;
-    } catch (error) {
+    } catch (_error) {
       throw new Error(`Failed to export data for survivor: ${survivorId}`);
     }
   }
@@ -107,7 +107,7 @@ export class DataSubjectRightsManager {
 
       await this.logAccessRequest(survivorId, 'correction_request');
       return request.data as CorrectionRequest;
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Failed to create correction request');
     }
   }
@@ -146,7 +146,7 @@ export class DataSubjectRightsManager {
         correctionData.survivor_id,
         'correction_approved'
       );
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Failed to approve correction request');
     }
   }
@@ -169,7 +169,7 @@ export class DataSubjectRightsManager {
 
       await this.logAccessRequest(survivorId, 'erasure_requested', reason);
       return request.data as ErasureRequest;
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Failed to create erasure request');
     }
   }
@@ -233,7 +233,7 @@ export class DataSubjectRightsManager {
         .eq('id', requestId);
 
       await this.logAccessRequest(survivorId, 'erasure_executed');
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Failed to execute erasure request');
     }
   }
@@ -253,7 +253,7 @@ export class DataSubjectRightsManager {
       } else {
         return this.convertToCSV(dataExport);
       }
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Failed to export portable data');
     }
   }

@@ -351,8 +351,8 @@ export class USSDGateway {
       }
 
       return this.createSession(phoneNumber);
-    } catch (error) {
-      throw new Error(`Failed to get or create USSD session: ${getErrorMessage(error)}`);
+    } catch (_error) {
+      throw new Error(`Failed to get or create USSD session: ${getErrorMessage(_error)}`);
     }
   }
 
@@ -366,7 +366,7 @@ export class USSDGateway {
   /**
    * Format menu as USSD response
    */
-  static formatMenuResponse(menuConfig: USSDMenuConfig, sessionId?: string): string {
+  static formatMenuResponse(menuConfig: USSDMenuConfig): string {
     const lines = [menuConfig.title, menuConfig.description];
     
     menuConfig.items.forEach((item) => {
@@ -447,7 +447,7 @@ export class USSDGateway {
 
     return {
       menu: nextMenu,
-      response: this.formatMenuResponse(nextMenu, nextSession.sessionId),
+      response: this.formatMenuResponse(nextMenu),
       nextSession,
     };
   }
@@ -474,7 +474,7 @@ export class USSDGateway {
         });
 
       return `${item.label} request received. We will follow up shortly. Reply STOP to exit.`;
-    } catch (error) {
+    } catch (_error) {
       return `Error processing request. Please try again or reply STOP to exit.`;
     }
   }

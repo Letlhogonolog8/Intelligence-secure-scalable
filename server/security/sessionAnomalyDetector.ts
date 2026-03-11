@@ -204,7 +204,7 @@ export class SessionAnomalyDetector {
   /**
    * Helper: Check for unusual time pattern
    */
-  private isUnusualTimePattern(previousSessions: any[], newLoginTime: Date): boolean {
+  private isUnusualTimePattern(previousSessions: SessionFingerprint[], newLoginTime: Date): boolean {
     if (previousSessions.length < 5) return false;
 
     // Calculate average login hour

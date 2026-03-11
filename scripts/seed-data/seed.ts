@@ -663,7 +663,7 @@ async function clearTables() {
         if (error && !error.message.includes("no rows")) {
           console.warn(`  ⚠️ ${table}: ${error.message}`);
         }
-      } catch (tableError) {
+      } catch (_tableError) {
         // Table might not exist yet, which is fine
       }
     }

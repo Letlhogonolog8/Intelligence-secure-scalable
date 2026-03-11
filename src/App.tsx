@@ -1,4 +1,5 @@
 
+import React, { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,13 +13,15 @@ import { logError } from "@/lib/logger";
 import { GlobalLoadingIndicator } from "@/components/GlobalLoadingIndicator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { hasSupabase } from "@/lib/env";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import LandingPage from "./pages/LandingPage";
-import RoleSelection from "./pages/RoleSelection";
-import AuthenticationFlow from "./pages/AuthenticationFlow";
-import ProfileInitialization from "./pages/ProfileInitialization";
-import Admin from "./pages/Admin";
+
+const Index = lazy(() => import("./pages/Index"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const RoleSelection = lazy(() => import("./pages/RoleSelection"));
+const AuthenticationFlow = lazy(() => import("./pages/AuthenticationFlow"));
+const ProfileInitialization = lazy(() => import("./pages/ProfileInitialization"));
+const Admin = lazy(() => import("./pages/Admin"));
+const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,15 +64,18 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/auth" element={<RoleSelection />} />
-                <Route path="/auth/verify" element={<AuthenticationFlow />} />
-                <Route path="/auth/initialize" element={<ProfileInitialization />} />
-                <Route path="/app" element={<Index />} />
-                <Route path="/admin" element={<Admin />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <Suspense fallback={<div className="min-h-screen bg-background" />}>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/auth" element={<RoleSelection />} />
+                  <Route path="/auth/verify" element={<AuthenticationFlow />} />
+                  <Route path="/auth/initialize" element={<ProfileInitialization />} />
+                  <Route path="/app" element={<Index />} />
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/impact" element={<ImpactDashboard />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
             </BrowserRouter>
           </TooltipProvider>
           </OrganizationProvider>

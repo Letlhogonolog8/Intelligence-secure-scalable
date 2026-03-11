@@ -2,117 +2,96 @@ groups:
   - name: aegis_recording_rules
     interval: 30s
     rules:
-      # Request rate by endpoint
       - record: aegis:http:request_rate:5m
-        expr: rate(http_requests_total[5m])
+        expr: sum(rate(http_requests_total[5m]))
 
       - record: aegis:http:error_rate:5m
-        expr: rate(http_requests_total{status=~"5.."}[5m])
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m]))
 
       - record: aegis:http:success_rate:5m
-        expr: rate(http_requests_total{status=~"2.."}[5m])
+        expr: sum(rate(http_requests_total{status_code=~"2.."}[5m]))
 
-      # Request latency percentiles
       - record: aegis:http:latency:p50:5m
-        expr: histogram_quantile(0.5, rate(http_request_duration_ms_bucket[5m]))
+        expr: histogram_quantile(0.5, sum(rate(http_request_duration_ms_bucket[5m])) by (le))
 
       - record: aegis:http:latency:p95:5m
-        expr: histogram_quantile(0.95, rate(http_request_duration_ms_bucket[5m]))
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le))
 
       - record: aegis:http:latency:p99:5m
-        expr: histogram_quantile(0.99, rate(http_request_duration_ms_bucket[5m]))
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_ms_bucket[5m])) by (le))
 
-      # Database metrics
       - record: aegis:db:query_rate:5m
-        expr: rate(db_queries_total[5m])
+        expr: sum(rate(db_queries_total[5m]))
 
       - record: aegis:db:error_rate:5m
-        expr: rate(db_queries_total{status="failed"}[5m])
+        expr: sum(rate(db_queries_total{status="failed"}[5m]))
 
       - record: aegis:db:latency:p95:5m
-        expr: histogram_quantile(0.95, rate(db_query_duration_ms_bucket[5m]))
+        expr: histogram_quantile(0.95, sum(rate(db_query_duration_ms_bucket[5m])) by (le))
 
       - record: aegis:db:latency:p99:5m
-        expr: histogram_quantile(0.99, rate(db_query_duration_ms_bucket[5m]))
+        expr: histogram_quantile(0.99, sum(rate(db_query_duration_ms_bucket[5m])) by (le))
 
-      # Cache metrics
       - record: aegis:cache:hit_ratio:5m
-        expr: |
-          sum(rate(cache_hits[5m])) /
-          (sum(rate(cache_hits[5m])) + sum(rate(cache_misses[5m])))
+        expr: sum(rate(cache_hits_total[5m])) / clamp_min(sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m])), 0.001)
 
       - record: aegis:cache:miss_rate:5m
-        expr: rate(cache_misses[5m])
+        expr: sum(rate(cache_misses_total[5m]))
 
-      # Authentication metrics
       - record: aegis:auth:failure_rate:5m
-        expr: rate(authentication_failures_total[5m])
+        expr: sum(rate(authentication_failures_total[5m]))
 
       - record: aegis:auth:failure_ratio:5m
-        expr: |
-          rate(authentication_failures_total[5m]) /
-          (rate(http_requests_total{path=~"/api/auth.*"}[5m]) + 1e-12)
+        expr: sum(rate(authentication_failures_total[5m])) / clamp_min(sum(rate(http_requests_total{route=~"/api/auth.*"}[5m])), 0.001)
 
-      # MFA metrics
       - record: aegis:mfa:attempt_rate:5m
-        expr: rate(mfa_attempts_total[5m])
+        expr: sum(rate(mfa_attempts_total[5m]))
 
       - record: aegis:mfa:success_rate:5m
-        expr: rate(mfa_attempts_total{status="success"}[5m])
+        expr: sum(rate(mfa_attempts_total{status="success"}[5m]))
 
-      # Rate limiting metrics
       - record: aegis:ratelimit:violation_rate:5m
-        expr: rate(rate_limit_exceeded_total[5m])
+        expr: sum(rate(rate_limit_exceeded_total[5m]))
 
-      # Escalation metrics
       - record: aegis:escalation:rate:5m
-        expr: rate(escalations_total[5m])
+        expr: sum(rate(escalations_total[5m]))
 
       - record: aegis:escalation:failure_rate:5m
-        expr: rate(escalations_total{status="failed"}[5m])
+        expr: sum(rate(escalations_total{category=~"failed|error|delivery_failed|workflow_failed"}[5m]))
 
       - record: aegis:escalation:by_severity:5m
-        expr: rate(escalations_total[5m]) by (severity)
+        expr: sum(rate(escalations_total[5m])) by (severity)
 
-      # USSD metrics
       - record: aegis:ussd:active_sessions
-        expr: ussd_sessions_active
+        expr: sum(ussd_sessions_active)
 
-      - record: aegis:ussd:session_creation_rate:5m
-        expr: rate(ussd_sessions_total[5m])
-
-      # Webhook metrics
       - record: aegis:webhook:processing_rate:5m
-        expr: rate(webhook_processing_time_count[5m])
+        expr: sum(rate(webhook_processing_time_ms_count[5m]))
 
       - record: aegis:webhook:failure_rate:5m
-        expr: rate(webhook_failures_total[5m])
+        expr: sum(rate(webhook_failures_total[5m]))
 
       - record: aegis:webhook:latency:p95:5m
-        expr: histogram_quantile(0.95, rate(webhook_processing_time_bucket[5m]))
+        expr: histogram_quantile(0.95, sum(rate(webhook_processing_time_ms_bucket[5m])) by (le))
 
-      # Data validation metrics
       - record: aegis:validation:error_rate:5m
-        expr: rate(data_validation_errors_total[5m])
+        expr: sum(rate(data_validation_errors_total[5m]))
 
-      # Task queue metrics
       - record: aegis:task:queue_depth
-        expr: task_queue_size
+        expr: sum(task_queue_size)
 
       - record: aegis:task:processing_rate:5m
-        expr: rate(task_processing_time_count[5m])
+        expr: sum(rate(task_processing_time_ms_count[5m]))
 
       - record: aegis:task:processing_latency:p95:5m
-        expr: histogram_quantile(0.95, rate(task_processing_time_bucket[5m]))
+        expr: histogram_quantile(0.95, sum(rate(task_processing_time_ms_bucket[5m])) by (le))
 
-      # Audit logging metrics
       - record: aegis:audit:entry_rate:5m
-        expr: rate(audit_log_entries_total[5m])
+        expr: sum(rate(audit_log_entries_total[5m]))
 
       - record: aegis:audit:entry_rate:by_action:5m
-        expr: rate(audit_log_entries_total[5m]) by (action)
+        expr: sum(rate(audit_log_entries_total[5m])) by (action)
 
-      # System metrics by instance
       - record: aegis:system:cpu_usage:5m
         expr: rate(process_cpu_seconds_total[5m]) * 100
 
@@ -120,7 +99,7 @@ groups:
         expr: process_resident_memory_bytes
 
       - record: aegis:system:memory_percent:5m
-        expr: (process_resident_memory_bytes / 1024 / 1024 / 1024) * 100
+        expr: (process_resident_memory_bytes / 2147483648) * 100
 
       - record: aegis:system:disk_available_percent
-        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100
+        expr: min((node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100)

@@ -11,9 +11,14 @@ const PersonalDashboard: React.FC = () => {
   const displayName = profile?.full_name || profile?.fullName || profile?.name || "Survivor";
 
   return (
-    <div className="min-h-screen bg-[#0a1020] text-slate-50 px-6 py-8 [background:radial-gradient(1200px_circle_at_15%_0%,rgba(30,64,175,0.18),transparent_45%),radial-gradient(900px_circle_at_85%_10%,rgba(225,29,72,0.12),transparent_40%)]">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        <section className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl backdrop-blur-md">
+    <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/14 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-rose-600/12 blur-[140px] rounded-full" />
+        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
+      </div>
+      <div className="mx-auto flex max-w-5xl flex-col gap-8 relative z-10">
+        <section className="rounded-2xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400/90">Personal Space</p>
@@ -28,7 +33,7 @@ const PersonalDashboard: React.FC = () => {
         </section>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <Card className="border-white/10 bg-slate-900/40 shadow-xl backdrop-blur-sm">
+          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
             <div className="p-5">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Safety Plan</p>
               {isLoading ? (
@@ -45,7 +50,7 @@ const PersonalDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 shadow-xl backdrop-blur-sm">
+          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
             <div className="p-5">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Next Appointment</p>
               {isLoading ? (
@@ -55,14 +60,14 @@ const PersonalDashboard: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <p className="text-xl font-bold text-white">Tuesday 2:00 PM</p>
-                  <p className="text-sm text-slate-300 mt-2">Counselor Sarah</p>
+                  <p className="text-xl font-bold text-slate-500 italic">None Scheduled</p>
+                  <p className="text-sm text-slate-400 mt-2">Check back later</p>
                 </>
               )}
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/40 shadow-xl backdrop-blur-sm">
+          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
             <div className="p-5">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Documents</p>
               {isLoading ? (
@@ -72,7 +77,7 @@ const PersonalDashboard: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <p className="text-xl font-bold text-white">3 Files</p>
+                  <p className="text-xl font-bold text-white">0 Files</p>
                   <p className="text-sm text-slate-300 mt-2">Encrypted Vault</p>
                 </>
               )}
@@ -81,7 +86,7 @@ const PersonalDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card className="border-white/10 bg-slate-900/50 shadow-2xl backdrop-blur-md">
+          <Card className="border-white/15 bg-slate-950/60 shadow-2xl backdrop-blur-md">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -103,7 +108,7 @@ const PersonalDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-900/50 shadow-2xl backdrop-blur-md">
+          <Card className="border-white/15 bg-slate-950/60 shadow-2xl backdrop-blur-md">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>

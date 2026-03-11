@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import { createClient } from 'redis';
 import { Request } from 'express';
 
@@ -6,13 +7,12 @@ let redisClient: ReturnType<typeof createClient> | null = null;
 let redisConnected = false;
 
 const initializeRedis = async () => {
-  if (process.env.REDIS_HOST && process.env.NODE_ENV === 'production') {
+  if ((process.env.REDIS_URL || process.env.REDIS_HOST) && process.env.NODE_ENV === 'production') {
     try {
-      redisClient = createClient({
-        host: process.env.REDIS_HOST,
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
-      });
+      const redisUrl = process.env.REDIS_URL || (process.env.REDIS_PASSWORD
+        ? `redis://:${process.env.REDIS_PASSWORD}@${process.env.REDIS_HOST}:${process.env.REDIS_PORT || '6379'}`
+        : `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || '6379'}`);
+      redisClient = createClient({ url: redisUrl });
 
       redisClient.on('error', (err) => {
         console.error('❌ Redis client error:', err);
@@ -36,54 +36,60 @@ initializeRedis().catch(err => {
   console.error('Failed to initialize Redis:', err);
 });
 
-export const defaultLimiter = rateLimit({
+const createRedisStore = () => {
+  if (!redisClient) {
+    return undefined;
+  }
+
+  return new RedisStore({
+    sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+  });
+};
+
+const createLimiter = (options: Parameters<typeof rateLimit>[0]) => rateLimit({
+  ...options,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  store: createRedisStore(),
+});
+
+export const defaultLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: 'Too many requests from this IP, please try again later.',
   skip: (req: Request) => req.path === '/api/health',
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-export const authLimiter = rateLimit({
+export const authLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   max: 10,
   message: 'Too many login attempts, please try again later.',
   skipSuccessfulRequests: true,
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-export const apiLimiter = rateLimit({
+export const apiLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-export const strictLimiter = rateLimit({
+export const strictLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 50,
   message: 'Too many requests, please slow down.',
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-export const escalationLimiter = rateLimit({
+export const escalationLimiter = createLimiter({
   windowMs: 60 * 1000,
   max: 5,
   message: 'Too many escalation requests, please wait before creating another.',
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-export const mfaLimiter = rateLimit({
+export const mfaLimiter = createLimiter({
   windowMs: 5 * 60 * 1000,
   max: 5,
   message: 'Too many MFA attempts, please try again later.',
   skipSuccessfulRequests: true,
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 export const getRedisClient = () => redisClient;

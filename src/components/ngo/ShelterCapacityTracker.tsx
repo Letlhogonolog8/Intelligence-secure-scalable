@@ -1,15 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { 
   Building2, 
-  Users, 
   AlertTriangle, 
   Plus, 
   Minus,
-  RefreshCw,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';

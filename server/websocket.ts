@@ -1,14 +1,8 @@
-/**
- * AEGIS WebSocket Server
- * server/websocket.ts
- * 
- * Real-time communication layer for live updates, emergency escalations,
- * and case status notifications.
- */
-
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient, RedisClientType } from 'redis';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -20,6 +14,9 @@ export class WebSocketManager {
   private io: SocketIOServer;
   private supabase: SupabaseClient;
   private connectedUsers: Map<string, Set<string>> = new Map();
+  private adapterPubClient: RedisClientType | null = null;
+  private adapterSubClient: RedisClientType | null = null;
+  private adapterEnabled = false;
 
   constructor(httpServer: HTTPServer, supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -35,6 +32,41 @@ export class WebSocketManager {
 
     this.setupMiddleware();
     this.setupEventHandlers();
+  }
+
+  public async initializeScaling(): Promise<void> {
+    const redisUrl = this.resolveRedisUrl();
+
+    if (!redisUrl) {
+      console.warn('⚠️  Redis not configured for WebSocket scaling. Using local Socket.IO adapter.');
+      this.adapterEnabled = false;
+      return;
+    }
+
+    try {
+      this.adapterPubClient = createClient({ url: redisUrl });
+      this.adapterSubClient = this.adapterPubClient.duplicate();
+
+      this.adapterPubClient.on('error', (error) => {
+        this.adapterEnabled = false;
+        console.error('❌ WebSocket Redis pub client error:', error);
+      });
+
+      this.adapterSubClient.on('error', (error) => {
+        this.adapterEnabled = false;
+        console.error('❌ WebSocket Redis sub client error:', error);
+      });
+
+      await Promise.all([this.adapterPubClient.connect(), this.adapterSubClient.connect()]);
+      this.io.adapter(createAdapter(this.adapterPubClient, this.adapterSubClient));
+      this.adapterEnabled = true;
+
+      console.log('✅ WebSocket Redis adapter enabled for multi-instance delivery');
+    } catch (error) {
+      this.adapterEnabled = false;
+      console.warn('⚠️  Failed to initialize WebSocket Redis adapter. Falling back to local delivery.', error);
+      await this.closeAdapterClients();
+    }
   }
 
   private setupMiddleware(): void {
@@ -69,7 +101,7 @@ export class WebSocketManager {
         }
 
         next();
-      } catch (err) {
+      } catch (_err) {
         next(new Error('WebSocket authentication failed'));
       }
     });
@@ -80,6 +112,7 @@ export class WebSocketManager {
       console.log(`🔗 User connected: ${socket.userId} (Role: ${socket.userRole})`);
 
       this.trackUserConnection(socket.userId!, socket.id);
+      this.joinScopedRooms(socket);
 
       socket.on('subscribe:cases', (data: { caseIds: string[] }) => {
         this.subscribeToCases(socket, data.caseIds);
@@ -111,10 +144,7 @@ export class WebSocketManager {
     });
   }
 
-  /**
-   * Broadcast case update to subscribed clients
-   */
-  public broadcastCaseUpdate(caseId: string, update: any): void {
+  public broadcastCaseUpdate(caseId: string, update: Record<string, unknown>): void {
     this.io.to(`case:${caseId}`).emit('case:updated', {
       caseId,
       timestamp: new Date().toISOString(),
@@ -122,48 +152,37 @@ export class WebSocketManager {
     });
   }
 
-  /**
-   * Broadcast alert to specific roles
-   */
-  public broadcastAlert(alert: any, targetRoles: string[]): void {
-    this.io.emit('alert:new', alert, (socket: any) => {
-      return targetRoles.includes(socket.userRole);
+  public broadcastAlert(alert: Record<string, unknown>, targetRoles: string[]): void {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...alert,
+    };
+
+    this.emitToRoles('alert:new', payload, targetRoles, {
+      includeAlertRooms: true,
     });
   }
 
-  /**
-   * Send emergency escalation to police/admins
-   */
-  public broadcastEmergencyEscalation(escalation: any): void {
-    this.io.emit('emergency:escalation', {
+  public broadcastEmergencyEscalation(escalation: Record<string, unknown>): void {
+    this.emitToRoles('emergency:escalation', {
       timestamp: new Date().toISOString(),
       ...escalation,
-    }, (socket: any) => {
-      return ['police', 'admin'].includes(socket.userRole);
-    });
+    }, ['police', 'admin']);
   }
 
-  /**
-   * Notify counselor of new assignment
-   */
-  public notifyCounselorAssignment(counselorId: string, assignment: any): void {
+  public notifyCounselorAssignment(counselorId: string, assignment: Record<string, unknown>): void {
     this.io.to(`user:${counselorId}`).emit('assignment:new', {
       timestamp: new Date().toISOString(),
       ...assignment,
     });
   }
 
-  /**
-   * Update survivor on case status
-   */
-  public notifySurvivorCaseUpdate(survivorId: string, caseUpdate: any): void {
+  public notifySurvivorCaseUpdate(survivorId: string, caseUpdate: Record<string, unknown>): void {
     this.io.to(`user:${survivorId}`).emit('case:status', {
       timestamp: new Date().toISOString(),
       ...caseUpdate,
     });
   }
-
-  // Private helper methods
 
   private subscribeToCases(socket: AuthenticatedSocket, caseIds: string[]): void {
     caseIds.forEach((caseId) => {
@@ -173,8 +192,12 @@ export class WebSocketManager {
   }
 
   private subscribeToAlerts(socket: AuthenticatedSocket): void {
-    socket.join(`alerts:${socket.userRole}`);
-    socket.join(`alerts:${socket.organizationId}`);
+    if (socket.userRole) {
+      socket.join(`alerts:${socket.userRole}`);
+    }
+    if (socket.organizationId) {
+      socket.join(`alerts:${socket.organizationId}`);
+    }
     console.log(`🔔 User ${socket.userId} subscribed to alerts`);
   }
 
@@ -250,6 +273,39 @@ export class WebSocketManager {
     this.connectedUsers.get(userId)!.add(socketId);
   }
 
+  private joinScopedRooms(socket: AuthenticatedSocket): void {
+    if (socket.userId) {
+      socket.join(`user:${socket.userId}`);
+    }
+
+    if (socket.userRole) {
+      socket.join(`role:${socket.userRole}`);
+      socket.join(`alerts:${socket.userRole}`);
+    }
+
+    if (socket.organizationId) {
+      socket.join(`org:${socket.organizationId}`);
+      socket.join(`alerts:${socket.organizationId}`);
+    }
+  }
+
+  private emitToRoles(
+    event: string,
+    payload: unknown,
+    targetRoles: string[],
+    options?: { includeAlertRooms?: boolean }
+  ): void {
+    const uniqueRoles = [...new Set(targetRoles.filter(Boolean))];
+
+    uniqueRoles.forEach((role) => {
+      this.io.to(`role:${role}`).emit(event, payload);
+
+      if (options?.includeAlertRooms) {
+        this.io.to(`alerts:${role}`).emit(event, payload);
+      }
+    });
+  }
+
   private handleDisconnect(socket: AuthenticatedSocket): void {
     if (socket.userId) {
       const userSockets = this.connectedUsers.get(socket.userId);
@@ -263,12 +319,69 @@ export class WebSocketManager {
     }
   }
 
+  private resolveRedisUrl(): string | null {
+    if (process.env.REDIS_URL) {
+      return process.env.REDIS_URL;
+    }
+
+    if (!process.env.REDIS_HOST) {
+      return null;
+    }
+
+    const protocol = process.env.REDIS_TLS === 'true' ? 'rediss' : 'redis';
+    const credentials = process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : '';
+    const port = process.env.REDIS_PORT || '6379';
+
+    return `${protocol}://${credentials}${process.env.REDIS_HOST}:${port}`;
+  }
+
+  private async closeAdapterClients(): Promise<void> {
+    const clients = [this.adapterPubClient, this.adapterSubClient].filter(
+      (client): client is RedisClientType => Boolean(client)
+    );
+
+    await Promise.allSettled(
+      clients.map(async (client) => {
+        if (client.isOpen) {
+          await client.quit();
+        }
+      })
+    );
+
+    this.adapterPubClient = null;
+    this.adapterSubClient = null;
+    this.adapterEnabled = false;
+  }
+
   public getConnectedUserCount(): number {
     return this.connectedUsers.size;
   }
 
+  public getHealthStatus(): {
+    adapter: 'redis' | 'local';
+    adapterReady: boolean;
+    redisConfigured: boolean;
+    socketCount: number;
+    userCount: number;
+  } {
+    return {
+      adapter: this.adapterEnabled ? 'redis' : 'local',
+      adapterReady: this.adapterEnabled,
+      redisConfigured: Boolean(this.resolveRedisUrl()),
+      socketCount: this.io.engine.clientsCount,
+      userCount: this.connectedUsers.size,
+    };
+  }
+
   public getServer(): SocketIOServer {
     return this.io;
+  }
+
+  public async shutdown(): Promise<void> {
+    await this.closeAdapterClients();
+    await new Promise<void>((resolve) => {
+      this.io.close(() => resolve());
+    });
   }
 }
 

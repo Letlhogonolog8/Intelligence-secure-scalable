@@ -6,6 +6,11 @@ const channelHandlers: Array<() => void> = []
 
 vi.mock("@/lib/env", () => ({
   hasSupabase: true,
+  env: {
+    VITE_LOG_SAMPLE_RATE: 1,
+    VITE_SUPABASE_URL: "http://localhost",
+    VITE_SUPABASE_ANON_KEY: "test-key"
+  }
 }))
 
 vi.mock("@/lib/supabase", () => {

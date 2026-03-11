@@ -15,6 +15,16 @@ import { EscalationWorkflow } from '../workflows/escalationWorkflow';
 import { AuditLogService } from '../security/auditLog';
 import { WebSocketManager } from '../websocket';
 
+type AuthenticatedRequest = Request & {
+  user?: {
+    id: string;
+    role?: string;
+    profile?: {
+      role?: string;
+    };
+  };
+};
+
 export function createEscalationRoutes(
   supabase: SupabaseClient,
   escalationWorkflow: EscalationWorkflow,
@@ -25,7 +35,7 @@ export function createEscalationRoutes(
 
   // Middleware: Ensure user is authenticated
   const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as any).user;
+    const user = (req as AuthenticatedRequest).user;
     if (!user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -43,7 +53,7 @@ export function createEscalationRoutes(
   router.post('/trigger', requireAuth, async (req: Request, res: Response) => {
     try {
       const { caseId, reason, lat, lng, survivorName, survivorPhone, type } = req.body;
-      const userId = (req as any).user.id;
+      const userId = (req as AuthenticatedRequest).user!.id;
 
       if (!caseId) {
         return res.status(400).json({ error: 'Missing caseId' });
@@ -91,7 +101,7 @@ export function createEscalationRoutes(
         escalationId: result.escalationId,
         riskLevel: result.riskAssessment.riskLevel,
         riskScore: result.riskAssessment.riskScore,
-        primaryAssignment: result.assignments.primary,
+        primaryAssignment: result.assignments?.primary || null,
         completionTime: result.completionTime,
       });
     } catch (error) {
@@ -146,7 +156,7 @@ export function createEscalationRoutes(
   router.post('/:escalationId/acknowledge', requireAuth, async (req: Request, res: Response) => {
     try {
       const { escalationId } = req.params;
-      const userId = (req as any).user.id;
+      const userId = (req as AuthenticatedRequest).user!.id;
 
       const success = await escalationWorkflow.acknowledgeEscalation(escalationId, userId);
 
@@ -182,7 +192,7 @@ export function createEscalationRoutes(
     try {
       const { escalationId } = req.params;
       const { resolution } = req.body;
-      const userId = (req as any).user.id;
+      const userId = (req as AuthenticatedRequest).user!.id;
 
       if (!resolution) {
         return res.status(400).json({ error: 'Resolution reason required' });
@@ -246,11 +256,12 @@ export function createEscalationRoutes(
    */
   router.get('/', requireAuth, async (req: Request, res: Response) => {
     try {
-      const profile = (req as any).user?.profile;
+      const user = (req as AuthenticatedRequest).user;
       const { status = 'pending', limit = 50 } = req.query;
+      const userRole = user?.role ?? user?.profile?.role;
 
       // Only admins and police can see all escalations
-      if (!['admin', 'police'].includes(profile?.role)) {
+      if (!userRole || !['admin', 'police'].includes(userRole)) {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
 
@@ -315,9 +326,10 @@ export function createEscalationRoutes(
         caseData: {
           description,
           region: location,
-          location_lat: lat,
-          location_lng: lng,
-          survivor_phone: survivorPhone,
+          lat,
+          lng,
+          survivorPhone,
+          location,
         },
         triggeredBy: 'HOTLINE_SYSTEM',
         reason: 'Emergency hotline call',
@@ -337,8 +349,8 @@ export function createEscalationRoutes(
         message: 'Emergency case created and escalated',
         caseId,
         escalationId: result.escalationId,
-        primaryResource: result.assignments.primary.resourceName,
-        estimatedResponseMinutes: result.assignments.primary.estimatedResponseMinutes,
+        primaryResource: result.assignments?.primary.resourceName || null,
+        estimatedResponseMinutes: result.assignments?.primary.estimatedResponseMinutes || null,
       });
     } catch (error) {
       console.error('Hotline escalation failed:', error);

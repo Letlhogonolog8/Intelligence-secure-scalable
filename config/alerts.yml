@@ -2,7 +2,6 @@ groups:
   - name: aegis_critical_alerts
     interval: 30s
     rules:
-      # API Availability
       - alert: APIDown
         expr: up{job="aegis-api"} == 0
         for: 1m
@@ -15,28 +14,27 @@ groups:
           action: "Check API pod status, logs, and restart if necessary"
 
       - alert: APIHighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.001) > 0.05
         for: 5m
         labels:
           severity: critical
           component: api
         annotations:
           summary: "High error rate detected on API"
-          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+          description: "5xx responses exceed 5% of total API traffic"
           action: "Check application logs for errors"
 
       - alert: APIHighLatency
-        expr: histogram_quantile(0.95, http_request_duration_ms) > 1000
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le)) > 1000
         for: 5m
         labels:
           severity: critical
           component: api
         annotations:
           summary: "API latency is critically high"
-          description: "P95 latency is {{ $value }}ms (threshold: 1000ms)"
+          description: "P95 latency is above 1000ms"
           action: "Check database queries, external API calls, and optimize bottlenecks"
 
-      # Database Health
       - alert: DatabaseDown
         expr: up{job="postgres"} == 0
         for: 1m
@@ -44,79 +42,22 @@ groups:
           severity: critical
           component: database
         annotations:
-          summary: "PostgreSQL database is down"
-          description: "Database has been unreachable for more than 1 minute"
-          action: "SSH to database server and check postgres service"
-
-      - alert: DatabaseConnectionPoolExhausted
-        expr: database_connections_used / database_connections_limit > 0.9
-        for: 5m
-        labels:
-          severity: critical
-          component: database
-        annotations:
-          summary: "Database connection pool exhausted"
-          description: "Using {{ $value | humanizePercentage }} of available connections"
-          action: "Identify long-running queries and close idle connections"
+          summary: "PostgreSQL exporter is down"
+          description: "PostgreSQL metrics have been unreachable for more than 1 minute"
+          action: "Check PostgreSQL status and postgres-exporter connectivity"
 
       - alert: DatabaseSlowQueries
-        expr: histogram_quantile(0.99, db_query_duration_ms) > 5000
+        expr: histogram_quantile(0.99, sum(rate(db_query_duration_ms_bucket[5m])) by (le)) > 5000
         for: 5m
         labels:
           severity: critical
           component: database
         annotations:
           summary: "Database queries are taking too long"
-          description: "P99 query duration is {{ $value }}ms (threshold: 5000ms)"
+          description: "P99 query duration is above 5000ms"
           action: "Analyze query execution plans and add indexes if needed"
 
-      # Cache/Redis
-      - alert: RedisDown
-        expr: up{job="redis"} == 0
-        for: 1m
-        labels:
-          severity: warning
-          component: cache
-        annotations:
-          summary: "Redis cache is down"
-          description: "Redis has been unreachable for more than 1 minute"
-          action: "Check Redis service status, check memory usage"
-
-      - alert: RedisMigrationHighMemory
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
-        for: 5m
-        labels:
-          severity: warning
-          component: cache
-        annotations:
-          summary: "Redis memory usage is critical"
-          description: "Using {{ $value | humanizePercentage }} of available memory"
-          action: "Increase Redis max memory or clear old cache entries"
-
-      # Security Alerts
-      - alert: HighAuthenticationFailureRate
-        expr: rate(authentication_failures_total[5m]) > 0.1
-        for: 5m
-        labels:
-          severity: warning
-          component: security
-        annotations:
-          summary: "High authentication failure rate detected"
-          description: "Failure rate: {{ $value | humanizePercentage }} (threshold: 10%)"
-          action: "Check for brute force attempts, review user credentials"
-
-      - alert: HighRateLimitViolations
-        expr: rate(rate_limit_exceeded_total[5m]) > 0.01
-        for: 5m
-        labels:
-          severity: warning
-          component: security
-        annotations:
-          summary: "Rate limit being exceeded frequently"
-          description: "Rate limit violation rate: {{ $value }}/sec"
-          action: "Check for abusive clients, review rate limit thresholds"
-
-      - alert: EncryptionError
+      - alert: EncryptionErrorsDetected
         expr: increase(encryption_errors_total[5m]) > 0
         for: 1m
         labels:
@@ -124,76 +65,132 @@ groups:
           component: security
         annotations:
           summary: "Encryption errors detected"
-          description: "{{ $value }} encryption errors in last 5 minutes"
-          action: "Check encryption service, verify keys are correct"
+          description: "Encryption errors occurred in the last 5 minutes"
+          action: "Check encryption service and verify keys are correct"
+
+      - alert: AuditLogInsertionFailure
+        expr: increase(audit_log_entries_total{status="failed"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: audit
+        annotations:
+          summary: "Audit log insertion failure"
+          description: "Audit log write failures were recorded in the last 5 minutes"
+          action: "Check database connectivity and audit log table status"
+
+  - name: aegis_warning_alerts
+    interval: 60s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis exporter is down"
+          description: "Redis metrics have been unreachable for more than 1 minute"
+          action: "Check Redis service status and redis-exporter connectivity"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis memory usage is critical"
+          description: "Redis is using more than 90% of configured max memory"
+          action: "Increase Redis max memory or clear old cache entries"
+
+      - alert: HighAuthenticationFailureRate
+        expr: sum(rate(authentication_failures_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High authentication failure rate detected"
+          description: "Authentication failures exceed 0.1 events per second"
+          action: "Check for brute force attempts and review user credentials"
+
+      - alert: HighRateLimitViolations
+        expr: sum(rate(rate_limit_exceeded_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "Rate limit being exceeded frequently"
+          description: "Rate limit violations exceed 0.01 events per second"
+          action: "Check for abusive clients and review rate limit thresholds"
 
       - alert: DataValidationErrors
-        expr: rate(data_validation_errors_total[5m]) > 0.01
+        expr: sum(rate(data_validation_errors_total[5m])) > 0.01
         for: 5m
         labels:
           severity: warning
           component: validation
         annotations:
           summary: "High rate of data validation errors"
-          description: "{{ $value | humanizePercentage }} requests have validation errors"
-          action: "Review request validation rules, check client implementations"
+          description: "Validation errors exceed 0.01 events per second"
+          action: "Review request validation rules and check client implementations"
 
-      # Business Logic
       - alert: EscalationFailureRate
-        expr: rate(escalations_total{status="failed"}[5m]) > 0.1
+        expr: sum(rate(escalations_total{category=~"failed|error|delivery_failed|workflow_failed"}[5m])) / clamp_min(sum(rate(escalations_total[5m])), 0.001) > 0.1
         for: 5m
         labels:
           severity: warning
           component: escalation
         annotations:
           summary: "High escalation failure rate"
-          description: "{{ $value | humanizePercentage }} escalations are failing"
-          action: "Check escalation service, verify database permissions"
+          description: "Failure-related escalation categories exceed 10% of escalation traffic"
+          action: "Check escalation workflow, notification delivery, and database permissions"
 
       - alert: WebhookFailures
-        expr: rate(webhook_failures_total[5m]) > 0.05
+        expr: sum(rate(webhook_failures_total[5m])) > 0.05
         for: 5m
         labels:
           severity: warning
           component: webhook
         annotations:
           summary: "Webhook failures detected"
-          description: "Failure rate: {{ $value | humanizePercentage }}"
-          action: "Check webhook provider status, verify credentials"
+          description: "Webhook failures exceed 0.05 events per second"
+          action: "Check webhook provider status and verify credentials"
 
       - alert: USSDHighSessionCount
-        expr: ussd_sessions_active > 1000
+        expr: sum(ussd_sessions_active) > 1000
         for: 5m
         labels:
           severity: warning
           component: ussd
         annotations:
           summary: "High USSD session count"
-          description: "{{ $value }} active USSD sessions"
-          action: "Monitor USSD capacity, prepare for scaling"
+          description: "More than 1000 active USSD sessions are open"
+          action: "Monitor USSD capacity and prepare for scaling"
 
-      # Infrastructure
       - alert: HighDiskUsage
-        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.1
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.1
         for: 5m
         labels:
           severity: warning
           component: infrastructure
         annotations:
           summary: "Disk space running out"
-          description: "Only {{ $value | humanizePercentage }} disk space available"
-          action: "Clean up old logs/data, expand disk"
+          description: "Less than 10% disk space is available on a monitored filesystem"
+          action: "Clean up old logs/data or expand disk"
 
       - alert: HighMemoryUsage
-        expr: process_resident_memory_bytes / 1024 / 1024 / 1024 > 2
+        expr: process_resident_memory_bytes > 2147483648
         for: 5m
         labels:
           severity: warning
           component: infrastructure
         annotations:
           summary: "High memory usage detected"
-          description: "Process using {{ $value }}GB memory"
-          action: "Check for memory leaks, restart service if needed"
+          description: "Process memory usage is above 2GiB"
+          action: "Check for memory leaks and restart the service if needed"
 
       - alert: HighCPUUsage
         expr: rate(process_cpu_seconds_total[5m]) > 0.8
@@ -203,20 +200,8 @@ groups:
           component: infrastructure
         annotations:
           summary: "High CPU usage detected"
-          description: "CPU usage is {{ $value | humanizePercentage }}"
-          action: "Check for expensive operations, optimize code"
-
-      # Audit & Compliance
-      - alert: AuditLogInsertionFailure
-        expr: increase(audit_log_entries_total{status="failed"}[5m]) > 0
-        for: 1m
-        labels:
-          severity: critical
-          component: audit
-        annotations:
-          summary: "Audit log insertion failure"
-          description: "Unable to insert audit logs"
-          action: "Check database connectivity, audit log table status"
+          description: "Process CPU usage is above 0.8 CPU-seconds per second"
+          action: "Check for expensive operations and optimize code"
 
       - alert: MFAServiceDown
         expr: increase(mfa_attempts_total{status="failed"}[5m]) > 10
@@ -226,32 +211,29 @@ groups:
           component: mfa
         annotations:
           summary: "MFA service experiencing issues"
-          description: "{{ $value }} MFA attempts failed"
-          action: "Check MFA service health, verify credentials"
+          description: "More than 10 MFA attempts failed in the last 5 minutes"
+          action: "Check MFA service health and verify credentials"
 
-  - name: aegis_warning_alerts
-    interval: 60s
-    rules:
       - alert: SlowTaskProcessing
-        expr: histogram_quantile(0.95, task_processing_time_ms) > 10000
+        expr: histogram_quantile(0.95, sum(rate(task_processing_time_ms_bucket[5m])) by (le)) > 10000
         for: 10m
         labels:
           severity: warning
           component: tasks
         annotations:
           summary: "Task processing is slow"
-          description: "P95 task processing time is {{ $value }}ms"
-          action: "Review task queue, optimize processing logic"
+          description: "P95 task processing time is above 10000ms"
+          action: "Review task queue and optimize processing logic"
 
       - alert: LargeTaskQueue
-        expr: task_queue_size > 1000
+        expr: sum(task_queue_size) > 1000
         for: 10m
         labels:
           severity: warning
           component: tasks
         annotations:
           summary: "Task queue is growing"
-          description: "Queue has {{ $value }} pending tasks"
+          description: "More than 1000 tasks are pending across queues"
           action: "Scale up task workers or optimize task processing"
 
       - alert: SessionMisalignment
@@ -262,25 +244,14 @@ groups:
           component: sessions
         annotations:
           summary: "Session management issues"
-          description: "{{ $value }} session not found errors"
-          action: "Check session store connectivity, investigate expiration issues"
+          description: "Session lookup failures exceeded 5 in the last 5 minutes"
+          action: "Check session store connectivity and investigate expiration issues"
 
   - name: aegis_info_alerts
     interval: 5m
     rules:
-      - alert: DailyBackupStatus
-        expr: time() - backup_timestamp_seconds > 86400
-        for: 1m
-        labels:
-          severity: info
-          component: backup
-        annotations:
-          summary: "Daily backup may have failed"
-          description: "Last backup was {{ humanizeDuration $value }} ago"
-          action: "Check backup service logs"
-
       - alert: WeeklyMaintenanceWindow
-        expr: day_of_week == 0 AND hour >= 2 AND hour < 4
+        expr: day_of_week(vector(time())) == 0 and hour(vector(time())) >= 2 and hour(vector(time())) < 4
         for: 1m
         labels:
           severity: info

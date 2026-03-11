@@ -10,6 +10,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const isInvalidRefreshTokenError = (error: unknown) => {
+    if (!error) {
+      return false
+    }
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String((error as { message?: unknown }).message ?? "")
+        : String(error)
+    return /invalid refresh token|refresh token not found/i.test(message)
+  }
+
   useEffect(() => {
     if (!hasSupabase) {
       setLoading(false)
@@ -20,8 +32,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.getSession()
       if (error) {
         logError(error, { source: "auth.getSession" })
+        if (isInvalidRefreshTokenError(error)) {
+          await supabase.auth.signOut()
+        }
       }
       if (!mounted) {
+        return
+      }
+      if (error && isInvalidRefreshTokenError(error)) {
+        setSession(null)
+        setUser(null)
+        setLoading(false)
         return
       }
       setSession(data.session ?? null)
@@ -48,7 +69,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      logError(error, { source: "auth.signInWithPassword" })
+      const message = error.message.toLowerCase()
+      const isExpectedCredentialError = message.includes("invalid login credentials")
+      if (!isExpectedCredentialError) {
+        logError(error, { source: "auth.signInWithPassword" })
+      }
       return { error, session: null, user: null }
     }
     return { error: null, session: data.session ?? null, user: data.user ?? null }

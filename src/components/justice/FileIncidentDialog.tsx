@@ -33,7 +33,7 @@ const FileIncidentDialog: React.FC<FileIncidentDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { data: regions = [], isLoading: regionsLoading } = useRegions();
+  const { data: regions = [] } = useRegions();
   const [formData, setFormData] = useState({
     region_id: "",
     incident_type: "",

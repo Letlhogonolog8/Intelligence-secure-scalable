@@ -80,6 +80,11 @@ const PoliceDashboard: React.FC = () => {
   const priorityQueue = useMemo(() => justiceCases.slice(0, 4), [justiceCases]);
   const pendingAlerts = useMemo(() => alertsFeed.filter(a => a.status === "pending").slice(0, 3), [alertsFeed]);
 
+  const recentCase = priorityQueue.length > 0 ? priorityQueue[0] : null;
+  const displayCaseId = recentCase ? `CAS-${recentCase.id.substring(0, 5).toUpperCase()}` : "--";
+  const sapsRef = recentCase ? `SAPS-WC-${new Date().getFullYear()}-${recentCase.id.substring(0, 5).toUpperCase()}` : "--";
+  const npaDocket = recentCase ? `NPA-GBV-${new Date().getFullYear().toString().substring(2)}-${recentCase.id.substring(5, 9).toUpperCase() || 'XXXX'}` : "--";
+
   const trendSignal = useMemo(() => {
     if (incidentTimeSeries.length === 0) {
       return { latest: 0, delta: 0, direction: "stable" as "up" | "down" | "stable" };
@@ -125,9 +130,14 @@ const PoliceDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a1020] text-slate-100 px-6 py-8 [background:radial-gradient(1200px_circle_at_20%_0%,rgba(225,29,72,0.2),transparent_45%),radial-gradient(900px_circle_at_85%_10%,rgba(30,64,175,0.2),transparent_40%)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8">
-        <section className="rounded-2xl border border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)] p-6 shadow-rose-500/10">
+    <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-rose-600/12 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-blue-600/14 blur-[140px] rounded-full" />
+        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
+      </div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 relative z-10">
+        <section className="rounded-2xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Response Command</p>
@@ -142,7 +152,7 @@ const PoliceDashboard: React.FC = () => {
         </section>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-rose-900/50 bg-rose-950/40">
+          <Card className="border-rose-500/30 bg-slate-950/70 shadow-lg shadow-rose-500/10">
             <div className="p-5">
               <p className="text-xs uppercase tracking-wide text-rose-200">Urgent 0-24h</p>
               {isLoadingData ? (
@@ -156,7 +166,7 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)] backdrop-blur">
             <div className="p-5">
               <p className="text-xs uppercase tracking-wide text-slate-400">High Priority</p>
               {isLoadingData ? (
@@ -170,7 +180,7 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)] backdrop-blur">
             <div className="p-5">
               <p className="text-xs uppercase tracking-wide text-slate-400">Active Cases</p>
               {isLoadingData ? (
@@ -184,7 +194,7 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/70 shadow-[0_18px_45px_rgba(2,6,23,0.55)] backdrop-blur">
             <div className="p-5">
               <p className="text-xs uppercase tracking-wide text-slate-400">Officers Available</p>
               {isLoadingData ? (
@@ -199,7 +209,7 @@ const PoliceDashboard: React.FC = () => {
           </Card>
         </div>
 
-        <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+        <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
           <div className="p-6 space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Case Status Lookup</h2>
@@ -222,7 +232,7 @@ const PoliceDashboard: React.FC = () => {
               </div>
             )}
             {caseLookupResult && (
-              <div className="rounded-lg border border-slate-800/60 bg-slate-950/40 p-4 text-sm text-slate-200">
+              <div className="rounded-lg border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-200">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <span className="text-xs uppercase tracking-[0.3em] text-slate-500">Status</span>
                   <span className="text-sm text-emerald-300">{caseLookupResult.status}</span>
@@ -238,21 +248,47 @@ const PoliceDashboard: React.FC = () => {
           </div>
         </Card>
 
+        <Card className="border-indigo-500/25 bg-indigo-500/5">
+          <div className="p-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">SAPS / NPA Case Number Bridge</h2>
+                <p className="text-sm text-slate-300">Cross-reference AEGIS IDs with official justice references for faster handoff.</p>
+              </div>
+              <span className="text-[10px] uppercase tracking-widest text-indigo-300 border border-indigo-500/25 bg-indigo-500/10 px-2 py-1 rounded-full">Integration Preview</span>
+            </div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-[10px] uppercase text-slate-500">AEGIS Case</p>
+                <p className="font-semibold text-white mt-1">{displayCaseId}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-[10px] uppercase text-slate-500">SAPS Reference</p>
+                <p className="font-semibold text-cyan-200 mt-1">{sapsRef}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-[10px] uppercase text-slate-500">NPA Docket</p>
+                <p className="font-semibold text-amber-200 mt-1">{npaDocket}</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
             <div className="p-6">
               <h2 className="text-lg font-semibold">AI Dispatch Intelligence</h2>
               <p className="text-sm text-slate-400">Decision support for field operations.</p>
               <div className="mt-5 space-y-3 text-sm text-slate-300">
-                <div className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-3">
                   <span>Response readiness</span>
                   <span className="font-semibold text-emerald-300">{responseScore}%</span>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-3">
                   <span>Risk trend</span>
                   <span className="text-slate-200">{trendSignal.direction === "up" ? "Rising" : trendSignal.direction === "down" ? "Declining" : "Stable"}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-3">
                   <span>Latest signal</span>
                   <span className="text-slate-200">{trendSignal.latest}</span>
                 </div>
@@ -260,7 +296,7 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Realtime Alerts</h2>
               <p className="text-sm text-slate-400">Automated dispatch and threat advisories.</p>
@@ -276,7 +312,7 @@ const PoliceDashboard: React.FC = () => {
                       <p className="text-sm text-slate-400">No priority alerts in queue.</p>
                     ) : (
                       pendingAlerts.map((alert) => (
-                        <div key={alert.id} className="flex flex-col gap-2 rounded-lg border border-slate-800/60 bg-slate-950/40 p-3 text-sm">
+                        <div key={alert.id} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm">
                           <div className="flex items-start justify-between">
                             <span className="text-slate-200">{alert.message}</span>
                             <span className="text-xs text-slate-500">{alert.time}</span>
@@ -293,16 +329,16 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Security & Session</h2>
               <p className="text-sm text-slate-400">Credential enforcement and session control.</p>
               <div className="mt-5 space-y-3 text-sm text-slate-300">
-                <div className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-3">
                   <span>Session expiry</span>
                   <span className="text-slate-200">{sessionExpiry}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-3">
                   <span>Jurisdiction scope</span>
                   <span className="text-slate-200">{permissions.jurisdictionScoped ? "Scoped" : "Standard"}</span>
                 </div>
@@ -312,7 +348,7 @@ const PoliceDashboard: React.FC = () => {
           </Card>
         </div>
 
-        <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+        <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
           <div className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -322,7 +358,7 @@ const PoliceDashboard: React.FC = () => {
               <Button size="sm" variant="outline" onClick={() => setActiveModule("justice")} disabled={!permissions.canAccessAnalytics}>View Analytics</Button>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="rounded-xl border border-slate-800/60 bg-slate-950/40 p-4">
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
                 <p className="text-xs uppercase text-slate-500">Cases Filed</p>
                 {isLoadingData ? (
                   <Skeleton className="mt-2 h-6 w-16 bg-slate-800/60" />
@@ -330,7 +366,7 @@ const PoliceDashboard: React.FC = () => {
                   <p className="text-2xl font-semibold mt-2">{justiceCases.length}</p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 bg-slate-950/40 p-4">
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
                 <p className="text-xs uppercase text-slate-500">Investigation</p>
                 {isLoadingData ? (
                   <Skeleton className="mt-2 h-6 w-16 bg-slate-800/60" />
@@ -338,7 +374,7 @@ const PoliceDashboard: React.FC = () => {
                   <p className="text-2xl font-semibold mt-2">{justiceCases.filter((caseItem) => caseItem.stage === "investigation").length}</p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 bg-slate-950/40 p-4">
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
                 <p className="text-xs uppercase text-slate-500">Prosecution Ready</p>
                 {isLoadingData ? (
                   <Skeleton className="mt-2 h-6 w-16 bg-slate-800/60" />
@@ -346,7 +382,7 @@ const PoliceDashboard: React.FC = () => {
                   <p className="text-2xl font-semibold mt-2">{justiceCases.filter((caseItem) => caseItem.stage === "prosecution").length}</p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 bg-slate-950/40 p-4">
+              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
                 <p className="text-xs uppercase text-slate-500">Resolved</p>
                 {isLoadingData ? (
                   <Skeleton className="mt-2 h-6 w-16 bg-slate-800/60" />
@@ -359,7 +395,7 @@ const PoliceDashboard: React.FC = () => {
         </Card>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)] lg:col-span-2">
+          <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)] lg:col-span-2">
             <div className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -381,7 +417,7 @@ const PoliceDashboard: React.FC = () => {
                       <p className="text-sm text-slate-400">No urgent dispatch items right now.</p>
                     ) : (
                       priorityQueue.map((caseItem) => (
-                        <div key={caseItem.id} className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-950/40 p-4">
+                        <div key={caseItem.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/60 p-4">
                           <div>
                             <p className="text-sm text-slate-200">Case #{caseItem.caseNumber}</p>
                             <p className="text-xs text-slate-500 mt-1">{caseItem.stage} · {caseItem.priority} priority</p>
@@ -406,7 +442,7 @@ const PoliceDashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
+          <Card className="border-white/15 bg-slate-950/75 shadow-[0_20px_50px_rgba(2,6,23,0.55)]">
             <div className="p-6">
               <h2 className="text-lg font-semibold">Referrals to NGO</h2>
               <p className="text-sm text-slate-400 mt-1">Monthly handoffs to partner organizations.</p>

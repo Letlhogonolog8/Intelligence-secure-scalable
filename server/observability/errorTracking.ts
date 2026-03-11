@@ -11,7 +11,18 @@
  * - Automated incident response
  */
 
+import { NextFunction, Request, Response } from 'express';
 import * as Sentry from "@sentry/node";
+
+type ErrorContext = Record<string, unknown>;
+
+type ErrorStats = {
+  errors_24h: number;
+  errors_7d: number;
+  errors_30d: number;
+  critical_issues: number;
+  top_errors: string[];
+};
 
 export class ErrorTrackingService {
   private isInitialized = false;
@@ -52,7 +63,7 @@ export class ErrorTrackingService {
   /**
    * Capture exception with context
    */
-  captureException(error: Error, context?: Record<string, any>): void {
+  captureException(error: Error, context?: ErrorContext): void {
     if (!this.isInitialized) return;
 
     Sentry.captureException(error, {
@@ -90,7 +101,7 @@ export class ErrorTrackingService {
     message: string,
     category: string,
     level: 'fatal' | 'error' | 'warning' | 'info' | 'debug' = 'info',
-    data?: Record<string, any>
+    data?: ErrorContext
   ): void {
     if (!this.isInitialized) return;
 
@@ -106,7 +117,7 @@ export class ErrorTrackingService {
   /**
    * Start performance transaction
    */
-  startTransaction(name: string, op: string): any {
+  startTransaction(name: string, op: string): null {
     if (!this.isInitialized) return null;
     // startTransaction is not available in newer Sentry versions
     // Use breadcrumbs instead for tracking
@@ -162,7 +173,7 @@ export class ErrorTrackingService {
     incidentType: string,
     severity: 'low' | 'medium' | 'high' | 'critical',
     userId?: string,
-    details?: Record<string, any>
+    details?: ErrorContext
   ): void {
     if (!this.isInitialized) return;
 
@@ -183,7 +194,7 @@ export class ErrorTrackingService {
    * Setup error handler middleware
    */
   errorHandler() {
-    return (err: Error, req: any, res: any, next: any) => {
+    return (err: Error, req: Request, res: Response, _next: NextFunction) => {
       this.captureException(err, {
         method: req.method,
         path: req.path,
@@ -201,7 +212,7 @@ export class ErrorTrackingService {
   /**
    * Get error statistics (from Sentry API)
    */
-  async getErrorStats(): Promise<Record<string, any>> {
+  async getErrorStats(): Promise<ErrorStats> {
     // In production, query Sentry REST API
     return {
       errors_24h: 0,
@@ -239,8 +250,8 @@ export class ErrorTrackingService {
  */
 export function setupGlobalErrorHandlers(errorTracking: ErrorTrackingService): void {
   // Unhandled promise rejections
-  process.on('unhandledRejection', (reason: Error, promise: Promise<any>) => {
-    errorTracking.captureException(reason, {
+  process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+    errorTracking.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
       type: 'unhandledRejection',
       promise: String(promise),
     });

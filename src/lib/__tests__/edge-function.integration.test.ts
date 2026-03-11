@@ -17,12 +17,12 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 const shouldRun = supabaseUrl && supabaseKey;
 
 describe.skipIf(!shouldRun)("Edge Function: aegis-survivor-chat", () => {
-  const supabase = createClient(supabaseUrl || "", supabaseKey || "");
+  const _supabase = createClient(supabaseUrl || "", supabaseKey || "");
 
   describe("Chat API Response Structure", () => {
     it("should return properly structured response", async () => {
       // Test basic request structure
-      const testMessage = { message: "I need help", conversation_history: [], session_id: "test-uuid", language: "en" };
+      const _testMessage = { message: "I need help", conversation_history: [], session_id: "test-uuid", language: "en" };
 
       // In real environment, this would call the deployed function
       // For now, we validate the expected structure

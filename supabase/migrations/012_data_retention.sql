@@ -20,6 +20,15 @@ CREATE TABLE IF NOT EXISTS retention_policies (
 
 COMMENT ON COLUMN retention_policies.cleanup_condition IS 'SQL WHERE clause for identifying old records';
 
+ALTER TABLE retention_policies ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS retention_policies_service_role_all ON retention_policies;
+CREATE POLICY retention_policies_service_role_all ON retention_policies
+FOR ALL
+TO service_role
+USING (TRUE)
+WITH CHECK (TRUE);
+
 -- ============================================================================
 -- DATA CLEANUP FUNCTIONS
 -- ============================================================================
@@ -60,7 +69,7 @@ BEGIN
     v_deleted_count,
     (v_end_time - v_start_time)::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION cleanup_old_incidents(
   p_retention_days INT DEFAULT 180,
@@ -89,7 +98,7 @@ BEGIN
     v_deleted_count,
     (v_end_time - v_start_time)::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION cleanup_old_case_assignments(
   p_retention_days INT DEFAULT 365
@@ -117,7 +126,7 @@ BEGIN
     v_deleted_count,
     (v_end_time - v_start_time)::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 CREATE OR REPLACE FUNCTION cleanup_old_logs(
   p_retention_days INT DEFAULT 90
@@ -144,7 +153,7 @@ BEGIN
     v_deleted_count,
     (v_end_time - v_start_time)::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================================================
 -- MASTER CLEANUP ORCHESTRATION FUNCTION
@@ -207,7 +216,7 @@ BEGIN
     v_logs_exec_time,
     CURRENT_TIMESTAMP;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================================================
 -- ANONYMIZATION FUNCTION (FOR GDPR/POPIA COMPLIANCE)
@@ -223,9 +232,11 @@ RETURNS TABLE (
 DECLARE
   v_encryption_key TEXT;
 BEGIN
-  v_encryption_key := current_setting('app.encryption_key', TRUE)
-    OR current_setting('app.default_key', TRUE)
-    OR 'default-dev-key';
+  v_encryption_key := COALESCE(
+    current_setting('app.encryption_key', TRUE),
+    current_setting('app.default_key', TRUE),
+    'default-dev-key'
+  );
   
   -- Anonymize survivor profile
   UPDATE survivors
@@ -257,7 +268,7 @@ BEGIN
   
   RETURN QUERY SELECT TRUE, 'Survivor data anonymized successfully'::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================================================
 -- DATA DELETION FUNCTION (FOR DATA SUBJECT RIGHTS)
@@ -299,7 +310,7 @@ BEGIN
     'Survivor data deletion initiated'::TEXT,
     v_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================================================
 -- GRANT PERMISSIONS
