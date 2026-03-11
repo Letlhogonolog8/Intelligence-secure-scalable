@@ -7,6 +7,9 @@ const envSchema = z.object({
     message: "VITE_SUPABASE_URL must use https://",
   }).optional(),
   VITE_SUPABASE_KEY: z.string().min(1).optional(),
+  VITE_API_URL: z.string().url().refine((value) => value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1"), {
+    message: "VITE_API_URL must use https:// (or a localhost URL for development)",
+  }).optional(),
   VITE_LOG_ENDPOINT: z.string().url().refine((value) => value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1"), {
     message: "VITE_LOG_ENDPOINT must use https:// (or http://localhost for development)",
   }).optional(),

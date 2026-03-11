@@ -189,7 +189,8 @@ export class NDoHHealthAlignment {
     const checksum = this.calculateChecksum(data);
 
     try {
-      const response = await fetch('/api/ndoh/reports/submit', {
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      const response = await fetch(`${apiBaseUrl}/ndoh/reports/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -6,8 +6,8 @@
  * Handles authentication, request/response interceptors, and error handling.
  */
 
-import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios';
-import { getSession } from '@supabase/auth-helpers-js';
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import { supabase } from '@/lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 const CORRELATION_ID = crypto.randomUUID();
@@ -46,11 +46,11 @@ export class APIClient {
     // Request interceptor: Add auth token
     this.client.interceptors.request.use(async (config) => {
       try {
-        const { data } = await getSession();
+        const { data } = await supabase.auth.getSession();
         if (data?.session?.access_token) {
           config.headers.Authorization = `Bearer ${data.session.access_token}`;
         }
-      } catch (error) {
+      } catch (_error) {
         console.debug('No active session');
       }
       return config;
@@ -73,7 +73,7 @@ export class APIClient {
     // Handle specific status codes
     if (status === 401) {
       // Unauthorized - redirect to login
-      window.location.href = '/auth/login';
+      window.location.assign('/auth/login');
     } else if (status === 403) {
       // Forbidden - insufficient permissions
       console.error('Access denied:', message);
