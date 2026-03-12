@@ -55,40 +55,69 @@ export type CreateUsernameUserPayload = {
   username: string
   password: string
   full_name?: string | null
+  profile?: {
+    role: string
+    full_name?: string | null
+    is_active?: boolean
+    organization_id?: string | null
+  }
+  survivor?: {
+    phone_number?: string | null
+    emergency_contact?: string | null
+    consent?: boolean
+    location: {
+      province: string
+      city_town: string
+      physical_address?: string | null
+      gps_coordinates?: string | null
+    }
+  }
 }
 
 export type CreateUsernameUserResponse = {
   success: boolean
   user_id?: string
   email?: string
+  survivor_id?: string
+  survivor_code?: string
+  risk_level?: string
+  risk_score?: number
   error?: string
 }
 
-export const createUsernameUser = async (
-  payload: CreateUsernameUserPayload
-): Promise<{ data: CreateUsernameUserResponse | null; error: Error | null }> => {
+const invokeEdgeFunction = async <TResponse, TPayload = unknown>(
+  name: string,
+  payload: TPayload,
+  errorMessage: string,
+  accessToken?: string | null
+): Promise<{ data: TResponse | null; error: Error | null }> => {
   if (!hasSupabase) {
     return { data: null, error: new Error("Supabase is not configured") }
   }
 
   try {
-    const response = await fetch(`${env.VITE_SUPABASE_URL}/functions/v1/create_username_user`, {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: env.VITE_SUPABASE_KEY as string,
+      Authorization: `Bearer ${accessToken ?? env.VITE_SUPABASE_KEY}`,
+    }
+
+    const response = await fetch(`${env.VITE_SUPABASE_URL}/functions/v1/${name}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: env.VITE_SUPABASE_KEY as string,
-        Authorization: `Bearer ${env.VITE_SUPABASE_KEY}`,
-      },
+      headers,
       body: JSON.stringify(payload),
     })
 
     const text = await response.text()
-    const data = text ? JSON.parse(text) as CreateUsernameUserResponse : null
+    const data = text ? JSON.parse(text) as TResponse : null
 
     if (!response.ok) {
+      const error = data && typeof data === "object" && "error" in data
+        ? String((data as { error?: unknown }).error ?? "")
+        : ""
       return {
         data,
-        error: new Error(data?.error || `Edge function request failed with status ${response.status}`),
+        error: new Error(error || `Edge function request failed with status ${response.status}`),
       }
     }
 
@@ -96,9 +125,55 @@ export const createUsernameUser = async (
   } catch (error) {
     return {
       data: null,
-      error: error instanceof Error ? error : new Error("Failed to invoke create_username_user"),
+      error: error instanceof Error ? error : new Error(errorMessage),
     }
   }
+}
+
+export const createUsernameUser = async (
+  payload: CreateUsernameUserPayload
+): Promise<{ data: CreateUsernameUserResponse | null; error: Error | null }> => {
+  return invokeEdgeFunction<CreateUsernameUserResponse>(
+    "create_username_user",
+    payload,
+    "Failed to invoke create_username_user"
+  )
+}
+
+type RegisterSurvivorPayload = {
+  user_id: string
+  full_name: string
+  email?: string | null
+  phone_number?: string | null
+  emergency_contact?: string | null
+  consent?: boolean
+  location: {
+    province: string
+    city_town: string
+    physical_address?: string | null
+    gps_coordinates?: string | null
+  }
+}
+
+type RegisterSurvivorResponse = {
+  success: boolean
+  survivor_id?: string
+  survivor_code?: string
+  risk_level?: string
+  risk_score?: number
+  error?: string
+}
+
+export const registerSurvivor = async (
+  payload: RegisterSurvivorPayload,
+  accessToken?: string | null
+): Promise<{ data: RegisterSurvivorResponse | null; error: Error | null }> => {
+  return invokeEdgeFunction<RegisterSurvivorResponse>(
+    "register_survivor",
+    payload,
+    "Failed to invoke register_survivor",
+    accessToken
+  )
 }
 
 export { supabase }

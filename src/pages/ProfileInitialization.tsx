@@ -3,7 +3,7 @@
  * Handles secure user registration and profile setup
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,7 +62,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signInWithPassword, signOut, user: currentUser } = useAuth();
+  const { user: currentUser } = useAuth();
   const resolvedRole = role ?? (searchParams.get("role") as UserRole | null);
   const policy = resolvedRole ? ROLE_AUTH_POLICIES[resolvedRole] : undefined;
   const activeRole = policy ? resolvedRole : null;
@@ -75,6 +75,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
   const [success, setSuccess] = useState(false);
 
   const [isAdminCreator, setIsAdminCreator] = useState(false);
+  const completionTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -110,6 +111,14 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
     };
   }, [activeRole, navigate, currentUser]);
 
+  useEffect(() => {
+    return () => {
+      if (completionTimeoutRef.current !== null) {
+        window.clearTimeout(completionTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleCancel = onCancel ?? (() => navigate("/auth"));
   const handleProfileCreated =
     onProfileCreated ?? ((_profile: ProfileInitializationPayload) => {
@@ -139,7 +148,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [enableBiometric, setEnableBiometric] = useState(false);
   const usernamePattern = /^[a-zA-Z0-9._-]{3,24}$/;
-  const buildAuthEmail = (value: string) => `${value.trim().toLowerCase()}@aegis.example`;
+  const normalizeAuthMessage = (message: string) => message.replace(/email/gi, "username");
 
   const handleDetectLocation = () => {
     setError(null);
@@ -216,24 +225,34 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (loading || success) {
+      return;
+    }
+
     setError(null);
 
     if (!activeRole) {
       return;
     }
 
-    // Extra guard: ensure only roles that allow self-registration can submit
-    // or allow if the current logged-in user is an admin creating the profile
     if (!canSelfRegister(activeRole) && !isAdminCreator) {
       setError("Registration is not allowed for the selected role");
       return;
     }
 
-    if (!systemAlias.trim()) {
+    const trimmedAlias = systemAlias.trim();
+    const trimmedPhoneNumber = phoneNumber.trim();
+    const trimmedEmergencyContact = emergencyContact.trim();
+    const trimmedProvince = province.trim();
+    const trimmedCityTown = cityTown.trim();
+    const trimmedPhysicalAddress = physicalAddress.trim();
+    const trimmedGpsCoordinates = gpsCoordinates.trim();
+
+    if (!trimmedAlias) {
       setError("Username is required");
       return;
     }
-    if (!usernamePattern.test(systemAlias.trim())) {
+    if (!usernamePattern.test(trimmedAlias)) {
       setError("Username must be 3-24 characters and may include letters, numbers, dots, dashes, or underscores");
       return;
     }
@@ -249,13 +268,17 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
       setError("Password must be at least 8 characters");
       return;
     }
+    if (!trimmedPhoneNumber) {
+      setError("Phone number is required");
+      return;
+    }
 
     if (activeRole === "survivor") {
       if (!survivorName.trim()) {
         setError("Full name or alias is required");
         return;
       }
-      if (!province.trim() || !cityTown.trim()) {
+      if (!trimmedProvince || !trimmedCityTown) {
         setError("Province and city/town are required");
         return;
       }
@@ -272,108 +295,78 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 
     setLoading(true);
 
-    const fullName = activeRole === "survivor" ? survivorName.trim() : `${firstName} ${lastName}`.trim();
-    const isActive = !(policy?.requiresApproval ?? false);
+    try {
+      const fullName = activeRole === "survivor" ? survivorName.trim() : `${firstName} ${lastName}`.trim();
+      const isActive = !(policy?.requiresApproval ?? false);
 
-    const { data: createData, error: createError } = await createUsernameUser({
-      username: systemAlias.trim(),
-      password,
-      full_name: fullName,
-    });
-
-    if (createError || createData?.success === false || !createData?.user_id) {
-      setLoading(false);
-      const message = createData?.error || createError?.message || "Registration failed";
-      setError(message.replace(/email/gi, "username"));
-      return;
-    }
-
-    const authEmail = buildAuthEmail(systemAlias);
-    const { error: signInError, user, session } = await signInWithPassword(authEmail, password);
-    if (signInError || !user) {
-      setLoading(false);
-      const message = signInError?.message || "Authentication failed";
-      setError(message.replace(/email/gi, "username"));
-      return;
-    }
-
-    const { error: profileError } = await supabase
-      .from("user_profiles")
-      .upsert({
-        id: user.id,
-        role: activeRole,
+      const { data: createData, error: createError } = await createUsernameUser({
+        username: trimmedAlias,
+        password,
         full_name: fullName,
-        is_active: isActive,
-        organization_id: null,
-      });
-
-    if (profileError) {
-      await signOut();
-      setLoading(false);
-      const message = profileError?.message || "Unable to create profile. Please contact support.";
-      setError(message.replace(/email/gi, "username"));
-      return;
-    }
-
-    if (activeRole === "survivor") {
-      const { data: survivorData, error: survivorError } = await supabase.functions.invoke("register_survivor", {
-        body: {
-          user_id: user.id,
+        profile: {
+          role: activeRole,
           full_name: fullName,
-          email: null,
-          phone_number: phoneNumber.trim(),
-          emergency_contact: emergencyContact.trim() || null,
-          consent: true,
-          location: {
-            province: province.trim(),
-            city_town: cityTown.trim(),
-            physical_address: physicalAddress.trim() || null,
-            gps_coordinates: gpsCoordinates.trim() || null,
-          },
+          is_active: isActive,
+          organization_id: null,
         },
+        survivor: activeRole === "survivor"
+          ? {
+              phone_number: trimmedPhoneNumber,
+              emergency_contact: trimmedEmergencyContact || null,
+              consent: true,
+              location: {
+                province: trimmedProvince,
+                city_town: trimmedCityTown,
+                physical_address: trimmedPhysicalAddress || null,
+                gps_coordinates: trimmedGpsCoordinates || null,
+              },
+            }
+          : undefined,
       });
-      if (survivorError) {
-        await signOut();
-        setLoading(false);
-        const message = survivorError?.message || survivorData?.error || "Unable to complete survivor registration.";
-        setError(message.replace(/email/gi, "username"));
+
+      if (createError || createData?.success === false || !createData?.user_id) {
+        const detail = createData?.error || createError?.message || "Registration failed";
+        const message = activeRole === "survivor" && createData?.user_id
+          ? `${detail} Your account was created, but survivor onboarding is incomplete. Please contact support before signing in.`
+          : detail;
+        setError(normalizeAuthMessage(message));
         return;
       }
+
+      setSuccess(true);
+
+      const profile = {
+        username: trimmedAlias,
+        role: activeRole,
+        firstName,
+        lastName,
+        survivorName,
+        phoneNumber: trimmedPhoneNumber,
+        dateOfBirth,
+        province: trimmedProvince,
+        cityTown: trimmedCityTown,
+        physicalAddress: trimmedPhysicalAddress,
+        gpsCoordinates: trimmedGpsCoordinates,
+        emergencyContact: trimmedEmergencyContact,
+        consentAccepted,
+        title,
+        department,
+        organizationName,
+        legalDesignation,
+        systemAlias: trimmedAlias,
+        enableBiometric,
+        createdAt: new Date(),
+      };
+
+      completionTimeoutRef.current = window.setTimeout(() => {
+        handleProfileCreated(profile);
+      }, 900);
+    } catch (submissionError) {
+      const message = submissionError instanceof Error ? submissionError.message : "Unexpected registration error";
+      setError(normalizeAuthMessage(message));
+    } finally {
+      setLoading(false);
     }
-
-    if (session) {
-      await signOut();
-    }
-
-    setSuccess(true);
-
-    const profile = {
-      username: systemAlias,
-      role: activeRole,
-      firstName,
-      lastName,
-      survivorName,
-      phoneNumber,
-      dateOfBirth,
-      province,
-      cityTown,
-      physicalAddress,
-      gpsCoordinates,
-      emergencyContact,
-      consentAccepted,
-      title,
-      department,
-      organizationName,
-      legalDesignation,
-      systemAlias,
-      enableBiometric,
-      createdAt: new Date(),
-    };
-
-    setTimeout(() => {
-      handleProfileCreated(profile);
-    }, 900);
-    setLoading(false);
   };
 
   const roleSpecificFields = {
@@ -964,6 +957,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                   {currentStep! === "professional" || currentStep === "security" ? (
                     <Button
                       variant="outline"
+                      disabled={loading || success}
                       onClick={() => {
                         if (currentStep === "professional") {
                           setCurrentStep("personal");

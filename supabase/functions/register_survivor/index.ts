@@ -51,15 +51,32 @@ const bytesToBase64 = (bytes: Uint8Array) => {
 };
 
 const getEncryptionKey = async (locationKey: string) => {
-  let rawKey: Uint8Array;
+  let rawKey: Uint8Array | null = null;
+
   try {
-    rawKey = base64ToBytes(locationKey);
+    const decoded = base64ToBytes(locationKey);
+    if (decoded.length === 32) {
+      rawKey = decoded;
+    }
   } catch {
+    rawKey = null;
+  }
+
+  if (!rawKey && /^[0-9a-fA-F]{64}$/.test(locationKey)) {
     rawKey = hexToBytes(locationKey);
   }
-  if (rawKey.length !== 32) {
+
+  if (!rawKey) {
+    const utf8Bytes = new TextEncoder().encode(locationKey);
+    if (utf8Bytes.length === 32) {
+      rawKey = utf8Bytes;
+    }
+  }
+
+  if (!rawKey || rawKey.length !== 32) {
     throw new Error("Invalid survivor encryption key length (must be 32 bytes)");
   }
+
   return crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["encrypt"]);
 };
 
