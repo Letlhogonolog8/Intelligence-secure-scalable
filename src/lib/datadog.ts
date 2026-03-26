@@ -25,7 +25,6 @@ export async function initDatadog(): Promise<void> {
   }
 
   if (import.meta.env.VITE_DATADOG_ENABLED !== 'true') {
-    console.log('Datadog is disabled');
     return;
   }
 

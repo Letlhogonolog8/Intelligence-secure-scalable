@@ -77,21 +77,32 @@ ADD COLUMN IF NOT EXISTS verification_date TIMESTAMP WITH TIME ZONE;
 -- 5. UPDATE RLS POLICIES FOR NEW ROLES
 -- ============================================================================
 
+CREATE OR REPLACE FUNCTION public.current_user_organization_id()
+RETURNS UUID AS $$
+DECLARE
+  org_id UUID;
+BEGIN
+  SELECT organization_id INTO org_id
+  FROM public.user_profiles
+  WHERE id = auth.uid()
+  LIMIT 1;
+
+  RETURN org_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- NGO Role: View survivors in their organization
 DROP POLICY IF EXISTS "ngo_view_org_survivors" ON survivors;
 CREATE POLICY "ngo_view_org_survivors"
   ON survivors FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'ngo'
+    public.is_ngo()
     AND EXISTS (
-      SELECT 1 FROM user_profiles up
-      JOIN survivor_chat_sessions scs ON true
-      WHERE up.id = auth.uid()
-      AND up.organization_id = (
-        SELECT organization_id FROM user_profiles 
-        WHERE id IN (SELECT counselor_id FROM survivor_chat_sessions WHERE survivor_id = survivors.id)
-        LIMIT 1
-      )
+      SELECT 1
+      FROM survivor_chat_sessions scs
+      JOIN user_profiles counselor_up ON counselor_up.id = scs.counselor_id
+      WHERE scs.survivor_id = survivors.id
+      AND counselor_up.organization_id = public.current_user_organization_id()
     )
   );
 
@@ -100,10 +111,10 @@ DROP POLICY IF EXISTS "police_view_jurisdiction_incidents" ON incidents;
 CREATE POLICY "police_view_jurisdiction_incidents"
   ON incidents FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'police'
+    public.is_police()
     AND region_id IN (
       SELECT region_id FROM police_departments
-      WHERE organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+      WHERE organization_id = public.current_user_organization_id()
     )
   );
 
@@ -112,10 +123,10 @@ DROP POLICY IF EXISTS "police_view_jurisdiction_cases" ON justice_cases;
 CREATE POLICY "police_view_jurisdiction_cases"
   ON justice_cases FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'police'
+    public.is_police()
     AND region_id IN (
       SELECT region_id FROM police_departments
-      WHERE organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+      WHERE organization_id = public.current_user_organization_id()
     )
   );
 
@@ -124,11 +135,11 @@ DROP POLICY IF EXISTS "police_update_assigned_cases" ON justice_cases;
 CREATE POLICY "police_update_assigned_cases"
   ON justice_cases FOR UPDATE
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'police'
+    public.is_police()
     AND assigned_officer_id = auth.uid()
     AND region_id IN (
       SELECT region_id FROM police_departments
-      WHERE organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+      WHERE organization_id = public.current_user_organization_id()
     )
   );
 
@@ -137,17 +148,13 @@ DROP POLICY IF EXISTS "ngo_view_assigned_survivors" ON survivors;
 CREATE POLICY "ngo_view_assigned_survivors"
   ON survivors FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'ngo'
+    public.is_ngo()
+    AND public.current_user_organization_id() IS NOT NULL
     AND EXISTS (
-      SELECT 1 FROM user_profiles up
-      WHERE up.id = auth.uid()
-      AND up.organization_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1 FROM survivor_chat_sessions scs
-        JOIN user_profiles counselor_up ON counselor_up.id = scs.counselor_id
-        WHERE scs.survivor_id = survivors.id
-        AND counselor_up.organization_id = up.organization_id
-      )
+      SELECT 1 FROM survivor_chat_sessions scs
+      JOIN user_profiles counselor_up ON counselor_up.id = scs.counselor_id
+      WHERE scs.survivor_id = survivors.id
+      AND counselor_up.organization_id = public.current_user_organization_id()
     )
   );
 
@@ -186,24 +193,24 @@ ALTER TABLE organization_coordination ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "police_view_own_department"
   ON police_departments FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'police'
-    AND organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+    public.is_police()
+    AND organization_id = public.current_user_organization_id()
   );
 
 -- NGO can view their own programs
 CREATE POLICY "ngo_view_own_programs"
   ON ngo_programs FOR SELECT
   USING (
-    (SELECT role FROM user_profiles WHERE id = auth.uid()) = 'ngo'
-    AND organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+    public.is_ngo()
+    AND organization_id = public.current_user_organization_id()
   );
 
 -- Organizations can view coordination referrals to/from them
 CREATE POLICY "org_view_coordination"
   ON organization_coordination FOR SELECT
   USING (
-    from_organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
-    OR to_organization_id = (SELECT organization_id FROM user_profiles WHERE id = auth.uid())
+    from_organization_id = public.current_user_organization_id()
+    OR to_organization_id = public.current_user_organization_id()
   );
 
 -- ============================================================================

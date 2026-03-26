@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore } from "@/store/appStore";
 import { supabase } from "@/lib/supabase";
+import { logError } from "@/lib/logger";
 import {
   XAxis,
   YAxis,
@@ -44,6 +45,9 @@ import {
   Globe,
   Zap,
   Fingerprint,
+  ChevronRight,
+  ShieldCheck,
+  Smartphone,
 } from "lucide-react";
 
 const AdminDashboard: React.FC = () => {
@@ -57,8 +61,8 @@ const AdminDashboard: React.FC = () => {
   const { data: incidentTimeSeries = [], isLoading: incidentsLoading } = useIncidentTimeSeries({ enabled: isAdmin, staleTime: 15000, refetchInterval: 30000 });
   const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ enabled: isAdmin, staleTime: 5000, refetchInterval: 15000, limit: 12 });
   const { data: auditLogs = [], isLoading: auditLoading } = useAuditLogs({ enabled: isAdmin, staleTime: 15000, refetchInterval: 30000, limit: 10 });
-  const { isLoading: escalationsLoading } = useEscalationReviews({ enabled: isAdmin, limit: 5 });
-  const { isLoading: deletionsLoading } = useDeletionRequests({ enabled: isAdmin, limit: 5 });
+  const { data: escalationReviews = [], isLoading: escalationsLoading } = useEscalationReviews({ enabled: isAdmin, limit: 5 });
+  const { data: deletionRequests = [], isLoading: deletionsLoading } = useDeletionRequests({ enabled: isAdmin, limit: 5 });
 
   const [caseLookupId, setCaseLookupId] = useState("");
   const [caseLookupResult, setCaseLookupResult] = useState<{
@@ -83,18 +87,31 @@ const AdminDashboard: React.FC = () => {
 
   const activeUsersCount = useMemo(() => users.filter((u) => u.isActive).length, [users]);
   const criticalAlertsCount = useMemo(() => alertsFeed.filter((a) => a.type === "critical").length, [alertsFeed]);
+  const pendingApprovalsCount = useMemo(
+    () => users.filter((u) => ["analyst", "ngo", "police"].includes(u.role) && u.approvalStatus === "pending").length,
+    [users]
+  );
+  const pendingDeletionRequestsCount = useMemo(
+    () => deletionRequests.filter((request) => request.status !== "processed").length,
+    [deletionRequests]
+  );
+  const unresolvedEscalationCount = useMemo(
+    () => escalationReviews.filter((review) => !["resolved", "closed"].includes(review.status.toLowerCase())).length,
+    [escalationReviews]
+  );
   
   const filteredAuditLogs = useMemo(() => {
     let results = auditLogs;
     if (auditSearch) {
-      results = results.filter(log => 
-        log.action.toLowerCase().includes(auditSearch.toLowerCase()) ||
-        log.user.toLowerCase().includes(auditSearch.toLowerCase()) ||
-        log.module.toLowerCase().includes(auditSearch.toLowerCase())
+      const normalizedSearch = auditSearch.toLowerCase();
+      results = results.filter((log) =>
+        [log.action, log.user, log.module]
+          .filter((value): value is string => typeof value === "string" && value.length > 0)
+          .some((value) => value.toLowerCase().includes(normalizedSearch))
       );
     }
     if (auditSeverity) {
-      results = results.filter(log => log.severity === auditSeverity);
+      results = results.filter((log) => log.severity === auditSeverity);
     }
     return results.slice(0, 5);
   }, [auditLogs, auditSearch, auditSeverity]);
@@ -139,98 +156,107 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (err) {
       setCaseLookupError("An error occurred during lookup.");
-      console.error(err);
+      logError(err, { source: "admin.dashboard.case_lookup", caseId: trimmed });
     } finally {
       setCaseLookupLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#050810] text-slate-50 px-6 py-8 relative overflow-hidden">
-      {/* Background Gradients */}
+    <div className="min-h-screen bg-[#050915] text-slate-50 px-4 py-6 md:px-6 md:py-8 relative overflow-hidden">
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/12 blur-[140px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-rose-600/12 blur-[140px] rounded-full" />
-        <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
+        <div className="absolute -top-24 left-[8%] h-72 w-72 rounded-full bg-sky-500/15 blur-[110px]" />
+        <div className="absolute -bottom-28 right-[6%] h-80 w-80 rounded-full bg-emerald-500/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:32px_32px] opacity-10" />
       </div>
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-8 relative z-10">
-        {/* Header Section */}
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between bg-slate-950/60 p-8 rounded-3xl border border-white/15 backdrop-blur-xl shadow-2xl">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <Shield className="h-5 w-5 text-blue-400" />
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 md:gap-8 relative z-10">
+        <header className="relative overflow-hidden rounded-3xl border border-sky-400/20 bg-slate-900/65 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl md:p-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-transparent to-emerald-500/10" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-sky-200">
+                <Shield className="h-3.5 w-3.5" />
+                Security & Governance Console
               </div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-blue-400">Security & Governance Console</p>
+              <h1 className="text-3xl font-black tracking-tight text-white md:text-4xl lg:text-5xl">Administrative Oversight</h1>
+              <p className="max-w-2xl text-sm text-slate-300 md:text-base">
+                Enterprise-wide command surface for incident posture, identity controls, and governance actions.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300">
+                  {Math.round(securityPosture)}% security posture
+                </span>
+                <span className="rounded-full border border-amber-400/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-300">
+                  {pendingApprovalsCount} pending approvals
+                </span>
+                <span className="rounded-full border border-rose-400/25 bg-rose-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-rose-300">
+                  {criticalAlertsCount} critical alerts
+                </span>
+              </div>
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-white lg:text-5xl">Administrative Oversight</h1>
-            <p className="text-lg text-slate-400/90 max-w-2xl font-light">
-              Enterprise-grade system control, real-time analytics, and operational integrity management for the AEGIS platform.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <Button size="lg" variant="outline" className="h-14 border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all hover:scale-105" onClick={handleExportReport}>
-              <LayoutDashboard className="mr-2 h-5 w-5 text-blue-400" />
-              Global Report
-            </Button>
-            <Button size="lg" className="h-14 bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-900/20 font-bold transition-all hover:scale-105" onClick={handleReviewActivity}>
-              <Activity className="mr-2 h-5 w-5" />
-              Live Activity
-            </Button>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+              <Button size="lg" variant="outline" className="h-12 border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={handleExportReport}>
+                <LayoutDashboard className="mr-2 h-4 w-4 text-sky-300" />
+                Global Report
+              </Button>
+              <Button size="lg" className="h-12 bg-sky-600 text-white hover:bg-sky-500 shadow-lg shadow-sky-900/30" onClick={handleReviewActivity}>
+                <Activity className="mr-2 h-4 w-4" />
+                Live Activity
+              </Button>
+            </div>
           </div>
         </header>
 
-        {/* Global Key Metrics */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-blue-500/30">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
-                <Users className="h-6 w-6 text-blue-400" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card className="group border-white/10 bg-slate-900/55 p-5 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-sky-400/35">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="rounded-2xl border border-sky-400/25 bg-sky-500/10 p-3 transition-colors group-hover:bg-sky-500/20">
+                <Users className="h-5 w-5 text-sky-300" />
               </div>
-              <span className="bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase text-blue-400 border border-blue-500/20 rounded-full">Active Now</span>
+              <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase text-sky-300">Active Now</span>
             </div>
-            <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">User Base</h3>
-            {isLoadingData ? <Skeleton className="h-10 w-24 bg-white/5 mt-2" /> : <p className="text-4xl font-black text-white">{activeUsersCount}</p>}
-            <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tighter">Verified across 12 regions</p>
+            <h3 className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-slate-400">User Base</h3>
+            {isLoadingData ? <Skeleton className="mt-2 h-10 w-24 bg-white/5" /> : <p className="text-3xl font-black text-white md:text-4xl">{activeUsersCount}</p>}
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Verified identities in platform scope</p>
           </Card>
 
-          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-emerald-500/30">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
-                <Database className="h-6 w-6 text-emerald-400" />
+          <Card className="group border-white/10 bg-slate-900/55 p-5 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-emerald-400/35">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3 transition-colors group-hover:bg-emerald-500/20">
+                <Database className="h-5 w-5 text-emerald-300" />
               </div>
-              <span className="bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase text-emerald-400 border border-emerald-500/20 rounded-full">System OK</span>
+              <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase text-emerald-300">System OK</span>
             </div>
-            <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Infrastructure</h3>
-            {isLoadingData ? <Skeleton className="h-10 w-32 bg-white/5 mt-2" /> : <p className="text-4xl font-black text-white">{systemMetrics?.systemUptime ?? 0}%</p>}
-            <p className="text-[10px] text-emerald-500 mt-2 font-bold uppercase tracking-tighter">Uptime: 24h average</p>
+            <h3 className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Infrastructure</h3>
+            {isLoadingData ? <Skeleton className="mt-2 h-10 w-32 bg-white/5" /> : <p className="text-3xl font-black text-white md:text-4xl">{systemMetrics?.systemUptime ?? 0}%</p>}
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-400">Uptime rolling baseline</p>
           </Card>
 
-          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-purple-500/30">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
-                <Lock className="h-6 w-6 text-purple-400" />
+          <Card className="group border-white/10 bg-slate-900/55 p-5 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-amber-400/35">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-3 transition-colors group-hover:bg-amber-500/20">
+                <Lock className="h-5 w-5 text-amber-300" />
               </div>
-              <span className="bg-purple-500/10 px-3 py-1 text-[10px] font-black uppercase text-purple-400 border border-purple-500/20 rounded-full">Secure</span>
+              <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase text-amber-300">Secure</span>
             </div>
-            <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Security Score</h3>
-            {isLoadingData ? <Skeleton className="h-10 w-24 bg-white/5 mt-2" /> : <p className="text-4xl font-black text-white">{Math.round(securityPosture)}%</p>}
-            <p className="text-[10px] text-purple-400 mt-2 font-bold uppercase tracking-tighter">Zero-trust architecture active</p>
+            <h3 className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Security Score</h3>
+            {isLoadingData ? <Skeleton className="mt-2 h-10 w-24 bg-white/5" /> : <p className="text-3xl font-black text-white md:text-4xl">{Math.round(securityPosture)}%</p>}
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-400">Zero-trust policy enforcement</p>
           </Card>
 
-          <Card className="group border-white/15 bg-slate-950/60 p-6 backdrop-blur-md transition-all hover:border-rose-500/30">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 group-hover:bg-rose-500/20 transition-colors">
-                <AlertTriangle className="h-6 w-6 text-rose-400" />
+          <Card className="group border-white/10 bg-slate-900/55 p-5 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-rose-400/35">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 transition-colors group-hover:bg-rose-500/20">
+                <AlertTriangle className="h-5 w-5 text-rose-300" />
               </div>
-              <span className={`${criticalAlertsCount > 0 ? "bg-rose-500/20 text-rose-400 border-rose-500/30" : "bg-slate-500/10 text-slate-400 border-white/10"} px-3 py-1 text-[10px] font-black uppercase border rounded-full`}>
+              <span className={`${criticalAlertsCount > 0 ? "bg-rose-500/20 text-rose-300 border-rose-500/30" : "bg-slate-500/10 text-slate-400 border-white/10"} rounded-full border px-3 py-1 text-[10px] font-black uppercase`}>
                 {criticalAlertsCount} Critical
               </span>
             </div>
-            <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Response Queue</h3>
-            {isLoadingData ? <Skeleton className="h-10 w-16 bg-white/5 mt-2" /> : <p className={`text-4xl font-black ${criticalAlertsCount > 0 ? "text-rose-400" : "text-white"}`}>{alertsFeed.length}</p>}
-            <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tighter">System alerts requiring triage</p>
+            <h3 className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Response Queue</h3>
+            {isLoadingData ? <Skeleton className="mt-2 h-10 w-16 bg-white/5" /> : <p className={`text-3xl font-black md:text-4xl ${criticalAlertsCount > 0 ? "text-rose-300" : "text-white"}`}>{alertsFeed.length}</p>}
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">System alerts requiring triage</p>
           </Card>
         </div>
 
@@ -474,7 +500,7 @@ const AdminDashboard: React.FC = () => {
                     <div className="flex justify-between items-start gap-3">
                       <div>
                         <p className="text-sm text-slate-200 font-bold mb-1">{log.action}</p>
-                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-tight">{log.user} • {log.module}</p>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-tight">{log.user || "system"} • {log.module || "core"}</p>
                       </div>
                       <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase ${log.severity === "critical" ? "bg-rose-500/20 text-rose-400" : log.severity === "warning" ? "bg-amber-500/20 text-amber-400" : "bg-slate-800 text-slate-400"}`}>
                         {log.severity}
@@ -526,8 +552,8 @@ const AdminDashboard: React.FC = () => {
                   <RefreshCw className="h-4 w-4 text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-200 font-bold">Org Verification</p>
-                  <p className="text-[10px] text-slate-500 font-black uppercase">3 pending approval</p>
+                  <p className="text-sm text-slate-200 font-bold">Privileged Approvals</p>
+                  <p className="text-[10px] text-slate-500 font-black uppercase">{pendingApprovalsCount} pending request{pendingApprovalsCount === 1 ? "" : "s"}</p>
                 </div>
               </div>
               <div className="p-4 rounded-xl bg-slate-950/40 border border-white/5 flex items-center gap-4 transition-all hover:bg-slate-950/60">
@@ -535,17 +561,17 @@ const AdminDashboard: React.FC = () => {
                   <Database className="h-4 w-4 text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-200 font-bold">Resource Audit</p>
-                  <p className="text-[10px] text-slate-500 font-black uppercase">Regional shelter update</p>
+                  <p className="text-sm text-slate-200 font-bold">Deletion Queue</p>
+                  <p className="text-[10px] text-slate-500 font-black uppercase">{pendingDeletionRequestsCount} pending deletion request{pendingDeletionRequestsCount === 1 ? "" : "s"}</p>
                 </div>
               </div>
-              <div className="p-4 rounded-xl bg-slate-950/40 border border-white/5 flex items-center gap-4 transition-all hover:bg-slate-950/60 opacity-50">
-                <div className="p-2 rounded-full bg-slate-800 border border-white/5">
-                  <CheckCircle2 className="h-4 w-4 text-slate-400" />
+              <div className="p-4 rounded-xl bg-slate-950/40 border border-white/5 flex items-center gap-4 transition-all hover:bg-slate-950/60">
+                <div className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20">
+                  <CheckCircle2 className="h-4 w-4 text-rose-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-200 font-bold">Policy Foresight</p>
-                  <p className="text-[10px] text-slate-500 font-black uppercase">Quarterly simulation complete</p>
+                  <p className="text-sm text-slate-200 font-bold">Escalation Reviews</p>
+                  <p className="text-[10px] text-slate-500 font-black uppercase">{unresolvedEscalationCount} unresolved case{unresolvedEscalationCount === 1 ? "" : "s"}</p>
                 </div>
               </div>
             </div>

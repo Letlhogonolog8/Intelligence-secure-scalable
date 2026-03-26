@@ -22,6 +22,7 @@ type AppState = {
   moduleActivities: Record<ModuleType, ModuleActivity>
   organizationId: string | null
   organizationName: string
+  sessionUserId: string | null
   setActiveModule: (module: ModuleType) => void
   toggleSidebar: () => void
   setMobileSidebarOpen: (open: boolean) => void
@@ -30,19 +31,26 @@ type AppState = {
   toggleFavoriteModule: (module: ModuleType) => void
   setModuleStatus: (module: ModuleType, status: ModuleStatus, notificationCount?: number) => void
   setOrganizationContext: (organizationId: string | null, organizationName: string) => void
+  syncSessionContext: (userId: string | null, defaultModule?: ModuleType) => void
+  resetSessionContext: () => void
 }
+
+const createInitialSessionState = (activeModule: ModuleType = "dashboard") => ({
+  activeModule,
+  sidebarCollapsed: false,
+  mobileSidebarOpen: false,
+  sidebarSearchQuery: "",
+  recentModules: [activeModule],
+  favoriteModules: [],
+  organizationId: null as string | null,
+  organizationName: "Independent",
+  sessionUserId: null as string | null,
+})
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      activeModule: "dashboard",
-      sidebarCollapsed: false,
-      mobileSidebarOpen: false,
-      sidebarSearchQuery: "",
-      recentModules: ["dashboard"],
-      favoriteModules: [],
-      organizationId: null,
-      organizationName: "Independent",
+      ...createInitialSessionState(),
       moduleActivities: {
         dashboard: {
           moduleId: "dashboard",
@@ -154,6 +162,30 @@ export const useAppStore = create<AppState>()(
         })),
       setOrganizationContext: (organizationId, organizationName) =>
         set({ organizationId, organizationName }),
+      syncSessionContext: (userId, defaultModule = "dashboard") =>
+        set((state) => {
+          if (!userId) {
+            return {
+              ...createInitialSessionState(),
+              moduleActivities: state.moduleActivities,
+            }
+          }
+
+          if (state.sessionUserId === userId) {
+            return { sessionUserId: userId }
+          }
+
+          return {
+            ...createInitialSessionState(defaultModule),
+            sessionUserId: userId,
+            moduleActivities: state.moduleActivities,
+          }
+        }),
+      resetSessionContext: () =>
+        set((state) => ({
+          ...createInitialSessionState(),
+          moduleActivities: state.moduleActivities,
+        })),
     }),
     {
       name: "aegis-ui",
@@ -166,7 +198,12 @@ export const useAppStore = create<AppState>()(
         favoriteModules: state.favoriteModules,
         organizationId: state.organizationId,
         organizationName: state.organizationName,
+        sessionUserId: state.sessionUserId,
       }),
     }
   )
 )
+
+export const resetAppSessionState = () => {
+  useAppStore.getState().resetSessionContext()
+}

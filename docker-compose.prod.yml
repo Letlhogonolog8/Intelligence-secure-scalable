@@ -6,7 +6,7 @@ services:
       args:
         - NODE_ENV=production
         - VITE_ENV=production
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:3001/api}
+        - VITE_API_URL=${VITE_API_URL:-https://your-backend-domain.com/api}
         - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
         - VITE_SUPABASE_KEY=${VITE_SUPABASE_KEY}
         - VITE_DATADOG_ENABLED=${VITE_DATADOG_ENABLED:-false}
@@ -82,6 +82,7 @@ services:
       - TELKOM_API_KEY=${TELKOM_API_KEY:-}
       - TELKOM_API_URL=${TELKOM_API_URL:-https://api.telkom.co.za/ussd/v1}
       - TELKOM_USSD_CODE=${TELKOM_USSD_CODE:-}
+      - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-}
       - TELKOM_CALLBACK_URL=${TELKOM_CALLBACK_URL:-}
       - TELKOM_WEBHOOK_SECRET=${TELKOM_WEBHOOK_SECRET}
       - DATADOG_ENABLED=${DATADOG_ENABLED:-false}

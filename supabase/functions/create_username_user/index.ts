@@ -3,11 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const buildCorsHeaders = (origin: string | null) => ({
   "Access-Control-Allow-Origin": origin ?? "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info, x-admin-access-token",
   Vary: "Origin",
 });
 
 const usernamePattern = /^[a-zA-Z0-9._-]{3,24}$/;
+const allowedRoles = new Set(["admin", "counselor", "survivor", "ngo", "police", "analyst"]);
+const privilegedRoles = new Set(["admin", "counselor", "ngo", "police", "analyst"]);
+const selfServiceApprovalRoles = new Set(["ngo", "police", "analyst"]);
 
 type LocationPayload = {
   province: string;
@@ -32,6 +35,11 @@ type RequestPayload = {
     full_name?: string | null;
     is_active?: boolean;
     organization_id?: string | null;
+    approval_status?: "pending" | "approved" | "rejected" | "suspended";
+    mfa_enabled?: boolean;
+    approved_by?: string | null;
+    approved_at?: string | null;
+    role_assigned_by?: string | null;
   };
   survivor?: SurvivorPayload;
 };
@@ -125,6 +133,44 @@ const computeRiskScore = (payload: SurvivorPayload) => {
   return { riskScore, riskLevel };
 };
 
+const authenticateRequester = async (
+  supabase: ReturnType<typeof createClient>,
+  req: Request,
+) => {
+  const tokenFromCustomHeader = req.headers.get("x-admin-access-token")?.trim() ?? "";
+  const authHeader = req.headers.get("authorization") ?? "";
+  const tokenFromAuthorization = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const token = tokenFromCustomHeader || tokenFromAuthorization;
+
+  if (!token) {
+    return null;
+  }
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user) {
+    return null;
+  }
+
+  return data.user;
+};
+
+const loadRequesterProfile = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+) => {
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("role,is_active,approval_status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 async function handleRequest(req: Request): Promise<Response> {
   const origin = req.headers.get("origin");
 
@@ -162,6 +208,7 @@ async function handleRequest(req: Request): Promise<Response> {
     const fullName = payload.full_name ?? null;
     const profile = payload.profile;
     const survivor = payload.survivor;
+    const requestedRole = profile?.role?.trim() ?? (survivor ? "survivor" : null);
 
     if (!username || !usernamePattern.test(username)) {
       return respond(200, { success: false, error: "Invalid username format" }, origin);
@@ -169,6 +216,44 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (!password || password.length < 8) {
       return respond(200, { success: false, error: "Password must be at least 8 characters" }, origin);
+    }
+
+    if (!requestedRole || !allowedRoles.has(requestedRole)) {
+      return respond(200, { success: false, error: "Invalid role assignment request" }, origin);
+    }
+
+    const requester = await authenticateRequester(supabase, req);
+    const isPrivilegedRequest = privilegedRoles.has(requestedRole);
+    let isAdminProvisionedRequest = false;
+    let isSelfServicePendingRequest = false;
+
+    if (isPrivilegedRequest) {
+      if (!requester?.id) {
+        if (!selfServiceApprovalRoles.has(requestedRole)) {
+          return respond(200, { success: false, error: "Privileged accounts must be provisioned by an approved administrator" }, origin);
+        }
+        isSelfServicePendingRequest = true;
+      } else {
+        const requesterProfile = await loadRequesterProfile(supabase, requester.id);
+        if (
+          requesterProfile
+          && requesterProfile.role === "admin"
+          && requesterProfile.is_active !== false
+          && requesterProfile.approval_status === "approved"
+        ) {
+          isAdminProvisionedRequest = true;
+        } else if (selfServiceApprovalRoles.has(requestedRole)) {
+          isSelfServicePendingRequest = true;
+        } else {
+          return respond(200, { success: false, error: "Only approved administrators can provision privileged accounts" }, origin);
+        }
+      }
+    } else if (profile?.role && profile.role !== "survivor") {
+      return respond(200, { success: false, error: "Self-registration is limited to survivors" }, origin);
+    }
+
+    if ((requestedRole === "ngo" || requestedRole === "police") && !profile?.organization_id && !isSelfServicePendingRequest) {
+      return respond(200, { success: false, error: "Organization assignment is required for NGO and Police accounts" }, origin);
     }
 
     const email = `${username.toLowerCase()}@aegis.example`;
@@ -208,16 +293,42 @@ async function handleRequest(req: Request): Promise<Response> {
       userId = data.user.id;
     }
 
-    if (userId && profile?.role) {
+    if (userId) {
+      const isSurvivorRole = requestedRole === "survivor";
+      const approvalStatus = isSurvivorRole
+        ? "approved"
+        : isSelfServicePendingRequest
+          ? "pending"
+          : profile?.approval_status ?? (isAdminProvisionedRequest ? "approved" : "pending");
+      const isActive = isSurvivorRole
+        ? true
+        : isSelfServicePendingRequest
+          ? false
+          : profile?.is_active ?? approvalStatus === "approved";
+      const approvedAt = approvalStatus === "approved"
+        ? profile?.approved_at ?? new Date().toISOString()
+        : null;
+      const approvedBy = approvalStatus === "approved"
+        ? requester?.id ?? profile?.approved_by ?? null
+        : null;
+      const roleAssignedBy = approvalStatus === "approved"
+        ? requester?.id ?? profile?.role_assigned_by ?? null
+        : null;
+
       const { error: profileError } = await supabase
         .from("user_profiles")
         .upsert(
           {
             id: userId,
-            role: profile.role,
-            full_name: profile.full_name ?? fullName,
-            is_active: profile.is_active ?? true,
-            organization_id: profile.organization_id ?? null,
+            role: requestedRole,
+            full_name: profile?.full_name ?? fullName,
+            is_active: isActive,
+            organization_id: profile?.organization_id ?? null,
+            approval_status: approvalStatus,
+            mfa_enabled: isSelfServicePendingRequest ? false : profile?.mfa_enabled ?? false,
+            approved_at: approvedAt,
+            approved_by: approvedBy,
+            role_assigned_by: roleAssignedBy,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "id" }
@@ -229,7 +340,7 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    if (userId && profile?.role === "survivor" && survivor) {
+    if (userId && requestedRole === "survivor" && survivor) {
       if (!survivor.location?.province || !survivor.location.city_town || !fullName) {
         return respond(200, { success: false, user_id: userId, email, error: "Missing required survivor registration fields" }, origin);
       }

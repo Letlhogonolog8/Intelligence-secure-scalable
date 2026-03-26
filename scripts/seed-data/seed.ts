@@ -22,9 +22,71 @@ if (!supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const adminUsername = "Admin";
 const adminPassword = "admin001!";
-const adminEmail = `${adminUsername.toLowerCase()}@aegis.example`;
+const primaryAdminEmail = "admin@aegis.co.za";
+const legacyAdminEmail = `${adminUsername.toLowerCase()}@aegis.example`;
 
-async function ensureAdminUser() {
+type ManagedRole = "police" | "ngo" | "analyst" | "counselor";
+
+type TestPrivilegedAccount = {
+  fullName: string;
+  username: string;
+  password: string;
+  role: ManagedRole;
+  organizationName?: string;
+  phone?: string;
+  latitude?: number;
+  longitude?: number;
+  isAvailable?: boolean;
+};
+
+const privilegedTestAccounts: TestPrivilegedAccount[] = [
+  {
+    fullName: "Samuel Poee",
+    username: "Sam",
+    password: "saps003!",
+    role: "police",
+    organizationName: "Kenya Women Police Officers",
+    phone: "+254700111222",
+    latitude: -1.2921,
+    longitude: 36.8219,
+    isAvailable: true,
+  },
+  {
+    fullName: "Merriam",
+    username: "Merriam",
+    password: "nongov003!",
+    role: "ngo",
+    organizationName: "Kenyan Red Cross",
+    phone: "+254733222333",
+    latitude: -1.2864,
+    longitude: 36.8172,
+    isAvailable: true,
+  },
+  {
+    fullName: "Tshepo",
+    username: "Tshepo",
+    password: "Tshepo123!",
+    role: "analyst",
+    organizationName: "South African Medical Research Council",
+    phone: "+27711234567",
+    latitude: -26.2041,
+    longitude: 28.0473,
+    isAvailable: true,
+  },
+  {
+    fullName: "Gosiame",
+    username: "Gosiame",
+    password: "Gosiame242!",
+    role: "counselor",
+    organizationName: "South African Medical Research Council",
+    phone: "+27739876543",
+    latitude: -33.9249,
+    longitude: 18.4241,
+    isAvailable: true,
+  },
+];
+
+async function ensureAdminUser(): Promise<string> {
   console.log("🔐 Ensuring admin user...");
   const { data: existing, error: listError } = await supabase.auth.admin.listUsers({
     page: 1,
@@ -33,15 +95,26 @@ async function ensureAdminUser() {
   if (listError) {
     throw new Error(`Error checking admin user: ${listError.message}`);
   }
-  const existingAdmin = existing?.users?.find(
-    (user) => user.email?.toLowerCase() === adminEmail
-  );
+
+  const adminCandidates = existing?.users?.filter((user) => {
+    const email = user.email?.toLowerCase();
+    return email === primaryAdminEmail || email === legacyAdminEmail;
+  }) ?? [];
+
+  const existingAdmin = adminCandidates.find((user) => user.email?.toLowerCase() === primaryAdminEmail)
+    ?? adminCandidates[0];
+
   let adminUserId = existingAdmin?.id;
+
   if (!adminUserId) {
     const { data, error } = await supabase.auth.admin.createUser({
-      email: adminEmail,
+      email: primaryAdminEmail,
       password: adminPassword,
       email_confirm: true,
+      user_metadata: {
+        full_name: adminUsername,
+        role: "admin",
+      },
     });
     if (error || !data.user) {
       throw new Error(error?.message || "Unable to create admin user");
@@ -49,23 +122,131 @@ async function ensureAdminUser() {
     adminUserId = data.user.id;
   } else {
     const { error } = await supabase.auth.admin.updateUserById(adminUserId, {
+      email: primaryAdminEmail,
       password: adminPassword,
       email_confirm: true,
+      user_metadata: {
+        ...(existingAdmin?.user_metadata ?? {}),
+        full_name: adminUsername,
+        role: "admin",
+      },
     });
     if (error) {
       throw new Error(error.message || "Unable to update admin user");
     }
   }
+
+  const timestamp = new Date().toISOString();
   const { error: profileError } = await supabase.from("user_profiles").upsert({
     id: adminUserId,
     role: "admin",
     full_name: adminUsername,
     is_active: true,
+    approval_status: "approved",
+    approved_at: timestamp,
+    mfa_enabled: false,
+    updated_at: timestamp,
   });
   if (profileError) {
     throw new Error(`Error updating admin profile: ${profileError.message}`);
   }
-  console.log("✅ Admin user ready");
+  console.log(`✅ Admin user ready (${primaryAdminEmail})`);
+  return adminUserId;
+}
+
+async function ensurePrivilegedTestUsers(
+  adminUserId: string,
+  organizations: Array<{ id: string; name: string }>,
+) {
+  console.log("👥 Ensuring privileged test users...");
+
+  const { data: existing, error: listError } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  if (listError) {
+    throw new Error(`Error checking privileged test users: ${listError.message}`);
+  }
+
+  const usersByEmail = new Map(
+    (existing?.users ?? [])
+      .filter((user) => user.email)
+      .map((user) => [user.email!.toLowerCase(), user]),
+  );
+  const organizationsByName = new Map(organizations.map((organization) => [organization.name, organization.id]));
+
+  for (const account of privilegedTestAccounts) {
+    const email = `${account.username.toLowerCase()}@aegis.example`;
+    const organizationId = account.organizationName
+      ? organizationsByName.get(account.organizationName) ?? null
+      : null;
+
+    if ((account.role === "ngo" || account.role === "police") && !organizationId) {
+      throw new Error(`Missing required organization for ${account.role} account ${account.username}`);
+    }
+
+    const existingUser = usersByEmail.get(email);
+    let userId = existingUser?.id;
+
+    if (!userId) {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password: account.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: account.fullName,
+          role: account.role,
+        },
+      });
+      if (error || !data.user) {
+        throw new Error(error?.message || `Unable to create ${account.role} user ${account.username}`);
+      }
+      userId = data.user.id;
+      usersByEmail.set(email, data.user);
+    } else {
+      const { error } = await supabase.auth.admin.updateUserById(userId, {
+        email,
+        password: account.password,
+        email_confirm: true,
+        user_metadata: {
+          ...(existingUser?.user_metadata ?? {}),
+          full_name: account.fullName,
+          role: account.role,
+        },
+      });
+      if (error) {
+        throw new Error(error.message || `Unable to update ${account.role} user ${account.username}`);
+      }
+    }
+
+    const timestamp = new Date().toISOString();
+    const { error: profileError } = await supabase.from("user_profiles").upsert(
+      {
+        id: userId,
+        role: account.role,
+        full_name: account.fullName,
+        phone: account.phone ?? null,
+        lat: account.latitude ?? null,
+        lng: account.longitude ?? null,
+        is_active: true,
+        is_available: account.isAvailable ?? true,
+        organization_id: organizationId,
+        approval_status: "approved",
+        approved_at: timestamp,
+        approved_by: adminUserId,
+        role_assigned_by: adminUserId,
+        mfa_enabled: false,
+        updated_at: timestamp,
+      },
+      { onConflict: "id" },
+    );
+
+    if (profileError) {
+      throw new Error(`Error updating ${account.role} profile ${account.username}: ${profileError.message}`);
+    }
+
+    console.log(`✅ ${account.role} test user ready (${account.username})`);
+  }
 }
 
 type RegionSeed = {
@@ -77,6 +258,8 @@ type RegionSeed = {
 
 interface SeedOptions {
   clear?: boolean;
+  adminOnly?: boolean;
+  authOnly?: boolean;
 }
 
 async function seedOrganizations() {
@@ -240,18 +423,39 @@ async function seedRegions(): Promise<RegionSeed[]> {
     },
   ];
 
-  const { data, error } = await supabase
+  const regionNames = regions.map((region) => region.name);
+  const { data: existingRegions, error: existingError } = await supabase
     .from("regions")
-    .upsert(regions, { onConflict: "name" })
-    .select();
+    .select("id, name, latitude, longitude")
+    .in("name", regionNames);
 
-  if (error) {
-    console.error("Error seeding regions:", error);
-  } else {
-    console.log(`✅ Created ${data?.length || 0} regions`);
+  if (existingError) {
+    console.error("Error loading existing regions:", existingError);
+    return [];
   }
 
-  return data || [];
+  const existingByName = new Map((existingRegions ?? []).map((region) => [region.name, region]));
+  const missingRegions = regions.filter((region) => !existingByName.has(region.name));
+
+  let insertedRegions: Array<{ id: string; name: string; latitude: number; longitude: number }> = [];
+
+  if (missingRegions.length > 0) {
+    const { data, error } = await supabase
+      .from("regions")
+      .insert(missingRegions)
+      .select("id, name, latitude, longitude");
+
+    if (error) {
+      console.error("Error inserting missing regions:", error);
+      return (existingRegions as RegionSeed[]) || [];
+    }
+
+    insertedRegions = data || [];
+  }
+
+  const allRegions = [...(existingRegions || []), ...insertedRegions];
+  console.log(`✅ Prepared ${allRegions.length} regions`);
+  return allRegions as RegionSeed[];
 }
 
 async function seedIncidents(
@@ -378,18 +582,39 @@ async function seedPolicies() {
     },
   ];
 
-  const { data, error } = await supabase
+  const policyNames = policies.map((policy) => policy.name);
+  const { data: existingPolicies, error: existingError } = await supabase
     .from("policy_scenarios")
-    .upsert(policies, { onConflict: "name" })
-    .select();
+    .select("id, name")
+    .in("name", policyNames);
 
-  if (error) {
-    console.error("Error seeding policies:", error);
-  } else {
-    console.log(`✅ Created ${data?.length || 0} policy scenarios`);
+  if (existingError) {
+    console.error("Error loading existing policies:", existingError);
+    return [];
   }
 
-  return data || [];
+  const existingNames = new Set((existingPolicies ?? []).map((policy) => policy.name));
+  const missingPolicies = policies.filter((policy) => !existingNames.has(policy.name));
+
+  let insertedPolicies: Array<{ id: string; name: string }> = [];
+
+  if (missingPolicies.length > 0) {
+    const { data, error } = await supabase
+      .from("policy_scenarios")
+      .insert(missingPolicies)
+      .select("id, name");
+
+    if (error) {
+      console.error("Error inserting missing policies:", error);
+      return existingPolicies || [];
+    }
+
+    insertedPolicies = data || [];
+  }
+
+  const allPolicies = [...(existingPolicies || []), ...insertedPolicies];
+  console.log(`✅ Prepared ${allPolicies.length} policy scenarios`);
+  return allPolicies;
 }
 
 async function seedJusticeCases(
@@ -448,6 +673,110 @@ async function seedJusticeCases(
     console.error("Error seeding justice cases:", error);
   } else {
     console.log(`✅ Created ${data?.length || 0} justice cases`);
+  }
+
+  return data || [];
+}
+
+async function seedModernCases(): Promise<Array<{ id: string }>> {
+  console.log("🧾 Seeding modern USSD cases...");
+
+  const now = new Date();
+  const cases = Array.from({ length: 6 }, (_, index) => {
+    const createdAt = new Date(now.getTime() - index * 86400000).toISOString();
+    const caseNumber = `CASE-USSD-${String(index + 1).padStart(3, "0")}`;
+    return {
+      id: caseNumber,
+      case_number: caseNumber,
+      phone_number: `+23350123${String(450 + index)}`,
+      description: `USSD seeded case ${index + 1}`,
+      channel: "ussd",
+      status: index % 2 === 0 ? "submitted" : "triaged",
+      risk_level: index % 3 === 0 ? "high" : "medium",
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from("cases")
+    .upsert(cases, { onConflict: "id" })
+    .select();
+
+  if (error) {
+    console.error("Error seeding modern USSD cases:", error);
+  } else {
+    console.log(`✅ Created ${data?.length || 0} modern USSD cases`);
+  }
+
+  return data || [];
+}
+
+async function seedEmergencyRequests(): Promise<Array<{ id: string }>> {
+  console.log("🚨 Seeding emergency requests...");
+
+  const now = new Date();
+  const requests = Array.from({ length: 4 }, (_, index) => {
+    const createdAt = new Date(now.getTime() - index * 3600000).toISOString();
+    return {
+      id: `EMG-USSD-${String(index + 1).padStart(3, "0")}`,
+      phone_number: `+23350123${String(500 + index)}`,
+      help_type: ["Shelter", "Counseling", "Medical", "Police"][index % 4],
+      channel: "ussd",
+      status: index === 0 ? "received" : "triaged",
+      metadata: {
+        source: "seed",
+      },
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from("emergency_requests")
+    .upsert(requests, { onConflict: "id" })
+    .select();
+
+  if (error) {
+    console.error("Error seeding emergency requests:", error);
+  } else {
+    console.log(`✅ Created ${data?.length || 0} emergency requests`);
+  }
+
+  return data || [];
+}
+
+async function seedNotificationQueue(): Promise<Array<{ id: string }>> {
+  console.log("📨 Seeding notification queue...");
+
+  const notifications = [
+    {
+      recipient_type: "sms",
+      recipient_address: "+233501230000",
+      message_type: "ussd_confirmation",
+      message_content: "AEGIS: Seeded USSD case confirmation",
+      case_id: "CASE-USSD-001",
+      status: "pending",
+    },
+    {
+      recipient_type: "sms",
+      recipient_address: "+233501230001",
+      message_type: "ussd_resources",
+      message_content: "AEGIS: Seeded nearby shelter information",
+      case_id: "CASE-USSD-002",
+      status: "pending",
+    },
+  ];
+
+  const { data, error } = await supabase
+    .from("notification_queue")
+    .insert(notifications)
+    .select();
+
+  if (error) {
+    console.error("Error seeding notification queue:", error);
+  } else {
+    console.log(`✅ Created ${data?.length || 0} notification queue entries`);
   }
 
   return data || [];
@@ -637,6 +966,9 @@ async function clearTables() {
     "bias_reports",
     "governance_models",
     "ethical_constraints",
+    "notification_queue",
+    "emergency_requests",
+    "cases",
     "resources",
     "system_metrics",
     "simulation_results",
@@ -684,31 +1016,53 @@ async function seedDatabase(options: SeedOptions = {}) {
       console.log("");
     }
 
-    console.log("Step 1/9: Admin User...");
-    await ensureAdminUser();
+    console.log("Step 1/13: Admin User...");
+    const adminUserId = await ensureAdminUser();
 
-    console.log("Step 2/9: Organizations...");
-    await seedOrganizations();
+    if (options.adminOnly) {
+      console.log("\n✨ Admin repair complete!");
+      process.exit(0);
+    }
+
+    console.log("Step 2/13: Organizations...");
+    const organizations = await seedOrganizations();
+
+    console.log("Step 3/13: Privileged Test Users...");
+    await ensurePrivilegedTestUsers(adminUserId, organizations ?? []);
+
+    if (options.authOnly) {
+      console.log("\n✨ Authentication repair complete!");
+      process.exit(0);
+    }
     
-    console.log("Step 3/9: Regions...");
+    console.log("Step 4/13: Regions...");
     const regions = await seedRegions();
     
-    console.log("Step 4/9: Incidents...");
+    console.log("Step 5/13: Incidents...");
     await seedIncidents(regions);
     
-    console.log("Step 5/9: Resources...");
+    console.log("Step 6/13: Resources...");
     await seedResources(regions);
+
+    console.log("Step 7/13: Modern USSD Cases...");
+    await seedModernCases();
+
+    console.log("Step 8/13: Emergency Requests...");
+    await seedEmergencyRequests();
+
+    console.log("Step 9/13: Notification Queue...");
+    await seedNotificationQueue();
     
-    console.log("Step 6/9: Policies...");
+    console.log("Step 10/13: Policies...");
     await seedPolicies();
     
-    console.log("Step 7/9: Justice Cases...");
+    console.log("Step 11/13: Justice Cases...");
     await seedJusticeCases(regions);
     
-    console.log("Step 8/9: Governance Models...");
+    console.log("Step 12/13: Governance Models...");
     await seedGovernanceData();
     
-    console.log("Step 9/9: System Metrics...");
+    console.log("Step 13/13: System Metrics...");
     await seedSystemMetrics();
 
     console.log("\n✨ Database seeding complete!");
@@ -732,13 +1086,19 @@ async function seedDatabase(options: SeedOptions = {}) {
 
 // Run with --clear flag to clear existing data first
 const shouldClear = process.argv.includes("--clear");
+const adminOnly = process.argv.includes("--admin-only");
+const authOnly = process.argv.includes("--auth-only");
 
 console.log("");
-if (shouldClear) {
+if (adminOnly) {
+  console.log("📌 Running in --admin-only mode (will only repair or create the admin account)");
+} else if (authOnly) {
+  console.log("📌 Running in --auth-only mode (will repair admin and privileged test accounts)");
+} else if (shouldClear) {
   console.log("📌 Running with --clear flag (will delete existing data)");
 } else {
   console.log("📌 Running seed script (use --clear flag to delete existing data first)");
 }
 console.log("");
 
-seedDatabase({ clear: shouldClear });
+seedDatabase({ clear: shouldClear, adminOnly, authOnly });

@@ -17,14 +17,20 @@ import {
   CheckCircle,
   Loader2,
   Lock,
+  MapPin,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { UserRole } from "@/types/auth";
-import { ROLE_AUTH_POLICIES, canSelfRegister } from "@/lib/roleAuthPolicy";
+import { ROLE_AUTH_POLICIES, canRequestPrivilegedAccess, canSelfRegister } from "@/lib/roleAuthPolicy";
 import { createUsernameUser, supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
+import AuthTopBar from "@/components/auth/AuthTopBar";
+import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
+import AuthContextIntro from "@/components/auth/AuthContextIntro";
+import AuthInfoPanel from "@/components/auth/AuthInfoPanel";
 
 interface ProfileInitializationPayload {
   username: string;
@@ -66,6 +72,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
   const resolvedRole = role ?? (searchParams.get("role") as UserRole | null);
   const policy = resolvedRole ? ROLE_AUTH_POLICIES[resolvedRole] : undefined;
   const activeRole = policy ? resolvedRole : null;
+  const allowsSelfInitiatedAccess = activeRole ? canSelfRegister(activeRole) || canRequestPrivilegedAccess(activeRole) : false;
 
   const [currentStep, setCurrentStep] = useState<"personal" | "professional" | "security">(
     "personal",
@@ -76,6 +83,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 
   const [isAdminCreator, setIsAdminCreator] = useState(false);
   const completionTimeoutRef = useRef<number | null>(null);
+  const isPendingApprovalRequest = activeRole ? canRequestPrivilegedAccess(activeRole) && !isAdminCreator : false;
 
   useEffect(() => {
     let mounted = true;
@@ -85,8 +93,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
         return;
       }
 
-      // If role allows self-registration, allow. Otherwise only allow if current user is admin.
-      if (canSelfRegister(activeRole)) {
+      if (allowsSelfInitiatedAccess) {
         return;
       }
 
@@ -95,9 +102,15 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
         return;
       }
 
-      const { data } = await supabase.from("user_profiles").select("role").eq("id", currentUser.id).maybeSingle();
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("role,is_active,approval_status")
+        .eq("id", currentUser.id)
+        .maybeSingle();
       if (!mounted) return;
-      const isAdmin = data?.role === "admin";
+      const isAdmin = data?.role === "admin"
+        && data?.is_active !== false
+        && data?.approval_status === "approved";
       setIsAdminCreator(isAdmin);
       if (!isAdmin) {
         navigate("/auth", { replace: true });
@@ -109,7 +122,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
     return () => {
       mounted = false;
     };
-  }, [activeRole, navigate, currentUser]);
+  }, [activeRole, allowsSelfInitiatedAccess, navigate, currentUser]);
 
   useEffect(() => {
     return () => {
@@ -235,7 +248,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
       return;
     }
 
-    if (!canSelfRegister(activeRole) && !isAdminCreator) {
+    if (!allowsSelfInitiatedAccess && !isAdminCreator) {
       setError("Registration is not allowed for the selected role");
       return;
     }
@@ -297,7 +310,15 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 
     try {
       const fullName = activeRole === "survivor" ? survivorName.trim() : `${firstName} ${lastName}`.trim();
-      const isActive = !(policy?.requiresApproval ?? false);
+      const requiresApproval = policy?.requiresApproval ?? false;
+      const approvalStatus = isPendingApprovalRequest
+        ? "pending"
+        : activeRole === "survivor"
+          ? undefined
+          : requiresApproval
+            ? "approved"
+            : undefined;
+      const isActive = isPendingApprovalRequest ? false : !requiresApproval || isAdminCreator;
 
       const { data: createData, error: createError } = await createUsernameUser({
         username: trimmedAlias,
@@ -308,6 +329,8 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
           full_name: fullName,
           is_active: isActive,
           organization_id: null,
+          approval_status: approvalStatus,
+          mfa_enabled: false,
         },
         survivor: activeRole === "survivor"
           ? {
@@ -461,67 +484,47 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
         ? { label: "Moderate", color: "bg-blue-500" }
         : { label: "Strong", color: "bg-blue-300" };
   const passwordStrengthWidth = `${(Math.min(passwordScore, 5) / 5) * 100}%`;
+  const roleAccessSummary = activeRole === "survivor"
+    ? "Survivor onboarding supports direct registration with consent-first safeguards."
+    : isPendingApprovalRequest
+      ? "This submission creates a restricted access request that requires admin approval."
+      : "This profile is provisioned within a restricted operational access model.";
+  const verificationNotes = [
+    activeRole === "survivor" ? "Location and consent fields support survivor-safe routing." : "Professional details are reviewed before role activation.",
+    policy?.requiresApproval ? "Approval workflow is enforced for this role." : "No manual approval required after successful setup.",
+    policy?.requiresBiometric ? "Biometric enrollment is recommended for this role." : "Password-based access is the default sign-in path.",
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0a1020] text-white relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_18%_16%,rgba(30,64,175,0.32),transparent_46%),radial-gradient(circle_at_85%_18%,rgba(225,29,72,0.2),transparent_55%),radial-gradient(circle_at_30%_85%,rgba(148,163,184,0.18),transparent_46%)]" />
-      <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(145deg,rgba(7,11,22,0.96),rgba(5,9,18,0.98))]" />
-      <div className="fixed top-0 w-full z-40 border-b border-white/5 backdrop-blur-xl bg-[#0a1020]/85">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-slate-700 to-rose-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <User className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.4em] text-blue-200/70">AEGIS-AI</p>
-                <h1 className="text-lg font-semibold">Initialize Profile</h1>
-                <p className="text-xs text-slate-400">{roleInfo.label} registration workspace</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="hidden md:inline-flex rounded-full border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-              >
-                English
-              </Button>
-              <Button
-                variant="outline"
-                className="hidden sm:inline-flex rounded-full border-rose-500/40 text-rose-200 hover:bg-rose-500/10"
-              >
-                Emergency
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCancel}
-                className="rounded-full border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <AuthSplitLayout>
+      <AuthTopBar
+        icon={User}
+        title="Initialize Profile"
+        subtitle={`${roleInfo.label} registration workspace`}
+        actionLabel="Cancel"
+        onActionClick={handleCancel}
+        emergencyLabel="Emergency"
+        onEmergencyClick={() => navigate("/auth")}
+      />
 
-      <div className="min-h-screen flex items-center justify-center pt-24 px-4 pb-12 relative z-10">
-        <motion.div
-          className="w-full max-w-6xl grid lg:grid-cols-[0.4fr_0.6fr] gap-10 items-start"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
+      <motion.div
+        className="grid lg:grid-cols-[0.4fr_0.6fr] gap-10 items-start"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
           <motion.div className="space-y-6" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className="rounded-3xl border border-white/10 bg-slate-950/75 p-8 shadow-blue-500/20 shadow-[0_24px_60px_rgba(2,6,23,0.6)]">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-blue-200">
-                Profile initialization
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold">Build your verified profile</h2>
-              <p className="mt-3 text-slate-300 leading-relaxed">
-                Establish a trusted identity record and complete the registration journey tailored to your role.
-              </p>
-              <div className="mt-6 space-y-4">
+            <AuthContextIntro
+              badge="Profile initialization"
+              title="Build your verified profile"
+              description="Establish a trusted identity record and complete the registration journey tailored to your role."
+              highlights={[
+                { label: "Access model", value: roleAccessSummary },
+                { label: "Role", value: roleInfo.label },
+              ]}
+              className="bg-slate-950/75 shadow-blue-500/20 shadow-[0_24px_60px_rgba(2,6,23,0.6)]"
+            >
+              <div className="space-y-4">
                 {stepOrder.map((stepKey, index) => {
                   const isActive = currentStep === stepKey;
                   const isComplete = currentStepIndex > index;
@@ -561,26 +564,39 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                   );
                 })}
               </div>
-            </div>
+            </AuthContextIntro>
 
-            <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/10">
-                  <Lock className="h-5 w-5 text-blue-200" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <AuthInfoPanel
+                icon={ShieldCheck}
+                title="Verification pipeline"
+                description="Your information is reviewed before activation."
+                className="bg-slate-950/70"
+              >
+                <div className="space-y-3 text-sm text-slate-300">
+                  {verificationNotes.map((note) => (
+                    <div key={note} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                      {note}
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <p className="text-sm font-semibold">Verification pipeline</p>
-                  <p className="text-xs text-slate-400">Your information is reviewed before activation.</p>
-                </div>
-              </div>
-              <p className="mt-3 text-sm text-slate-300">
-                Restricted roles are subject to manual approval, credential validation, and compliance checks.
-              </p>
+              </AuthInfoPanel>
+
+              <AuthInfoPanel
+                icon={MapPin}
+                title="Data guidance"
+                description="Only role-relevant information should be captured."
+                className="bg-slate-950/70"
+              >
+                <p className="text-sm text-slate-300">
+                  Use the minimum personal and professional detail required for safe routing, verification, and access control.
+                </p>
+              </AuthInfoPanel>
             </div>
           </motion.div>
 
           <motion.div className="w-full" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <Card className="border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-slate-950/50 shadow-[0_24px_60px_rgba(2,6,23,0.65)]">
+            <Card className="overflow-hidden rounded-[32px] border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-slate-950/50 shadow-[0_24px_60px_rgba(2,6,23,0.65)]">
               <CardHeader className="border-b border-white/10 bg-slate-950/70">
                 <CardTitle className="text-xl">Create Your Profile</CardTitle>
                 <CardDescription className="text-slate-400">
@@ -598,7 +614,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                   </div>
                   <div className="mt-3 h-2 w-full rounded-full bg-slate-800/70">
                     <div
-                      className="h-full rounded-full bg-rose-500 transition-all"
+                      className="h-full rounded-full bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 transition-all"
                       style={{ width: `${((currentStepIndex + 1) / stepOrder.length) * 100}%` }}
                     />
                   </div>
@@ -627,7 +643,9 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                       <CheckCircle className="h-4 w-4 text-green-400" />
                       <AlertTitle className="text-green-400">Profile Created</AlertTitle>
                       <AlertDescription className="text-green-300">
-                        Your profile is ready. Verify access through your assigned channel, then sign in.
+                        {isPendingApprovalRequest
+                          ? "Your access request was submitted. An administrator must approve it before you can sign in."
+                          : "Your profile is ready. Verify access through your assigned channel, then sign in."}
                       </AlertDescription>
                     </Alert>
                   </motion.div>
@@ -643,6 +661,9 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                 >
                   {currentStep === "personal" && (
                     <div className="space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                        Enter the minimum required identity details for this role. Required fields are validated before you can continue.
+                      </div>
                       {activeRole === "survivor" ? (
                         <>
                           <div className="space-y-2">
@@ -804,6 +825,9 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 
                   {currentStep === "professional" && (
                     <div className="space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                        Add the professional details needed to verify operational access and organizational affiliation.
+                      </div>
                       {activeRole === "survivor" ? (
                         <div className="space-y-2">
                           <Label className="text-slate-300">Support Organization (Optional)</Label>
@@ -881,6 +905,9 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
 
                   {currentStep === "security" && (
                     <div className="space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                        Complete password setup and optional security factors before submitting the profile.
+                      </div>
                       <div className="space-y-2">
                         <Label className="text-slate-300">Password *</Label>
                         <Input
@@ -989,7 +1016,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
                       </>
                     ) : currentStep === "security" ? (
                       <>
-                        Create Profile
+                        {isPendingApprovalRequest ? "Submit Access Request" : "Create Profile"}
                         <CheckCircle className="w-4 h-4 ml-2" />
                       </>
                     ) : (
@@ -1003,9 +1030,8 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
               </CardContent>
             </Card>
           </motion.div>
-        </motion.div>
-      </div>
-    </div>
+      </motion.div>
+    </AuthSplitLayout>
   );
 };
 

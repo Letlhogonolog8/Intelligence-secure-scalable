@@ -129,6 +129,7 @@ export interface AuditLog {
   module: string
   user: string
   severity: string
+  description?: string
 }
 
 export interface BiasReport {
@@ -167,6 +168,34 @@ export interface DeletionRequest {
   reason: string
 }
 
+export interface SurvivorProfile {
+  id: string
+  userId: string
+  anonymousId?: string
+  dateOfBirth?: string
+  regionId?: string
+  incidentTypes?: string[]
+  currentRiskLevel: string
+  safetyPlanExists: boolean
+  supportStatus: string
+  lastContact?: string
+  fullName?: string
+  phoneNumber?: string
+  emergencyContact?: string
+}
+
+export interface SafetyPlan {
+  id: string
+  survivorId: string
+  trustedContacts: string[]
+  safeLocations: string[]
+  emergencyResources: string[]
+  identifiedTriggers: string[]
+  copingStrategies: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UserProfile {
   id: string
   role: string
@@ -174,6 +203,8 @@ export interface UserProfile {
   avatarUrl: string
   isActive: boolean
   organizationId?: string | null
+  approvalStatus?: string | null
+  mfaEnabled?: boolean
 }
 
 export interface JusticeConviction {
@@ -191,6 +222,7 @@ export interface Organization {
   organizationSubtype: string
   subscriptionLevel: string
   isVerified: boolean
+  supportsVerification: boolean
 }
 
 export interface JusticeBottleneck {
@@ -506,6 +538,7 @@ const mapAuditLog = (row: Record<string, unknown>): AuditLog => ({
   module: toString(row.module),
   user: toString(row.user_id ?? row.user),
   severity: toString(row.severity),
+  description: toString(row.description, "") || undefined,
 })
 
 const mapBiasReport = (row: Record<string, unknown>): BiasReport => ({
@@ -544,6 +577,46 @@ const mapDeletionRequest = (row: Record<string, unknown>): DeletionRequest => ({
   reason: toString(row.reason),
 })
 
+const mapSurvivorProfile = (row: Record<string, unknown>): SurvivorProfile => ({
+  id: toString(row.id),
+  userId: toString(row.user_id ?? row.userId),
+  anonymousId: toString(row.anonymous_id ?? row.anonymousId, "") || undefined,
+  dateOfBirth: toString(row.date_of_birth ?? row.dateOfBirth, "") || undefined,
+  regionId: toString(row.region_id ?? row.regionId, "") || undefined,
+  incidentTypes: Array.isArray(row.incident_types ?? row.incidentTypes) 
+    ? (row.incident_types ?? row.incidentTypes) as string[] 
+    : undefined,
+  currentRiskLevel: toString(row.current_risk_level ?? row.currentRiskLevel, "low"),
+  safetyPlanExists: Boolean(row.safety_plan_exists ?? row.safetyPlanExists),
+  supportStatus: toString(row.support_status ?? row.supportStatus, "active"),
+  lastContact: toString(row.last_contact ?? row.lastContact, "") || undefined,
+  fullName: toString(row.full_name ?? row.fullName, "") || undefined,
+  phoneNumber: toString(row.phone_number ?? row.phoneNumber, "") || undefined,
+  emergencyContact: toString(row.emergency_contact ?? row.emergencyContact, "") || undefined,
+})
+
+const mapSafetyPlan = (row: Record<string, unknown>): SafetyPlan => ({
+  id: toString(row.id),
+  survivorId: toString(row.survivor_id ?? row.survivorId),
+  trustedContacts: Array.isArray(row.trusted_contacts ?? row.trustedContacts) 
+    ? (row.trusted_contacts ?? row.trustedContacts) as string[] 
+    : [],
+  safeLocations: Array.isArray(row.safe_locations ?? row.safeLocations) 
+    ? (row.safe_locations ?? row.safeLocations) as string[] 
+    : [],
+  emergencyResources: Array.isArray(row.emergency_resources ?? row.emergencyResources) 
+    ? (row.emergency_resources ?? row.emergencyResources) as string[] 
+    : [],
+  identifiedTriggers: Array.isArray(row.identified_triggers ?? row.identifiedTriggers) 
+    ? (row.identified_triggers ?? row.identifiedTriggers) as string[] 
+    : [],
+  copingStrategies: Array.isArray(row.coping_strategies ?? row.copingStrategies) 
+    ? (row.coping_strategies ?? row.copingStrategies) as string[] 
+    : [],
+  createdAt: toString(row.created_at ?? row.createdAt),
+  updatedAt: toString(row.updated_at ?? row.updatedAt),
+})
+
 const mapUserProfile = (row: Record<string, unknown>): UserProfile => ({
   id: toString(row.id),
   role: toString(row.role),
@@ -551,6 +624,8 @@ const mapUserProfile = (row: Record<string, unknown>): UserProfile => ({
   avatarUrl: toString(row.avatar_url ?? row.avatarUrl),
   isActive: Boolean(row.is_active ?? row.isActive),
   organizationId: toString(row.organization_id ?? row.organizationId, "") || null,
+  approvalStatus: toString(row.approval_status ?? row.approvalStatus, "") || null,
+  mfaEnabled: Boolean(row.mfa_enabled ?? row.mfaEnabled),
 })
 
 const mapJusticeConviction = (row: Record<string, unknown>): JusticeConviction => ({
@@ -559,16 +634,22 @@ const mapJusticeConviction = (row: Record<string, unknown>): JusticeConviction =
   cases: toNumber(row.cases),
 })
 
-const mapOrganization = (row: Record<string, unknown>): Organization => ({
-  id: toString(row.id),
-  name: toString(row.name),
-  type: toString(row.type),
-  country: toString(row.country),
-  region: toString(row.region),
-  organizationSubtype: toString(row.type), // Map from type
-  subscriptionLevel: "Standard", // Default value
-  isVerified: true, // Default value
-})
+const mapOrganization = (row: Record<string, unknown>): Organization => {
+  const supportsVerification = Object.prototype.hasOwnProperty.call(row, "is_verified")
+    || Object.prototype.hasOwnProperty.call(row, "isVerified")
+
+  return {
+    id: toString(row.id),
+    name: toString(row.name),
+    type: toString(row.type),
+    country: toString(row.country),
+    region: toString(row.region),
+    organizationSubtype: toString(row.type),
+    subscriptionLevel: toString(row.subscription_level ?? row.subscriptionLevel, "Standard"),
+    isVerified: Boolean(row.is_verified ?? row.isVerified),
+    supportsVerification,
+  }
+}
 
 const mapOrganizationCoordination = (row: Record<string, unknown>): OrganizationCoordination => ({
   id: toString(row.id),
@@ -882,7 +963,7 @@ const fetchUserProfile = async (userId: string) => {
   if (!hasSupabase) return null as UserProfile | null
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("id,role,full_name,avatar_url,is_active,organization_id")
+    .select("id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled")
     .eq("id", userId)
     .maybeSingle()
   if (error) {
@@ -896,7 +977,7 @@ const fetchUserProfiles = async (options?: FetchOptions & { role?: string }) => 
   if (!hasSupabase) return [] as UserProfile[]
   let query = supabase
     .from("user_profiles")
-    .select("id,role,full_name,avatar_url,is_active,organization_id,created_at")
+    .select("id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled,created_at")
 
   if (options?.role) {
     query = query.eq("role", options.role)
@@ -1264,3 +1345,47 @@ export const useOrganizationCoordination = (options?: ListQueryOptions) => useRe
   () => fetchOrganizationCoordination(options),
   { ...options, queryKey: [options?.limit, options?.offset] }
 )
+
+const fetchSurvivorProfile = async (userId: string) => {
+  if (!hasSupabase) return null as SurvivorProfile | null
+  const { data, error } = await supabase
+    .from("survivors")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (error) {
+    if (isMissingTableError(error)) return null
+    throw error
+  }
+  return data ? mapSurvivorProfile(data as Record<string, unknown>) : null
+}
+
+const fetchSafetyPlan = async (survivorId: string) => {
+  if (!hasSupabase) return null as SafetyPlan | null
+  const { data, error } = await supabase
+    .from("safety_plans")
+    .select("*")
+    .eq("survivor_id", survivorId)
+    .maybeSingle()
+  if (error) {
+    if (isMissingTableError(error)) return null
+    throw error
+  }
+  return data ? mapSafetyPlan(data as Record<string, unknown>) : null
+}
+
+export const useSurvivorProfile = (userId?: string | null) => {
+  return useQuery({
+    queryKey: ["aegis", "survivorProfile", userId ?? "none"],
+    queryFn: () => (userId ? fetchSurvivorProfile(userId) : Promise.resolve(null)),
+    enabled: hasSupabase && Boolean(userId),
+  })
+}
+
+export const useSafetyPlan = (survivorId?: string | null) => {
+  return useQuery({
+    queryKey: ["aegis", "safetyPlan", survivorId ?? "none"],
+    queryFn: () => (survivorId ? fetchSafetyPlan(survivorId) : Promise.resolve(null)),
+    enabled: hasSupabase && Boolean(survivorId),
+  })
+}

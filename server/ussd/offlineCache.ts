@@ -13,6 +13,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
+function sanitizeLog(value: string): string {
+  return value.replace(/[\r\n\t]/g, '_').substring(0, 200);
+}
+
 export interface CachedSession {
   id: string;
   phoneNumber: string;
@@ -95,7 +99,7 @@ export class OfflineCache {
       }
 
       this.writeFile(this.sessionsFile, sessions);
-      console.log(`✅ Session ${session.id} cached offline`);
+      console.log(`✅ Session ${sanitizeLog(session.id)} cached offline`);
       return true;
     } catch (error) {
       console.error('Failed to cache session:', error);
@@ -128,7 +132,7 @@ export class OfflineCache {
       if (!exists) {
         cases.push({ ...caseData, timestamp: Date.now(), synced: false });
         this.writeFile(this.casesFile, cases);
-        console.log(`✅ Case ${caseData.caseId} cached offline`);
+        console.log(`✅ Case ${sanitizeLog(caseData.caseId)} cached offline`);
       }
 
       return true;
@@ -162,7 +166,7 @@ export class OfflineCache {
       if (caseIndex >= 0) {
         cases[caseIndex].synced = true;
         this.writeFile(this.casesFile, cases);
-        console.log(`✅ Case ${caseId} marked as synced`);
+        console.log(`✅ Case ${sanitizeLog(caseId)} marked as synced`);
         return true;
       }
 
@@ -197,7 +201,7 @@ export class OfflineCache {
 
       queue.push(message);
       this.writeFile(this.queueFile, queue);
-      console.log(`📬 Message ${messageId} queued for ${phoneNumber}`);
+      console.log(`📬 Message ${sanitizeLog(messageId)} queued for ${sanitizeLog(phoneNumber)}`);
 
       return messageId;
     } catch (error) {
@@ -421,7 +425,15 @@ export class OfflineCache {
 
   // Private file I/O methods
 
+  private getAllowedPaths(): string[] {
+    return [this.sessionsFile, this.casesFile, this.queueFile];
+  }
+
   private readFile(filepath: string): unknown {
+    if (!this.getAllowedPaths().includes(filepath)) {
+      console.error(`Blocked read of unexpected path: ${sanitizeLog(filepath)}`);
+      return [];
+    }
     try {
       if (!fs.existsSync(filepath)) {
         return [];
@@ -430,16 +442,20 @@ export class OfflineCache {
       const data = fs.readFileSync(filepath, 'utf-8');
       return JSON.parse(data);
     } catch (error) {
-      console.error(`Failed to read file ${filepath}:`, error);
+      console.error(`Failed to read file ${sanitizeLog(filepath)}:`, error);
       return [];
     }
   }
 
   private writeFile(filepath: string, data: unknown): void {
+    if (!this.getAllowedPaths().includes(filepath)) {
+      console.error(`Blocked write to unexpected path: ${sanitizeLog(filepath)}`);
+      return;
+    }
     try {
       fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (error) {
-      console.error(`Failed to write file ${filepath}:`, error);
+      console.error(`Failed to write file ${sanitizeLog(filepath)}:`, error);
     }
   }
 }

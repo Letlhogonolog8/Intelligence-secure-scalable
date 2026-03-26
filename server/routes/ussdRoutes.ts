@@ -9,23 +9,189 @@
  * - Analytics & monitoring
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { USSDGateway, Language } from '../ussd/ussdGateway';
 import { OfflineCache } from '../ussd/offlineCache';
 
+/**
+ * USSD endpoints are machine-to-machine webhook callbacks from USSD aggregators
+ * (Africa's Talking, Arkesel, Telkom). Browser-based CSRF does not apply because:
+ * 1. Requests originate from aggregator servers, not browsers.
+ * 2. The /process endpoint validates the serviceCode against an allowlist.
+ * 3. The Telkom callback validates an HMAC signature in server/index.ts.
+ * All other mutating endpoints (/emergency, /offline-sync, etc.) are internal
+ * admin/ops endpoints that should be placed behind network-level controls in production.
+ */
+
+export function normalizeUssdServiceCode(serviceCode: unknown): string {
+  if (typeof serviceCode !== 'string') {
+    return '';
+  }
+
+  const trimmed = serviceCode.trim().replace(/^["']+|["']+$/g, '');
+
+  let decoded = trimmed;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    decoded = trimmed;
+  }
+
+  return decoded.replace(/\s+/g, '').replace(/[^\d*#]/g, '');
+}
+
+export function isUssdServiceCodeAllowed(
+  incomingServiceCode: unknown,
+  expectedServiceCodes: string | undefined = process.env.USSD_ALLOWED_SERVICE_CODES || process.env.USSD_SERVICE_CODE,
+  requireServiceCode = false
+): boolean {
+  const normalizedExpected = Array.from(
+    new Set(
+      String(expectedServiceCodes ?? '')
+        .split(',')
+        .flatMap((serviceCode) => {
+          const normalized = normalizeUssdServiceCode(serviceCode);
+          if (!normalized) {
+            return [];
+          }
+
+          const withoutTrailingHash = normalized.replace(/#$/, '');
+          return Array.from(new Set([normalized, withoutTrailingHash].filter(Boolean)));
+        })
+    )
+  );
+
+  if (normalizedExpected.length === 0) {
+    return true;
+  }
+
+  const normalizedIncoming = normalizeUssdServiceCode(incomingServiceCode);
+  if (!normalizedIncoming) {
+    return !requireServiceCode;
+  }
+
+  const incomingVariants = Array.from(
+    new Set([
+      normalizedIncoming,
+      normalizedIncoming.replace(/#$/, ''),
+      normalizedIncoming.endsWith('#') ? normalizedIncoming : `${normalizedIncoming}#`,
+    ].filter(Boolean))
+  );
+
+  return incomingVariants.some((serviceCode) => normalizedExpected.includes(serviceCode));
+}
+
+export function sendAfricasTalkingResponse(res: Response, body: string, _asJson = false) {
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  return res.send(body);
+}
+
+export function sendArkeselResponse(res: Response, body: string, continueSession: boolean) {
+  return res.json({
+    message: body,
+    continueSession,
+  });
+}
+
+function normalizeHeaderValue(header: string | string[] | undefined): string {
+  return Array.isArray(header) ? header[0] ?? '' : String(header ?? '').trim();
+}
+
+function extractOrigin(value: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function isTrustedUssdRequestOrigin(
+  req: Pick<Request, 'headers'>,
+  allowedOrigins = process.env.CORS_ORIGIN
+): boolean {
+  const fetchSite = normalizeHeaderValue(req.headers['sec-fetch-site']).toLowerCase();
+  if (fetchSite === 'cross-site') {
+    return false;
+  }
+
+  const trustedOrigins = String(allowedOrigins ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  const originHeader = normalizeHeaderValue(req.headers.origin);
+  const refererHeader = normalizeHeaderValue(req.headers.referer);
+  const requestOrigin = extractOrigin(originHeader) ?? extractOrigin(refererHeader);
+
+  if (!requestOrigin) {
+    return fetchSite === '' || fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none';
+  }
+
+  if (trustedOrigins.length === 0) {
+    return true;
+  }
+
+  return trustedOrigins.includes(requestOrigin);
+}
+
 export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: OfflineCache): Router {
   const router = Router();
+
+  const requireTrustedOrigin = (req: Request, res: Response, next: NextFunction) => {
+    if (!isTrustedUssdRequestOrigin(req)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cross-site requests are not allowed',
+      });
+    }
+
+    next();
+  };
 
   /**
    * POST /api/ussd/process
    * Process USSD request (Supports standard JSON and Africa's Talking format)
    * Body: { phoneNumber, userInput/text, sessionId, language? }
    */
-  router.post('/process', async (req: Request, res: Response) => {
+  router.post('/process', requireTrustedOrigin, async (req: Request, res: Response) => {
     try {
-      // Africa's Talking sends: sessionId, serviceCode, phoneNumber, text
-      const { phoneNumber, text, sessionId: _sessionId, language = 'en' } = req.body;
-      const userInput = text !== undefined ? text : req.body.userInput;
+      const contentType = String(req.headers['content-type'] || '');
+      const isJsonRequest = contentType.includes('application/json');
+      const isAfricasTalking = req.body.text !== undefined || contentType.includes('application/x-www-form-urlencoded');
+      const isArkesel = req.body.userData !== undefined || req.body.newSession !== undefined || req.body.userID !== undefined;
+      const phoneNumber = req.body.phoneNumber ?? req.body.msisdn;
+      const text = req.body.text;
+      const sessionId = req.body.sessionId ?? req.body.sessionID;
+      const serviceCode = req.body.serviceCode;
+      const language = req.body.language ?? 'en';
+      const rawInput = text !== undefined
+        ? String(text)
+        : req.body.userInput !== undefined
+          ? String(req.body.userInput)
+          : req.body.userData !== undefined
+            ? String(req.body.userData)
+            : undefined;
+      const userInput = rawInput === undefined
+        ? undefined
+        : isAfricasTalking
+          ? rawInput.split('*').pop() ?? ''
+          : rawInput;
+
+      const requireServiceCode = isAfricasTalking && process.env.NODE_ENV === 'production';
+      if (!isUssdServiceCodeAllowed(serviceCode, process.env.USSD_ALLOWED_SERVICE_CODES || process.env.USSD_SERVICE_CODE, requireServiceCode)) {
+        if (isAfricasTalking) {
+          return sendAfricasTalkingResponse(res, 'END Invalid service code.', isJsonRequest);
+        }
+
+        return res.status(403).json({
+          success: false,
+          error: 'Invalid service code',
+        });
+      }
 
       if (!phoneNumber || userInput === undefined) {
         return res.status(400).json({
@@ -34,26 +200,20 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
         });
       }
 
-      // Validate language
       const validLanguages = ['en', 'zu', 'xh', 'st', 'af', 'ss', 'tn', 'ts', 've', 'nso', 'nr'];
       const lang = validLanguages.includes(language) ? (language as Language) : 'en';
 
-      const ussdResponse = await ussdGateway.handleUSSDRequest(phoneNumber, userInput, lang);
-
-      // Check if it's an Africa's Talking request (usually sent as form-urlencoded with 'text' and 'sessionId')
-      const isAfricasTalking = req.body.text !== undefined || req.headers['content-type'] === 'application/x-www-form-urlencoded';
+      const ussdResponse = await ussdGateway.handleUSSDRequest(String(phoneNumber), userInput, lang, sessionId);
 
       if (isAfricasTalking) {
-        // Africa's Talking requires response to start with CON (continue) or END
         const prefix = ussdResponse.endSession ? 'END ' : 'CON ';
-        
-        // The ussdGateway already builds the full menu text (including options), 
-        // so we don't need to append them again.
-        res.set('Content-Type', 'text/plain');
-        return res.send(`${prefix}${ussdResponse.text}`);
+        return sendAfricasTalkingResponse(res, `${prefix}${ussdResponse.text}`, isJsonRequest);
       }
 
-      // Default JSON response for local testing or other gateways
+      if (isArkesel) {
+        return sendArkeselResponse(res, ussdResponse.text, !ussdResponse.endSession);
+      }
+
       res.json({
         success: true,
         sessionId: ussdResponse.sessionId,
@@ -67,13 +227,19 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('USSD processing error:', error);
-      
-      const isAfricasTalking = req.body.text !== undefined || req.headers['content-type'] === 'application/x-www-form-urlencoded';
+
+      const contentType = String(req.headers['content-type'] || '');
+      const isJsonRequest = contentType.includes('application/json');
+      const isAfricasTalking = req.body.text !== undefined || contentType.includes('application/x-www-form-urlencoded');
+      const isArkesel = req.body.userData !== undefined || req.body.newSession !== undefined || req.body.userID !== undefined;
       if (isAfricasTalking) {
-        res.set('Content-Type', 'text/plain');
-        return res.send('END An error occurred. Please try again.');
+        return sendAfricasTalkingResponse(res, 'END An error occurred. Please try again.', isJsonRequest);
       }
-      
+
+      if (isArkesel) {
+        return sendArkeselResponse(res, 'An error occurred. Please try again.', false);
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to process USSD request',
@@ -86,7 +252,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * Send SMS fallback when USSD unavailable
    * Body: { phoneNumber, message, reason }
    */
-  router.post('/sms-fallback', async (req: Request, res: Response) => {
+  router.post('/sms-fallback', requireTrustedOrigin, async (req: Request, res: Response) => {
     try {
       const { phoneNumber, message, reason: _reason } = req.body;
 
@@ -142,7 +308,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * POST /api/ussd/offline-sync
    * Sync offline cached data with server
    */
-  router.post('/offline-sync', async (req: Request, res: Response) => {
+  router.post('/offline-sync', requireTrustedOrigin, async (req: Request, res: Response) => {
     try {
       const stats = await offlineCache.syncWithServer(
         async (_caseData) => {
@@ -191,7 +357,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * POST /api/ussd/cache/cleanup
    * Clean old cached data
    */
-  router.post('/cache/cleanup', (req: Request, res: Response) => {
+  router.post('/cache/cleanup', requireTrustedOrigin, (req: Request, res: Response) => {
     try {
       const { retentionDays = 7 } = req.body;
 
@@ -238,7 +404,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * POST /api/ussd/cache/import
    * Import cache from backup
    */
-  router.post('/cache/import', (req: Request, res: Response) => {
+  router.post('/cache/import', requireTrustedOrigin, (req: Request, res: Response) => {
     try {
       const { backupData } = req.body;
 
@@ -269,7 +435,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * Trigger emergency alert via USSD
    * Body: { phoneNumber, description, location }
    */
-  router.post('/emergency', async (req: Request, res: Response) => {
+  router.post('/emergency', requireTrustedOrigin, async (req: Request, res: Response) => {
     try {
       const { phoneNumber, description: _description, location: _location } = req.body;
 
@@ -343,7 +509,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * POST /api/ussd/load-test
    * Load testing endpoint (for testing only)
    */
-  router.post('/load-test', async (req: Request, res: Response) => {
+  router.post('/load-test', requireTrustedOrigin, async (req: Request, res: Response) => {
     try {
       const { concurrentUsers = 100, requestsPerUser = 10 } = req.body;
 

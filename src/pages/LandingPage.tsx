@@ -1,62 +1,100 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Brain, Lock, Shield, Siren, TrendingUp } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Brain,
+  CheckCircle2,
+  Clock3,
+  Lock,
+  Menu,
+  Shield,
+  Siren,
+  TrendingUp,
+  Users,
+  X,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  React.useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 40);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
+  const openAuth = () => {
+    setMobileMenuOpen(false);
+    navigate("/auth");
+  };
+
+  const navItems = useMemo(
+    () => [
+      { id: "hero", label: t("nav.command", "Command") },
+      { id: "capabilities", label: t("nav.assurance", "Assurance") },
+      { id: "workflow", label: t("nav.operations", "Operations") },
+      { id: "about", label: t("nav.about", "About") },
+    ],
+    [t]
+  );
+
+  const handleNavClick = (sectionId: string) => {
+    const section = document.getElementById(sectionId);
+    setMobileMenuOpen(false);
+    if (!section) {
+      return;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const features = [
     {
       icon: Shield,
-      title: t('landing.features.security.title'),
-      description: t('landing.features.security.desc'),
+      title: t("landing.features.security.title", "Command-Grade Security"),
+      description: t(
+        "landing.features.security.desc",
+        "Zero-trust access, encrypted audit trails, POPIA-aligned governance."
+      ),
     },
     {
       icon: Brain,
-      title: t('landing.features.ai.title'),
-      description: t('landing.features.ai.desc'),
+      title: t("landing.features.ai.title", "AI Risk Orchestration"),
+      description: t(
+        "landing.features.ai.desc",
+        "Real-time prioritization with NLP escalation and adaptive scoring."
+      ),
     },
     {
       icon: Siren,
-      title: t('landing.features.emergency.title'),
-      description: t('landing.features.emergency.desc'),
+      title: t("landing.features.emergency.title", "Emergency Response"),
+      description: t(
+        "landing.features.emergency.desc",
+        "Critical alerts routed to police, NGOs, and counselors within seconds."
+      ),
     },
     {
       icon: Lock,
-      title: t('landing.features.survivor.title'),
-      description: t('landing.features.survivor.desc'),
-    },
-  ];
-
-  const heroHighlights = [
-    {
-      icon: Shield,
-      title: "Secure command fabric",
-      description: "Federated access control with continuous audit verification.",
-    },
-    {
-      icon: Siren,
-      title: "Rapid escalation",
-      description: "Automated routing to specialized response teams in seconds.",
-    },
-    {
-      icon: Lock,
-      title: "Survivor privacy",
-      description: "End-to-end encryption and consent-forward data handling.",
+      title: t("landing.features.survivor.title", "Survivor Safety Layer"),
+      description: t(
+        "landing.features.survivor.desc",
+        "Location encryption, secure profile vaults, trauma-informed access."
+      ),
     },
   ];
 
@@ -65,379 +103,447 @@ const LandingPage: React.FC = () => {
       title: "Verify & Triage",
       description: "Validate identity, classify risk, and prioritize response with AI-backed scoring.",
       metric: "SLA < 5 min",
+      icon: Activity,
     },
     {
-      title: "Coordinate Response",
-      description: "Route to police, NGOs, medical, and legal services with secured handoff logs.",
+      title: "Coordinate Services",
+      description: "Orchestrate police, legal, medical, and NGO response with secure handoffs.",
       metric: "12 ms relay",
+      icon: Users,
     },
     {
-      title: "Continuous Oversight",
-      description: "Monitor outcomes, compliance checkpoints, and survivor follow-ups in one view.",
+      title: "Track Outcomes",
+      description: "Maintain auditable case progress, survivor updates, and compliance checkpoints.",
       metric: "24/7 monitoring",
+      icon: CheckCircle2,
     },
+  ];
+
+  const stats = [
+    { value: "24/7", label: "Emergency Operations" },
+    { value: "AES-256", label: "Encryption Standard" },
+    { value: "POPIA", label: "Compliance by Design" },
+  ];
+
+  const trustPoints = [
+    "Role-based access with auditable handoff controls",
+    "Encrypted case routing across response stakeholders",
+    "Trauma-informed survivor support workflows",
+  ];
+
+  const pulseRows = [
+    { label: "Risk Detection Accuracy", value: "98.7%", tone: "text-emerald-200" },
+    { label: "Secure Agency Relay", value: "12 ms", tone: "text-sky-200" },
+    { label: "Active Emergency Queue", value: "41", tone: "text-rose-200" },
   ];
 
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: { staggerChildren: 0.15, delayChildren: 0.2 },
+      transition: { staggerChildren: 0.12, delayChildren: 0.15 },
     },
-  };
-
-  const handleNavClick = (sectionId: string) => {
-    const section = document.getElementById(sectionId);
-    if (!section) {
-      return;
-    }
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const itemVariants = {
     hidden: { opacity: 0, y: 18 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.7 } },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.55 } },
   };
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white relative overflow-hidden">
-      <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(circle_at_20%_15%,rgba(59,130,246,0.28),transparent_45%),radial-gradient(circle_at_85%_20%,rgba(244,63,94,0.2),transparent_50%),radial-gradient(circle_at_20%_85%,rgba(14,165,233,0.12),transparent_45%)]" />
-      <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(140deg,rgba(7,10,18,0.98),rgba(3,6,12,0.96))]" />
-      <div className="absolute inset-0 z-0 pointer-events-none opacity-20 bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:120px_120px]" />
-      <div className="absolute -top-56 left-0 h-96 w-96 rounded-full bg-blue-500/20 blur-[160px] z-0 pointer-events-none" />
-      <div className="absolute -bottom-48 right-10 h-96 w-96 rounded-full bg-rose-500/20 blur-[160px] z-0 pointer-events-none" />
+    <div className="relative min-h-screen overflow-hidden bg-[#070d17] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_18%,rgba(56,189,248,0.18),transparent_40%),radial-gradient(circle_at_84%_16%,rgba(244,63,94,0.16),transparent_42%),linear-gradient(145deg,#070d17_0%,#0a1323_60%,#060a13_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:128px_128px]" />
 
-      <div className="relative z-10">
       <motion.nav
-        className={`fixed top-0 w-full z-50 transition-all duration-300 ${
-          scrolled ? "bg-[#0b1120]/85 backdrop-blur-xl border-b border-white/5" : ""
-        }`}
-        initial={{ y: -90 }}
+        className={cn(
+          "fixed top-0 z-50 w-full border-b transition-all duration-300",
+          scrolled ? "border-white/10 bg-[#091223]/90 backdrop-blur-xl" : "border-transparent bg-transparent"
+        )}
+        initial={{ y: -80 }}
         animate={{ y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: 0.45 }}
       >
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <motion.div className="flex items-center gap-3" whileHover={{ scale: 1.02 }}>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 via-slate-700 to-rose-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.4em] text-blue-200/70">AEGIS-AI</p>
-                <p className="text-lg font-semibold">{t('landing.tagline')}</p>
-              </div>
-            </motion.div>
-
-            <div className="hidden md:flex items-center gap-8 text-sm text-slate-300">
-              <button
-                className="hover:text-white transition-colors"
-                onClick={() => handleNavClick("command")}
-              >
-                {t('nav.command')}
-              </button>
-              <button
-                className="hover:text-white transition-colors"
-                onClick={() => handleNavClick("assurance")}
-              >
-                {t('nav.assurance')}
-              </button>
-              <button
-                className="hover:text-white transition-colors"
-                onClick={() => handleNavClick("operations")}
-              >
-                {t('nav.operations')}
-              </button>
-              <button
-                className="hover:text-white transition-colors"
-                onClick={() => handleNavClick("about")}
-              >
-                {t('nav.about')}
-              </button>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <button
+            className="flex items-center gap-3 text-left"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 via-blue-500 to-rose-500 shadow-lg shadow-sky-500/25">
+              <Shield className="h-5 w-5" />
             </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-              <div className="hidden md:flex">
-                <LanguageSwitcher variant="landing" />
-              </div>
-              <Button
-                variant="outline"
-                className="hidden sm:inline-flex rounded-full border-rose-500/40 text-rose-200 hover:bg-rose-500/10"
-              >
-                {t('nav.emergency')}
-              </Button>
-              <Button
-                variant="ghost"
-                className="hidden sm:inline-flex rounded-full border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-                onClick={() => navigate("/auth")}
-              >
-                {t('nav.initializeProfile')}
-              </Button>
-              <motion.button
-                onClick={() => navigate("/auth")}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="px-4 sm:px-6 py-2.5 rounded-2xl bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 font-semibold shadow-lg shadow-blue-500/30"
-              >
-                {t('nav.signIn')}
-              </motion.button>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-sky-200/70">AEGIS-AI</p>
+              <p className="text-sm font-semibold leading-tight sm:text-base">
+                {t("landing.tagline", "National Response Grid")}
+              </p>
             </div>
+          </button>
+
+          <div className="hidden items-center gap-7 text-sm text-slate-300 md:flex">
+            {navItems.map((item) => (
+              <button key={item.id} className="hover:text-white" onClick={() => handleNavClick(item.id)}>
+                {item.label}
+              </button>
+            ))}
           </div>
+
+          <div className="hidden items-center gap-3 md:flex">
+            <LanguageSwitcher variant="compact" />
+            <Button
+              variant="outline"
+              className="border-rose-400/45 bg-transparent text-rose-200 hover:bg-rose-500/10"
+              onClick={openAuth}
+            >
+              {t("nav.emergency", "Emergency")}
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-4 font-semibold text-white shadow-lg shadow-blue-600/30 hover:opacity-95"
+              onClick={openAuth}
+            >
+              {t("nav.signIn", "Sign In")}
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileMenuOpen}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-100 md:hidden"
+            onClick={() => setMobileMenuOpen((current) => !current)}
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-      </motion.nav>
 
-      <motion.section
-        id="command"
-        className="min-h-screen flex items-center justify-center px-4 pt-28 pb-16 relative scroll-mt-24"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1 }}
-      >
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
-          <motion.div
-            className="space-y-8"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            <motion.div variants={itemVariants} className="space-y-4">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-blue-400/30 bg-blue-500/10 text-xs uppercase tracking-[0.35em] text-blue-200">
-                Government Response Platform
-              </div>
-              <h1 className="text-4xl md:text-6xl font-semibold leading-tight">
-                <span className="block bg-gradient-to-r from-blue-200 via-slate-200 to-rose-200 bg-clip-text text-transparent">
-                  {t('landing.hero')}
-                </span>
-              </h1>
-            </motion.div>
-
-            <motion.p variants={itemVariants} className="text-lg text-slate-300 leading-relaxed max-w-xl">
-              {t('landing.subhero')}
-            </motion.p>
-
-            <motion.div variants={itemVariants} className="grid gap-4 max-w-xl">
-              {heroHighlights.map((item) => (
-                <div key={item.title} className="flex items-start gap-3">
-                  <div className="mt-1 h-9 w-9 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center">
-                    <item.icon className="w-4 h-4 text-blue-200" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100">{item.title}</p>
-                    <p className="text-sm text-slate-400">{item.description}</p>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
-
-            <motion.div variants={itemVariants} className="flex flex-wrap gap-4">
-              <Button
-                onClick={() => navigate("/auth")}
-                className="px-8 py-6 bg-rose-600 hover:bg-rose-500 text-lg font-semibold shadow-lg shadow-rose-500/30 ring-1 ring-rose-300/40"
-              >
-                {t('landing.reportIncident')}
-                <ArrowRight className="ml-2" />
-              </Button>
-              <Button
-                variant="outline"
-                className="px-8 py-6 border border-white/10 bg-white/5 text-lg font-semibold text-slate-200 hover:bg-white/10"
-                onClick={() => navigate("/auth")}
-              >
-                {t('landing.getHelp')}
-              </Button>
-            </motion.div>
-
-            <motion.div variants={itemVariants} className="grid sm:grid-cols-3 gap-4">
-              {[
-                { value: "24/7", label: "Emergency Ops" },
-                { value: "AES-256", label: "Encryption" },
-                { value: "POPIA", label: "Compliance" },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div className="text-2xl font-semibold text-blue-200">{stat.value}</div>
-                  <div className="text-xs text-slate-400 uppercase tracking-widest">{stat.label}</div>
-                </div>
-              ))}
-            </motion.div>
-          </motion.div>
-
-          <motion.div
-            className="relative h-full min-h-[32rem]"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 1 }}
-          >
-            <div className="relative w-full h-full rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/80 to-slate-900/40 backdrop-blur-xl overflow-hidden">
-              <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(30,64,175,0.22),transparent_45%)]" />
-              <div className="absolute top-6 left-6 right-6">
-                <div className="flex items-center justify-between text-xs uppercase tracking-[0.35em] text-slate-400">
-                  <span>Operational Status</span>
-                  <span className="text-emerald-300">Live</span>
-                </div>
-                <h3 className="mt-3 text-2xl font-semibold">National Response Pulse</h3>
-              </div>
-              <div className="absolute top-24 left-6 right-6 grid gap-4">
-                {[
-                  { title: "Operational Pulse", value: "98.7", label: "Risk detection accuracy", accent: "text-blue-200" },
-                  { title: "Secure Relay", value: "12 ms", label: "Cross-agency routing", accent: "text-emerald-200" },
-                  { title: "Emergency Queue", value: "41", label: "Cases awaiting response", accent: "text-rose-200" },
-                ].map((card) => (
-                  <motion.div
-                    key={card.title}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-r from-slate-950/80 to-slate-900/50 px-5 py-4 shadow-lg"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6 }}
+        {mobileMenuOpen && (
+          <div className="border-t border-white/10 bg-[#091223]/95 px-4 py-4 backdrop-blur-xl md:hidden">
+            <div className="mx-auto flex max-w-6xl flex-col gap-4">
+              <LanguageSwitcher variant="compact" />
+              <div className="grid gap-2">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-slate-200"
+                    onClick={() => handleNavClick(item.id)}
                   >
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{card.title}</p>
-                    <div className="mt-2 flex items-end justify-between">
-                      <span className={`text-3xl font-semibold ${card.accent}`}>{card.value}</span>
-                      <span className="text-xs text-emerald-300">Live</span>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-400">{card.label}</p>
-                  </motion.div>
+                    {item.label}
+                  </button>
                 ))}
               </div>
-              <motion.div
-                className="absolute -right-10 -bottom-10 w-40 h-40 rounded-full border border-rose-400/40 bg-rose-400/10 blur-[1px]"
-                animate={{ scale: [1, 1.08, 1] }}
-                transition={{ duration: 4, repeat: Infinity }}
-              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  variant="outline"
+                  className="h-11 border-rose-400/45 bg-transparent text-rose-200 hover:bg-rose-500/10"
+                  onClick={openAuth}
+                >
+                  {t("nav.emergency", "Emergency")}
+                </Button>
+                <Button
+                  className="h-11 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 font-semibold text-white"
+                  onClick={openAuth}
+                >
+                  {t("nav.signIn", "Sign In")}
+                </Button>
+              </div>
             </div>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      <motion.section
-        id="assurance"
-        className="py-24 px-4 relative scroll-mt-24"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        transition={{ duration: 1 }}
-        viewport={{ once: true }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(59,130,246,0.12),transparent_55%),radial-gradient(circle_at_70%_70%,rgba(244,63,94,0.12),transparent_55%)]" />
-        <div className="max-w-6xl mx-auto relative">
-          <motion.div
-            className="text-center mb-14"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl font-semibold mb-4">{t('landing.capabilities')}</h2>
-            <p className="text-lg text-slate-400">{t('landing.capabilitiesSubtitle')}</p>
-          </motion.div>
-
-          <motion.div
-            className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-          >
-            {features.map((feature, index) => (
-              <motion.div
-                key={index}
-                variants={itemVariants}
-                className="p-6 rounded-2xl bg-slate-950/70 border border-white/10 hover:border-blue-400/40 hover:-translate-y-1 transition-all duration-300 shadow-[0_20px_50px_rgba(2,6,23,0.55)] backdrop-blur"
-              >
-                <feature.icon className="w-8 h-8 text-blue-300 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                <p className="text-slate-400 text-sm">{feature.description}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </motion.section>
-
-      <motion.section
-        id="operations"
-        className="py-24 px-4 relative scroll-mt-24"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        transition={{ duration: 1 }}
-        viewport={{ once: true }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(14,165,233,0.12),transparent_55%)]" />
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-[0.45fr_0.55fr] gap-10 items-center relative">
-          <div className="space-y-4">
-            <p className="text-xs uppercase tracking-[0.4em] text-blue-200/70">Workflow Intelligence</p>
-            <h2 className="text-3xl md:text-4xl font-semibold">{t('landing.cta.title')}</h2>
-            <p className="text-lg text-slate-400">
-              {t('landing.cta.subtitle')}
-            </p>
           </div>
-          <div className="grid gap-4">
-            {workflowSteps.map((step, index) => (
-              <div
-                key={step.title}
-                className="rounded-2xl border border-white/10 bg-white/5 px-6 py-5 flex items-start justify-between gap-6"
+        )}
+      </motion.nav>
+
+      <div className="relative z-10">
+        <section id="hero" className="scroll-mt-28 px-4 pb-14 pt-32 sm:px-6 sm:pt-36 lg:px-8">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-7">
+              <motion.div
+                variants={itemVariants}
+                className="inline-flex items-center gap-2 rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-sky-100"
               >
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Step {index + 1}</p>
-                  <h3 className="text-lg font-semibold mt-2">{step.title}</h3>
-                  <p className="text-sm text-slate-400 mt-2">{step.description}</p>
+                Government Response Platform
+              </motion.div>
+
+              <motion.h1
+                variants={itemVariants}
+                className="max-w-2xl text-4xl font-semibold leading-[1.05] text-white sm:text-5xl lg:text-6xl"
+              >
+                <span className="bg-gradient-to-r from-sky-200 via-blue-100 to-rose-200 bg-clip-text text-transparent">
+                  {t("landing.hero", "Secure coordination for GBV emergency response")}
+                </span>
+              </motion.h1>
+
+              <motion.p variants={itemVariants} className="max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg">
+                {t(
+                  "landing.subhero",
+                  "AEGIS-AI unifies survivor services, law enforcement, and policy intelligence with encrypted workflows, real-time escalation, and accountable governance."
+                )}
+              </motion.p>
+
+              <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                <Button
+                  className="h-12 bg-rose-600 px-6 text-base font-semibold hover:bg-rose-500"
+                  onClick={openAuth}
+                >
+                  {t("landing.reportIncident", "Report Incident")}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
+                  onClick={openAuth}
+                >
+                  {t("landing.getHelp", "Get Help Now")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="h-12 justify-start px-0 text-base font-semibold text-sky-200 hover:bg-transparent hover:text-sky-100"
+                  onClick={() => navigate("/impact")}
+                >
+                  View Impact Data
+                  <TrendingUp className="ml-2 h-4 w-4" />
+                </Button>
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="grid gap-3 sm:grid-cols-3">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(2,6,23,0.35)]"
+                  >
+                    <p className="text-2xl font-semibold text-sky-200">{stat.value}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{stat.label}</p>
+                  </div>
+                ))}
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="grid gap-3 sm:grid-cols-3">
+                {trustPoints.map((point) => (
+                  <div key={point} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-4">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                    <p className="text-sm text-slate-300">{point}</p>
+                  </div>
+                ))}
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
+              className="relative"
+            >
+              <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-br from-sky-500/10 via-transparent to-rose-500/10 blur-2xl" />
+              <div className="relative rounded-[30px] border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl sm:p-7">
+                <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Operational Pulse</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-white">Live coordination status</h2>
+                  </div>
+                  <span className="inline-flex w-fit items-center rounded-full border border-emerald-300/40 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                    Live
+                  </span>
                 </div>
-                <div className="text-xs text-emerald-300 uppercase tracking-[0.3em] whitespace-nowrap">
-                  {step.metric}
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {pulseRows.map((row) => (
+                    <div key={row.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{row.label}</p>
+                      <p className={cn("mt-2 text-3xl font-semibold", row.tone)}>{row.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                      <Clock3 className="h-5 w-5 text-sky-200" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Response readiness</p>
+                      <p className="text-sm text-slate-400">Cross-agency routing remains available with monitored audit coverage.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-slate-800/80">
+                    <div className="h-full w-[98%] rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-blue-500" />
+                  </div>
                 </div>
               </div>
-            ))}
+            </motion.div>
           </div>
-        </div>
-      </motion.section>
+        </section>
 
-      <motion.section
-        id="about"
-        className="py-24 px-4 scroll-mt-24 relative"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        transition={{ duration: 1 }}
-        viewport={{ once: true }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(59,130,246,0.22),transparent_60%),radial-gradient(circle_at_70%_80%,rgba(244,63,94,0.18),transparent_55%)]" />
-        <div className="max-w-4xl mx-auto text-center relative">
-          <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/80 to-slate-900/40 px-8 py-12 shadow-[0_30px_80px_rgba(2,8,23,0.65)]">
-            <p className="text-xs uppercase tracking-[0.4em] text-blue-200/70">About AEGIS-AI</p>
-            <h2 className="text-3xl md:text-4xl font-semibold mt-4 mb-6 text-white">
-              {t('landing.cta.title')}
-            </h2>
-            <p className="text-lg text-slate-200/80 mb-10">
-              {t('landing.cta.subtitle')}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.button
-                onClick={() => navigate("/auth")}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="px-10 py-4 bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 rounded-full font-semibold text-lg shadow-lg shadow-blue-500/30 inline-flex items-center gap-2"
-              >
-                {t('landing.cta.button')}
-                <ArrowRight className="w-5 h-5" />
-              </motion.button>
-              <motion.button
-                onClick={() => navigate("/impact")}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="px-10 py-4 border border-white/15 bg-white/5 hover:bg-white/10 rounded-full font-semibold text-lg text-slate-200 inline-flex items-center gap-2 transition-all"
-              >
-                View Impact Data
-                <TrendingUp className="w-5 h-5" />
-              </motion.button>
+        <section className="px-4 pb-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="grid gap-3 rounded-[30px] border border-white/10 bg-slate-950/40 p-4 sm:grid-cols-2 lg:grid-cols-4 lg:p-5">
+              {[
+                { title: "Rapid escalation", detail: "Incident intake to verified triage in minutes" },
+                { title: "Protected data flow", detail: "Encrypted transfers across every responder role" },
+                { title: "Governance visibility", detail: "Audit checkpoints embedded in each workflow step" },
+                { title: "Survivor-first design", detail: "Access designed to reduce friction and preserve trust" },
+              ].map((item) => (
+                <div key={item.title} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm font-semibold text-white">{item.title}</p>
+                  <p className="mt-2 text-sm text-slate-400">{item.detail}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      </motion.section>
+        </section>
 
-      <footer className="border-t border-white/5 py-10 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between gap-4 text-slate-500 text-sm">
-          <div>Â© 2026 AEGIS-AI Platform. All rights reserved.</div>
-          <div className="flex gap-6">
-            <button className="hover:text-white transition-colors">Privacy</button>
-            <button className="hover:text-white transition-colors">Terms</button>
-            <button className="hover:text-white transition-colors">Contact</button>
+        <section id="capabilities" className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl">
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="mb-12 text-center"
+            >
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">Assurance Layer</p>
+              <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
+                {t("landing.capabilities", "Critical Capabilities")}
+              </h2>
+              <p className="mx-auto mt-4 max-w-2xl text-slate-400">
+                {t("landing.capabilitiesSubtitle", "Operational layers built for safety, urgency, and trust.")}
+              </p>
+            </motion.div>
+
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
+            >
+              {features.map((feature) => (
+                <motion.div
+                  key={feature.title}
+                  variants={itemVariants}
+                  className="rounded-[28px] border border-white/10 bg-slate-950/70 p-7 shadow-[0_20px_50px_rgba(2,6,23,0.5)] backdrop-blur"
+                >
+                  <div className="mb-4 inline-flex rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <feature.icon className="h-5 w-5 text-sky-200" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">{feature.description}</p>
+                </motion.div>
+              ))}
+            </motion.div>
           </div>
-        </div>
-      </footer>
+        </section>
+
+        <section id="workflow" className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto grid max-w-6xl gap-10 rounded-[32px] border border-white/10 bg-slate-950/45 p-6 lg:grid-cols-[0.45fr_0.55fr] lg:items-start lg:p-8">
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="space-y-5"
+            >
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">Workflow Intelligence</p>
+              <h2 className="text-3xl font-semibold sm:text-4xl">
+                {t("landing.cta.title", "Activate trusted response workflows")}
+              </h2>
+              <p className="text-lg text-slate-400">
+                {t(
+                  "landing.cta.subtitle",
+                  "Purpose-built to coordinate GBV emergency response with accountable, AI-driven intelligence."
+                )}
+              </p>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <p className="text-sm font-semibold text-white">What improves in this redesign</p>
+                <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                  <li>- Faster action clarity for emergency and sign-in flows</li>
+                  <li>- Reduced visual clutter across core decision points</li>
+                  <li>- Better responsiveness for smaller screens and tablets</li>
+                </ul>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              className="space-y-4"
+            >
+              {workflowSteps.map((step, index) => (
+                <motion.div
+                  key={step.title}
+                  variants={itemVariants}
+                  className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:flex-row sm:items-start"
+                >
+                  <div className="flex items-start gap-4 sm:flex-1">
+                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
+                      <step.icon className="h-5 w-5 text-sky-200" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Step {index + 1}</p>
+                      <h3 className="mt-1 text-lg font-semibold text-white">{step.title}</h3>
+                      <p className="mt-1 text-sm text-slate-400">{step.description}</p>
+                    </div>
+                  </div>
+                  <p className="w-fit rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-200">
+                    {step.metric}
+                  </p>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        <section id="about" className="scroll-mt-28 px-4 pb-20 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="mx-auto max-w-5xl rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/90 to-slate-900/70 p-8 text-center shadow-[0_30px_80px_rgba(2,8,23,0.65)] sm:p-12"
+          >
+            <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">About AEGIS-AI</p>
+            <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">Response infrastructure you can trust</h2>
+            <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
+              AEGIS-AI is designed for secure, role-based, trauma-informed response operations with measurable accountability.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button
+                className="h-12 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-7 text-base font-semibold"
+                onClick={openAuth}
+              >
+                {t("landing.cta.button", "Access Response Console")}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 border-white/20 bg-white/5 px-7 text-base font-semibold text-slate-100 hover:bg-white/10"
+                onClick={() => navigate("/impact")}
+              >
+                View Impact Data
+                <TrendingUp className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </motion.div>
+        </section>
+
+        <footer className="border-t border-white/10 px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
+            <p>© 2026 AEGIS-AI Platform. All rights reserved.</p>
+            <div className="flex flex-wrap gap-6">
+              <button className="hover:text-white" onClick={() => handleNavClick("about")}>
+                Privacy
+              </button>
+              <button className="hover:text-white" onClick={() => handleNavClick("about")}>
+                Terms
+              </button>
+              <button className="hover:text-white" onClick={() => handleNavClick("workflow")}>
+                Contact
+              </button>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );

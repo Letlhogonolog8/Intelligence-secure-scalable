@@ -82,15 +82,26 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    const { count } = await supabase
-      .from("user_profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("role", "admin");
-    const role = (count ?? 0) === 0 ? "admin" : "analyst";
+    const requestedRole = user.user_metadata?.role;
+    if (requestedRole && requestedRole !== "survivor") {
+      return new Response(JSON.stringify({ error: "Privileged profiles must be provisioned by an approved administrator" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json", ...buildCorsHeaders(corsOrigin) },
+      });
+    }
 
     const { data: inserted, error: insertError } = await supabase
       .from("user_profiles")
-      .insert({ id: user.id, role, full_name: user.user_metadata?.full_name ?? null, avatar_url: user.user_metadata?.avatar_url ?? null })
+      .insert({
+        id: user.id,
+        role: "survivor",
+        full_name: user.user_metadata?.full_name ?? null,
+        avatar_url: user.user_metadata?.avatar_url ?? null,
+        is_active: true,
+        approval_status: "approved",
+        approved_at: new Date().toISOString(),
+        mfa_enabled: false,
+      })
       .select("id, role")
       .single();
     if (insertError) {

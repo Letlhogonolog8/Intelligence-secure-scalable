@@ -14,6 +14,28 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { URL } from 'url';
+import { USSD_MENU_STRUCTURE, USSD_MENU_TITLES } from './menuConfig';
+
+const ALLOWED_TELKOM_HOST = 'api.telkom.co.za';
+
+function sanitizeLog(value: string): string {
+  return value.replace(/[\r\n\t]/g, '_').substring(0, 200);
+}
+
+function resolveTelkomCallbackUrl(): string {
+  const explicitCallback = process.env.TELKOM_CALLBACK_URL?.trim();
+  if (explicitCallback) {
+    return explicitCallback;
+  }
+
+  const publicBackendUrl = process.env.BACKEND_PUBLIC_URL?.trim() || process.env.APP_BASE_URL?.trim();
+  if (!publicBackendUrl) {
+    return '';
+  }
+
+  return `${publicBackendUrl.replace(/\/+$/, '')}/api/ussd/telkom/callback`;
+}
 
 export type USSDAction = 'report' | 'help' | 'status' | 'emergency' | 'back' | 'quit';
 export type Language = 'en' | 'zu' | 'xh' | 'st' | 'af' | 'ss' | 'tn' | 'ts' | 've' | 'nso' | 'nr';
@@ -90,7 +112,7 @@ export class USSDGateway {
     this.telkomApiKey = process.env.TELKOM_API_KEY || '';
     this.telkomApiUrl = process.env.TELKOM_API_URL || 'https://api.telkom.co.za/ussd/v1';
     this.telkomUssdCode = process.env.TELKOM_USSD_CODE || '';
-    this.telkomCallbackUrl = process.env.TELKOM_CALLBACK_URL || '';
+    this.telkomCallbackUrl = resolveTelkomCallbackUrl();
     this.initializeMenus();
     this.initializeOfflineCache();
   }
@@ -120,7 +142,13 @@ export class USSDGateway {
         timestamp: new Date().toISOString(),
       };
 
-      const response = await fetch(`${this.telkomApiUrl}/send`, {
+      // Validate URL to prevent SSRF
+      const parsedUrl = new URL(`${this.telkomApiUrl}/send`);
+      if (parsedUrl.hostname !== ALLOWED_TELKOM_HOST) {
+        throw new Error(`Blocked SSRF attempt to host: ${parsedUrl.hostname}`);
+      }
+
+      const response = await fetch(parsedUrl.toString(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.telkomApiKey}`,
@@ -134,7 +162,7 @@ export class USSDGateway {
         throw new Error(`Telkom API error: ${response.status} ${response.statusText}`);
       }
 
-      console.log(`✅ USSD sent to ${phoneNumber} via Telkom`);
+      console.log(`✅ USSD sent to ${sanitizeLog(phoneNumber)} via Telkom`);
       return true;
     } catch (error) {
       console.error('❌ Failed to send USSD via Telkom:', error);
@@ -165,7 +193,7 @@ export class USSDGateway {
         received_at: new Date().toISOString(),
       });
 
-      const response = await this.handleUSSDRequest(phoneNumber, userInput, normalizedLanguage);
+      const response = await this.handleUSSDRequest(phoneNumber, userInput, normalizedLanguage, sessionId);
       await this.sendTelkomResponse(phoneNumber, response.text, response.endSession);
 
       return response;
@@ -181,11 +209,12 @@ export class USSDGateway {
   public async handleUSSDRequest(
     phoneNumber: string,
     userInput: string,
-    language: Language = 'en'
+    language: Language = 'en',
+    externalSessionId?: string
   ): Promise<USSDResponse> {
     try {
       // Get or create session
-      const session = await this.getOrCreateSession(phoneNumber, language);
+      const session = await this.getOrCreateSession(phoneNumber, language, externalSessionId);
 
       // Process user input
       const response = await this.processInput(session, userInput, language);
@@ -245,39 +274,39 @@ export class USSDGateway {
     language: Language
   ): Promise<USSDResponse> {
     try {
-      // Create case
-      const caseId = this.generateCaseId();
+      const caseReference = this.generateCaseId();
+      const createdAt = new Date().toISOString();
+      const persistedCaseId = caseReference;
 
-      const { error } = await this.supabase.from('cases').insert({
-        id: caseId,
+      const modernInsert = await this.supabase.from('cases').insert({
+        id: caseReference,
+        case_number: caseReference,
         phone_number: session.phoneNumber,
         description: details,
         channel: 'ussd',
         status: 'submitted',
-        risk_level: 'medium', // Will be assessed by AI
-        created_at: new Date().toISOString(),
+        risk_level: 'medium',
+        created_at: createdAt,
+        updated_at: createdAt,
         source_session_id: session.sessionId,
       });
 
-      if (error) throw error;
+      if (modernInsert.error) {
+        throw modernInsert.error;
+      }
 
-      // Log to offline cache for disaster recovery
-      this.offlineCache.set(`case:${caseId}`, {
-        caseId,
+      this.offlineCache.set(`case:${caseReference}`, {
+        caseId: caseReference,
         phoneNumber: session.phoneNumber,
         details,
-        timestamp: new Date().toISOString(),
+        timestamp: createdAt,
       });
 
-      // Send SMS confirmation
-      await this.sendConfirmationSMS(session.phoneNumber, caseId, language);
+      await this.sendConfirmationSMS(session.phoneNumber, caseReference, language);
+      await this.triggerRiskAssessment(persistedCaseId);
 
-      // Trigger risk assessment
-      await this.triggerRiskAssessment(caseId);
-
-      // Return confirmation
       const confirmationText = this.getLocalizedText('confirmation', language, {
-        caseId,
+        caseId: caseReference,
       });
 
       return {
@@ -286,7 +315,7 @@ export class USSDGateway {
         text: confirmationText,
         options: this.menus[language]?.end || [],
         endSession: true,
-        smsFollowUp: `Case ID: ${caseId}\nWe will contact you soon.`,
+        smsFollowUp: `Case ID: ${caseReference}\nWe will contact you soon.`,
       };
     } catch (error) {
       console.error('Report submission error:', error);
@@ -303,25 +332,25 @@ export class USSDGateway {
     language: Language
   ): Promise<USSDResponse> {
     try {
-      // Create emergency request
       const emergencyId = this.generateEmergencyId();
+      const createdAt = new Date().toISOString();
 
-      const { error } = await this.supabase.from('emergency_requests').insert({
+      const modernInsert = await this.supabase.from('emergency_requests').insert({
         id: emergencyId,
         phone_number: session.phoneNumber,
         help_type: helpType,
         channel: 'ussd',
         status: 'received',
-        created_at: new Date().toISOString(),
+        created_at: createdAt,
+        updated_at: createdAt,
         source_session_id: session.sessionId,
       });
 
-      if (error) throw error;
+      if (modernInsert.error) {
+        throw modernInsert.error;
+      }
 
-      // Find nearest resources
       const resources = await this.findNearestResources(session.phoneNumber);
-
-      // Send SMS with resource info
       await this.sendResourceSMS(session.phoneNumber, resources, language);
 
       const responseText = this.getLocalizedText('help_confirmation', language, {
@@ -352,14 +381,30 @@ export class USSDGateway {
     language: Language
   ): Promise<USSDResponse> {
     try {
-      // Fetch case
-      const { data: caseRecord } = await this.supabase
-        .from('cases')
-        .select('id, status, risk_level, updated_at')
-        .or(
-          `id.eq.${caseReference},case_number.eq.${caseReference}`
-        )
-        .single();
+      let caseRecord: { id: string; status: string; riskLevel: string } | null = null;
+      const isUuidReference = this.isUuid(caseReference);
+
+      const modernQuery = await (isUuidReference
+        ? this.supabase
+            .from('cases')
+            .select('id, status, risk_level, updated_at, case_number')
+            .or(`id.eq.${caseReference},case_number.eq.${caseReference}`)
+            .single()
+        : this.supabase
+            .from('cases')
+            .select('id, status, risk_level, updated_at, case_number')
+            .eq('case_number', caseReference)
+            .single());
+
+      if (!modernQuery.error && modernQuery.data) {
+        caseRecord = {
+          id: String(modernQuery.data.case_number ?? modernQuery.data.id),
+          status: String(modernQuery.data.status),
+          riskLevel: String(modernQuery.data.risk_level ?? 'medium'),
+        };
+      } else if (modernQuery.error && !this.isNoRowsError(modernQuery.error)) {
+        throw modernQuery.error;
+      }
 
       if (!caseRecord) {
         const notFoundText = this.getLocalizedText('case_not_found', language);
@@ -375,7 +420,7 @@ export class USSDGateway {
       const statusText = this.getLocalizedText('case_status', language, {
         caseId: caseRecord.id,
         status: caseRecord.status,
-        riskLevel: caseRecord.risk_level,
+        riskLevel: caseRecord.riskLevel,
       });
 
       return {
@@ -416,56 +461,220 @@ export class USSDGateway {
   /**
    * Get session (create if not exists)
    */
-  private async getOrCreateSession(phoneNumber: string, language: Language): Promise<USSDSession> {
+  private async getOrCreateSession(phoneNumber: string, language: Language, externalSessionId?: string): Promise<USSDSession> {
     try {
-      // Try to fetch existing session
-      const { data: existing } = await this.supabase
-        .from('ussd_sessions')
-        .select('*')
-        .eq('phone_number', phoneNumber)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (existing) {
-        return {
-          sessionId: existing.session_id,
-          phoneNumber: existing.phone_number,
-          language: existing.language || language,
-          currentMenu: existing.current_menu,
-          state: existing.state || {},
-          createdAt: existing.created_at,
-          lastAccessedAt: new Date().toISOString(),
-        };
+      if (externalSessionId) {
+        const existingBySession = await this.fetchSessionBySessionId(externalSessionId, language);
+        if (existingBySession) {
+          this.storeOfflineSession(existingBySession);
+          return existingBySession;
+        }
+      } else {
+        const existingByPhone = await this.fetchLatestSessionByPhone(phoneNumber, language);
+        if (existingByPhone) {
+          this.storeOfflineSession(existingByPhone);
+          return existingByPhone;
+        }
       }
-    } catch (_error) {
-      void _error;
+    } catch (error) {
+      console.warn('USSD session lookup failed, creating a fresh session:', error);
     }
 
-    // Create new session
-    const sessionId = this.generateSessionId();
+    if (externalSessionId) {
+      const cachedSession = this.getOfflineSessionById(externalSessionId);
+      if (cachedSession) {
+        return cachedSession;
+      }
+    } else {
+      const cachedSession = this.getOfflineSessionByPhone(phoneNumber);
+      if (cachedSession) {
+        return cachedSession;
+      }
+    }
+
+    const sessionId = externalSessionId || this.generateSessionId();
+    const now = new Date().toISOString();
     const newSession: USSDSession = {
       sessionId,
       phoneNumber,
       language,
       currentMenu: 'main',
       state: {},
-      createdAt: new Date().toISOString(),
-      lastAccessedAt: new Date().toISOString(),
+      createdAt: now,
+      lastAccessedAt: now,
     };
 
-    await this.supabase.from('ussd_sessions').insert({
-      session_id: sessionId,
-      phone_number: phoneNumber,
-      language,
-      current_menu: 'main',
-      state: {},
-      is_active: true,
-      created_at: newSession.createdAt,
-    });
+    this.storeOfflineSession(newSession);
+    await this.insertSession(newSession);
 
     return newSession;
+  }
+
+  private mapSessionRow(row: Record<string, unknown>, fallbackLanguage: Language): USSDSession {
+    return {
+      sessionId: String(row.session_id),
+      phoneNumber: String(row.phone_number),
+      language: (row.language as Language) || fallbackLanguage,
+      currentMenu: String(row.current_menu ?? row.current_state ?? 'main'),
+      state: ((row.state ?? row.metadata) as SessionState) || {},
+      createdAt: String(row.created_at || new Date().toISOString()),
+      lastAccessedAt: String(row.last_accessed_at ?? row.last_activity ?? new Date().toISOString()),
+    };
+  }
+
+  private getOfflineSessionById(sessionId: string): USSDSession | null {
+    const session = this.offlineCache.get(`ussd-session:${sessionId}`) as unknown as USSDSession | undefined;
+    return session ?? null;
+  }
+
+  private getOfflineSessionByPhone(phoneNumber: string): USSDSession | null {
+    const sessionId = this.offlineCache.get(`ussd-phone:${phoneNumber}`)?.sessionId;
+    if (typeof sessionId !== 'string') {
+      return null;
+    }
+
+    return this.getOfflineSessionById(sessionId);
+  }
+
+  private storeOfflineSession(session: USSDSession): void {
+    this.offlineCache.set(`ussd-session:${session.sessionId}`, session as unknown as Record<string, unknown>);
+    this.offlineCache.set(`ussd-phone:${session.phoneNumber}`, { sessionId: session.sessionId });
+  }
+
+  private async fetchSessionBySessionId(sessionId: string, language: Language): Promise<USSDSession | null> {
+    const { data, error } = await this.supabase
+      .from('ussd_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .limit(1)
+      .single();
+
+    if (error) {
+      return null;
+    }
+
+    return data ? this.mapSessionRow(data as Record<string, unknown>, language) : null;
+  }
+
+  private async fetchLatestSessionByPhone(phoneNumber: string, language: Language): Promise<USSDSession | null> {
+    const modernQuery = await this.supabase
+      .from('ussd_sessions')
+      .select('*')
+      .eq('phone_number', phoneNumber)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!modernQuery.error && modernQuery.data) {
+      return this.mapSessionRow(modernQuery.data as Record<string, unknown>, language);
+    }
+
+    if (!this.isMissingColumnError(modernQuery.error, 'is_active')) {
+      return null;
+    }
+
+    const legacyQuery = await this.supabase
+      .from('ussd_sessions')
+      .select('*')
+      .eq('phone_number', phoneNumber)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (legacyQuery.error || !legacyQuery.data) {
+      return null;
+    }
+
+    return this.mapSessionRow(legacyQuery.data as Record<string, unknown>, language);
+  }
+
+  private async insertSession(session: USSDSession): Promise<void> {
+    const modernInsert = await this.supabase.from('ussd_sessions').insert({
+      session_id: session.sessionId,
+      phone_number: session.phoneNumber,
+      language: session.language,
+      current_menu: 'main',
+      state: session.state,
+      is_active: true,
+      created_at: session.createdAt,
+    });
+
+    if (!modernInsert.error) {
+      return;
+    }
+
+    if (this.isMissingTableError(modernInsert.error, 'ussd_sessions')) {
+      console.warn('USSD session persistence is running in offline mode because public.ussd_sessions is unavailable.');
+      return;
+    }
+
+    if (
+      !this.isMissingColumnError(modernInsert.error, 'language') &&
+      !this.isMissingColumnError(modernInsert.error, 'current_menu') &&
+      !this.isMissingColumnError(modernInsert.error, 'state') &&
+      !this.isMissingColumnError(modernInsert.error, 'is_active')
+    ) {
+      throw modernInsert.error;
+    }
+
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const legacyInsert = await this.supabase.from('ussd_sessions').insert({
+      session_id: session.sessionId,
+      phone_number: session.phoneNumber,
+      current_state: 'main',
+      menu_level: 0,
+      user_input: '',
+      created_at: session.createdAt,
+      last_activity: session.lastAccessedAt,
+      expires_at: expiresAt,
+    });
+
+    if (legacyInsert.error) {
+      if (this.isMissingTableError(legacyInsert.error, 'ussd_sessions')) {
+        console.warn('USSD session persistence is running in offline mode because public.ussd_sessions is unavailable.');
+        return;
+      }
+      throw legacyInsert.error;
+    }
+  }
+
+  private isMissingColumnError(error: unknown, columnName: string): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.toLowerCase() : '';
+    return message.includes(columnName.toLowerCase()) && (message.includes('column') || message.includes('schema cache'));
+  }
+
+  private isMissingTableError(error: unknown, tableName: string): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.toLowerCase() : '';
+    return message.includes(tableName.toLowerCase()) && message.includes('could not find the table');
+  }
+
+  private isNoRowsError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const code = 'code' in error && typeof error.code === 'string' ? error.code : '';
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.toLowerCase() : '';
+
+    return (
+      code === 'PGRST116' ||
+      message.includes('not found') ||
+      message.includes('no rows') ||
+      message.includes('0 rows')
+    );
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   }
 
   /**
@@ -474,15 +683,53 @@ export class USSDGateway {
   private async updateSession(sessionId: string, response: USSDResponse): Promise<void> {
     try {
       const isActive = !response.endSession;
+      const now = new Date().toISOString();
+      const cachedSession = this.getOfflineSessionById(sessionId);
+      if (cachedSession) {
+        this.storeOfflineSession({
+          ...cachedSession,
+          currentMenu: response.menu,
+          lastAccessedAt: now,
+        });
+      }
 
-      await this.supabase
+      const modernUpdate = await this.supabase
         .from('ussd_sessions')
         .update({
           current_menu: response.menu,
           is_active: isActive,
-          last_accessed_at: new Date().toISOString(),
+          last_accessed_at: now,
         })
         .eq('session_id', sessionId);
+
+      if (!modernUpdate.error) {
+        return;
+      }
+
+      if (this.isMissingTableError(modernUpdate.error, 'ussd_sessions')) {
+        return;
+      }
+
+      if (
+        !this.isMissingColumnError(modernUpdate.error, 'last_accessed_at') &&
+        !this.isMissingColumnError(modernUpdate.error, 'current_menu') &&
+        !this.isMissingColumnError(modernUpdate.error, 'is_active')
+      ) {
+        throw modernUpdate.error;
+      }
+
+      const legacyUpdate = await this.supabase
+        .from('ussd_sessions')
+        .update({
+          current_state: response.menu,
+          last_activity: now,
+          expires_at: isActive ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : now,
+        })
+        .eq('session_id', sessionId);
+
+      if (legacyUpdate.error && !this.isMissingTableError(legacyUpdate.error, 'ussd_sessions')) {
+        throw legacyUpdate.error;
+      }
     } catch (error) {
       console.error('Failed to update session:', error);
     }
@@ -506,7 +753,7 @@ export class USSDGateway {
       });
 
       if (error) throw error;
-      console.log(`📬 SMS confirmation queued for ${phoneNumber}`);
+      console.log(`📬 SMS confirmation queued for ${sanitizeLog(phoneNumber)}`);
     } catch (error) {
       console.error('Failed to queue SMS:', error);
     }
@@ -540,7 +787,7 @@ export class USSDGateway {
       });
 
       if (error) throw error;
-      console.log(`📬 Resources SMS queued for ${phoneNumber}`);
+      console.log(`📬 Resources SMS queued for ${sanitizeLog(phoneNumber)}`);
     } catch (error) {
       console.error('Failed to queue resources SMS:', error);
     }
@@ -552,8 +799,9 @@ export class USSDGateway {
   private async findNearestResources(_phoneNumber: string): Promise<NearestResources> {
     try {
       const { data: shelters } = await this.supabase
-        .from('shelters')
-        .select('id, name, phone, location')
+        .from('resources')
+        .select('id, name, contact_info, description')
+        .eq('resource_type', 'shelter')
         .limit(3);
 
       const { data: counselors } = await this.supabase
@@ -561,10 +809,16 @@ export class USSDGateway {
         .select('id, full_name, phone')
         .eq('role', 'counselor')
         .eq('is_active', true)
+        .eq('is_available', true)
         .limit(3);
 
       return {
-        shelters: (shelters || []) as ResourceContact[],
+        shelters: (shelters || []).map((shelter) => ({
+          id: shelter.id,
+          name: shelter.name,
+          phone: shelter.contact_info,
+          location: shelter.description,
+        })),
         counselors: (counselors || []).map((counselor) => ({
           id: counselor.id,
           name: counselor.full_name || 'Counselor',
@@ -590,7 +844,7 @@ export class USSDGateway {
       });
 
       if (error) throw error;
-      console.log(`✅ Risk assessment triggered for case ${caseId}`);
+      console.log(`✅ Risk assessment triggered for case ${sanitizeLog(caseId)}`);
     } catch (error) {
       console.error('Failed to trigger risk assessment:', error);
     }
@@ -696,115 +950,31 @@ export class USSDGateway {
     return text;
   }
 
-  private buildMenuText(menuKey: string, options: USSDMenuOption[], language: Language): string {
-    const titles: Record<string, Record<Language, string>> = {
-      main: {
-        en: 'AEGIS GBV Support\n1. Report Incident\n2. Get Help\n3. Case Status\n4. Emergency Alert\n0. Exit',
-        zu: 'Isisebenzi se-AEGIS\n1. Bhala Icala\n2. Thola Usizo\n3. Isimo Secala\n4. Isilindo Lokubhubhiseka\n0. Phuma',
-        xh: 'Uncedo lwe-AEGIS\n1. Xela Isimangaliso\n2. Fumana Incedo\n3. Imisebenzi Yecala\n4. Ibhaleyilo Yethutyana\n0. Suka',
-        st: 'Thuso ya AEGIS\n1. Gaka Ntswakiso\n2. Fumana Thuso\n3. Boemo ba Kgetsi\n4. Ikonokelo ya Ligokotsi\n0. Ema',
-        af: 'AEGIS Ondersteuning\n1. Rapporteer Voorval\n2. Kry Hulp\n3. Saakstatus\n4. Noodtoestand\n0. Uitgang',
-        ss: 'Incamo ye-AEGIS\n1. Phakamisa Icala\n2. Thola Usizo\n3. Isimo Secala\n4. I-Emergency Alert\n0. Phuma',
-        tn: 'Thuso ya AEGIS\n1. Bega Kgetsi\n2. Kopa Thuso\n3. Boemo jwa Kgetsi\n4. Tlhagiso ya Tshoganetso\n0. Tswa',
-        ts: 'Mpfuno wa AEGIS\n1. Vika Mhaka\n2. Kombela Mpfuno\n3. Xiyimo xa Mhaka\n4. Xivikelo xa xihatla\n0. Huma',
-        ve: 'Thuso ya AEGIS\n1. Vhiga Mufhululu\n2. Humbela Thuso\n3. Tshiimo tsha Mufhululu\n4. Tsevho ya Tshihafu\n0. Bvuma',
-        nso: 'Thuso ya AEGIS\n1. Bega Mohlala\n2. Kgopela Thuso\n3. Boemo bja Mohlala\n4. Temošo ya Tšhoganetšo\n0. Etswa',
-        nr: 'Isizo le-AEGIS\n1. Bika Icala\n2. Funa Isizo\n3. Ubujamo Becala\n4. Isiyeleliso Esiphuthumako\n0. Phuma',
-      },
-      report_details: {
-        en: 'Describe incident:\nBrief details please.',
-        zu: 'Chaza lento okwenzeka:\nUmuntu muncinane.',
-        xh: 'Chaza into eyenzeke:\nImininingwane emfutshane.',
-        st: 'Thagela mokgatlho:\nThagela bonnyane.',
-        af: 'Beskryf voorval:\nKorte besonderhede asseblief.',
-        ss: 'Hlathula lokwakwenzela:\nUmuntu muncinane.',
-        tn: 'Tlhalosa tiragalo:\nDintlha tse dikhutshwane tsweetswee.',
-        ts: 'Hlamusela mhaka:\nVuxokoxoko byo koma ndza kombela.',
-        ve: 'Talutshedzani mufhululu:\nZwidodombedzwa zwi pfufhi nga khumbelo.',
-        nso: 'Hlalosa tiragalo:\nDintlha tše dikopana hle.',
-        nr: 'Hlathulula isehlakalo:\nImininingwana emifitjhani ngiyabawa.',
-      },
-      help_details: {
-        en: 'What help do you need?\n1. Shelter\n2. Counseling\n3. Medical\n4. Police',
-        zu: 'Yini usizo okudingayo?\n1. Ikhaya\n2. Ukunandisana\n3. Iziguli\n4. Amapolisa',
-        xh: 'Yoluphi uncedo onodinga?\n1. Indawo Yokuhlala\n2. Untetho\n3. Izigqebela\n4. Amapolisa',
-        st: 'Thuso efe o nago go e fumana?\n1. Mophato\n2. Kgetsi\n3. Bolwetse\n4. Mapodisi',
-        af: 'Watter hulp het u nodig?\n1. Skuiling\n2. Terapie\n3. Mediese\n4. Polisie',
-        ss: 'Yini usizo okudingayo?\n1. Ikhaya\n2. Ukunandisana\n3. Iziguli\n4. Amapolisa',
-        tn: 'O tlhoka thuso efe?\n1. Lefelo la go iphitlha\n2. Bogakolodi\n3. Kalafi\n4. Mapodisi',
-        ts: 'U lava mpfuno wihi?\n1. Ndhawu yo tumbela\n2. Ntsundzuxo\n3. Vutshunguri\n4. Maphorisa',
-        ve: 'Ni khou toda thuso ifhio?\n1. Fhethu ha u dzumbama\n2. Vhueletshedzi\n3. Tshihedzwa\n4. Mapholisa',
-        nso: 'O hloka thuso efe?\n1. Lefelo la go iphihla\n2. Keletšo\n3. Kalafo\n4. Maphodisa',
-        nr: 'Udinga isizo elinjani?\n1. Indawo yokuphephela\n2. Ukwelulekwa\n3. Ezamapilo\n4. Amapholisa',
-      },
-      case_reference: {
-        en: 'Enter case ID or number:',
-        zu: 'Faka isithombelo secala noma inombolo:',
-        xh: 'Faka ikhowudi yecala okanye inombolo:',
-        st: 'Kenya khowudi ya kgetsi kgonwa le nomoro:',
-        af: 'Voer saak-ID of nommer in:',
-        ss: 'Faka isithombelo secala noma inombolo:',
-        tn: 'Tsenya ID kgotsa nomoro ya kgetsi:',
-        ts: 'Nghenisa ID kumbe nomboro ya mhaka:',
-        ve: 'Dzhenisani ID kana nomboro ya mufhululu:',
-        nso: 'Tsenya ID goba nomoro ya mohlala:',
-        nr: 'Faka i-ID namkha inomboro yecala:',
-      },
-      emergency_alert: {
-        en: 'Emergency - Police being notified. Stay safe.',
-        zu: 'Ibhaleyilo - Amapolisa azotiwe. Hlala naphakeme.',
-        xh: 'I-emergency - Amapolisa azonicelwa. Hlala ekhuselekile.',
-        st: 'Kotsi - Mapodisi a tla lemoga. Dula a sa lwala.',
-        af: 'Noodtoestand - Polisie word in kennis gestel. Bly veilig.',
-        ss: 'I-Emergency - Amapolisa azonicelwa. Hlala ekhuselekile.',
-        tn: 'Tshoganetso - Mapodisi a a itsisetswe. Nna o sireletsegile.',
-        ts: 'Xihatla - Maphorisa ya tivisiwile. Tshama u sirhelelekile.',
-        ve: 'Tshihafu - Mapholisa vha khou divhadzwa. Dzudzani no tsireledzea.',
-        nso: 'Tšhoganetšo - Maphodisa a tsebišitšwe. Dula o bolokegile.',
-        nr: 'Isiphuthumako - Amapholisa ayabikelwa. Hlala uphephile.',
-      },
-      end: {
-        en: '0. Back to Menu\n*. Exit',
-        zu: '0. Buya Ekumenyu\n*. Phuma',
-        xh: '0. Buya Kwemenu\n*. Suka',
-        st: '0. Koma go Menya\n*. Ema',
-        af: '0. Terug na Keuzemenu\n*. Uitgang',
-        ss: '0. Buya Ekumenyu\n*. Phuma',
-        tn: '0. Boela kwa Menung\n*. Tswa',
-        ts: '0. Tlhela eka Menu\n*. Huma',
-        ve: '0. Vhuyelela kha Menu\n*. Bvuma',
-        nso: '0. Boela go Menu\n*. Etswa',
-        nr: '0. Buyela kuMenyu\n*. Phuma',
-      },
-    };
-
-    return titles[menuKey]?.[language] || titles[menuKey]?.en || menuKey;
+  private buildMenuText(menuKey: string, _options: USSDMenuOption[], language: Language): string {
+    return USSD_MENU_TITLES[menuKey as keyof typeof USSD_MENU_TITLES]?.[language] || USSD_MENU_TITLES[menuKey as keyof typeof USSD_MENU_TITLES]?.en || menuKey;
   }
 
   private initializeMenus(): void {
-    // Main menu structure (same across languages)
-    this.menus.en = {
-      main: [
-        { key: '1', label: 'Report Incident', labels: this.createEmptyLabels(), nextMenu: 'report_details', action: 'report', requiresInput: true },
-        { key: '2', label: 'Get Help', labels: this.createEmptyLabels(), nextMenu: 'help_details', action: 'help', requiresInput: true },
-        { key: '3', label: 'Case Status', labels: this.createEmptyLabels(), nextMenu: 'case_reference', action: 'status', requiresInput: true },
-        { key: '4', label: 'Emergency Alert', labels: this.createEmptyLabels(), nextMenu: 'emergency_alert', action: 'emergency' },
-      ],
-      report_details: [],
-      help_details: [],
-      case_reference: [],
-      emergency_alert: [],
-      confirmation: [],
-      help_confirmation: [],
-      case_not_found: [],
-      case_status_result: [],
-      error: [],
-      end: [],
-    };
+    const baseMenus = Object.fromEntries(
+      Object.entries(USSD_MENU_STRUCTURE).map(([menuKey, menuOptions]) => [
+        menuKey,
+        menuOptions.map((option) => ({
+          ...option,
+          labels: this.createEmptyLabels(),
+        })),
+      ])
+    ) as Record<string, USSDMenuOption[]>;
 
-    // Copy structure to other languages
-    SUPPORTED_LANGUAGES.filter((lang) => lang !== 'en').forEach((lang) => {
-      this.menus[lang] = { ...this.menus.en };
+    SUPPORTED_LANGUAGES.forEach((language) => {
+      this.menus[language] = Object.fromEntries(
+        Object.entries(baseMenus).map(([menuKey, menuOptions]) => [
+          menuKey,
+          menuOptions.map((option) => ({
+            ...option,
+            labels: { ...option.labels },
+          })),
+        ])
+      );
     });
   }
 

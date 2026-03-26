@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
@@ -58,7 +58,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["placeholder.svg", "apple-touch-icon.png", "masked-icon.svg"],
+      includeAssets: ["favicon.ico"],
       manifest: {
         name: "AEGIS-AI National Response Grid",
         short_name: "AEGIS-AI",
@@ -68,8 +68,7 @@ export default defineConfig(({ mode }) => ({
         display: "standalone",
         start_url: "/",
         icons: [
-          { src: "/placeholder.svg", sizes: "any", type: "image/svg+xml" },
-          { src: "/placeholder.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+          { src: "/favicon.ico", sizes: "48x48 32x32 16x16", type: "image/x-icon" },
         ],
         categories: ["government", "health", "social"],
         lang: "en",
@@ -78,10 +77,10 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
             handler: "NetworkFirst",
             options: {
-              cacheName: "supabase-cache",
+              cacheName: "supabase-storage-cache",
               expiration: { maxEntries: 50, maxAgeSeconds: 300 },
               networkTimeoutSeconds: 10,
             },
@@ -94,7 +93,7 @@ export default defineConfig(({ mode }) => ({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
       },
-      devOptions: { enabled: mode === "development" },
+      devOptions: { enabled: false },
     }),
   ].filter(Boolean),
   resolve: {

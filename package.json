@@ -6,6 +6,8 @@
   "scripts": {
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite",
+    "dev:ussd": "concurrently \"npm run dev:server\" \"ngrok http 3001\"",
+    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"ngrok http 3001\"",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
@@ -22,6 +24,7 @@
     "pre-commit": "lint-staged && npm run typecheck",
     "seed": "tsx scripts/seed-data/seed.ts",
     "seed:clear": "tsx scripts/seed-data/seed.ts --clear",
+    "ussd:at": "node test-at-ussd.js",
     "db:migrate": "echo 'Run migration in Supabase Dashboard or use supabase CLI'",
     "db:status": "echo 'Check Supabase Dashboard for database status'",
     "deploy:function": "echo 'Run: supabase functions deploy aegis-survivor-chat'",

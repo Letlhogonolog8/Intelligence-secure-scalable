@@ -57,6 +57,17 @@ describe('USSDGateway', () => {
       expect(mockSupabase.insert).toHaveBeenCalled();
     });
 
+    it('should persist simulator-provided session ids when creating a new session', async () => {
+      const response = await gateway.handleUSSDRequest('27821234567', '', 'en', 'AT_SIM_123');
+
+      expect(response.menu).toBe('main');
+      expect(mockSupabase.eq).toHaveBeenCalledWith('session_id', 'AT_SIM_123');
+      expect(mockSupabase.insert).toHaveBeenCalledWith(expect.objectContaining({
+        session_id: 'AT_SIM_123',
+        phone_number: '27821234567',
+      }));
+    });
+
     it('should navigate to report incident menu when "1" is pressed', async () => {
       // Mock existing session at main menu
       mockSupabase.single.mockResolvedValueOnce({

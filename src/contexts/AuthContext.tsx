@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase"
 import { logError } from "@/lib/logger"
 import { AuthContext } from "@/contexts/auth-context"
 import { hasSupabase } from "@/lib/env"
+import { resetAppSessionState } from "@/store/appStore"
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null)
@@ -40,6 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return
       }
       if (error && isInvalidRefreshTokenError(error)) {
+        resetAppSessionState()
         setSession(null)
         setUser(null)
         setLoading(false)
@@ -51,6 +53,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     loadSession()
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession?.user) {
+        resetAppSessionState()
+      }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       setLoading(false)
@@ -92,13 +97,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const signOut = async () => {
+    resetAppSessionState()
     if (!hasSupabase) {
+      setSession(null)
+      setUser(null)
       return
     }
     const { error } = await supabase.auth.signOut()
     if (error) {
       logError(error, { source: "auth.signOut" })
     }
+    setSession(null)
+    setUser(null)
   }
 
   const value = useMemo(

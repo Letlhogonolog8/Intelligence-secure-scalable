@@ -177,12 +177,26 @@ function isRedisConfigured(): boolean {
   return Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
 }
 
+function resolveTelkomCallbackUrl(): string {
+  const explicitCallback = process.env.TELKOM_CALLBACK_URL?.trim();
+  if (explicitCallback) {
+    return explicitCallback;
+  }
+
+  const publicBackendUrl = process.env.BACKEND_PUBLIC_URL?.trim() || process.env.APP_BASE_URL?.trim();
+  if (!publicBackendUrl) {
+    return '';
+  }
+
+  return `${publicBackendUrl.replace(/\/+$/, '')}/api/ussd/telkom/callback`;
+}
+
 function isTelkomConfigured(): boolean {
   return Boolean(
     process.env.TELKOM_API_KEY &&
     process.env.TELKOM_API_URL &&
     process.env.TELKOM_USSD_CODE &&
-    process.env.TELKOM_CALLBACK_URL
+    resolveTelkomCallbackUrl()
   );
 }
 
@@ -349,6 +363,7 @@ async function getReadinessStatus(): Promise<{
   services.twilio = twilioNotificationService.getHealthStatus();
   services.telkom = {
     configured: isTelkomConfigured(),
+    callbackUrlConfigured: Boolean(resolveTelkomCallbackUrl()),
   };
   services.notificationWorker = {
     running: Boolean(notificationWorkerInterval),
@@ -956,13 +971,13 @@ app.post('/api/ussd/telkom/callback', validationMiddleware.ussdCallback, async (
 app.post('/api/ussd/test', validationMiddleware.ussdTest, async (req: Request, res: Response) => {
   try {
     const requestId = (req as AppRequest).id;
-    const { phoneNumber, userInput, language = 'en' } = req.body;
+    const { phoneNumber, userInput, language = 'en', sessionId } = req.body;
 
     if (!phoneNumber || userInput === undefined) {
       return res.status(400).json({ error: 'Missing phoneNumber or userInput', requestId });
     }
 
-    const response = await ussdGateway.handleUSSDRequest(phoneNumber, userInput, language);
+    const response = await ussdGateway.handleUSSDRequest(phoneNumber, userInput, language, sessionId);
     
     res.json({
       success: true,

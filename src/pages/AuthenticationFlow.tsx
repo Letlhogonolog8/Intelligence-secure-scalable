@@ -3,7 +3,7 @@
  * Handles role-specific authentication with credential validation
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -12,23 +12,42 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  Shield,
-  Eye,
-  EyeOff,
-  Loader2,
   AlertCircle,
   CheckCircle,
+  Clock3,
+  Eye,
+  EyeOff,
   Fingerprint,
-  User,
+  KeyRound,
+  Loader2,
   Lock,
-  ArrowLeft,
+  Shield,
+  Sparkles,
+  User,
 } from "lucide-react";
 import { UserRole } from "@/types/auth";
-import { ROLE_AUTH_POLICIES, canSelfRegister } from "@/lib/roleAuthPolicy";
-import { supabase } from "@/lib/supabase";
+import { ROLE_AUTH_POLICIES, canSelfRegister, requiresMfaForRole } from "@/lib/roleAuthPolicy";
+import {
+  challengeAndVerifyTotp,
+  enrollTotpFactor,
+  fetchAccessProfile,
+  fetchMfaAssurance,
+  listMfaFactors,
+  unenrollMfaFactor,
+  updateOwnMfaEnabled,
+  verifyMfaFactor,
+  type TotpEnrollment,
+} from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore } from "@/store/appStore";
+import { cn } from "@/lib/utils";
+import AuthTopBar from "@/components/auth/AuthTopBar";
+import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
+import AuthContextIntro from "@/components/auth/AuthContextIntro";
+import AuthInfoPanel from "@/components/auth/AuthInfoPanel";
+import AuthProgressSteps from "@/components/auth/AuthProgressSteps";
+import AuthInlineNotice from "@/components/auth/AuthInlineNotice";
 
 interface AuthFlowProps {
   selectedRole?: UserRole;
@@ -37,25 +56,39 @@ interface AuthFlowProps {
 }
 
 type AuthMethod = "credential" | "biometric";
+type AuthStep = "method-select" | "auth" | "mfa-setup" | "mfa-verify";
+
+type PendingAuthState = {
+  role: UserRole
+  username: string
+  password: string
+  userId: string
+}
 
 const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthenticated, onBack }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signInWithPassword, signOut } = useAuth();
+  const { signInWithPassword, signOut, user } = useAuth();
   const { setActiveModule } = useAppStore();
   const resolvedRole = selectedRole ?? (searchParams.get("role") as UserRole | null);
   const policy = resolvedRole ? ROLE_AUTH_POLICIES[resolvedRole] : undefined;
   const activeRole = policy ? resolvedRole : null;
+  const requiresMfa = activeRole ? requiresMfaForRole(activeRole) : false;
 
   const [authMethod, setAuthMethod] = useState<AuthMethod>("credential");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [step, setStep] = useState<"method-select" | "auth">("method-select");
+  const [step, setStep] = useState<AuthStep>("method-select");
+  const [pendingAuth, setPendingAuth] = useState<PendingAuthState | null>(null);
+  const [mfaEnrollment, setMfaEnrollment] = useState<TotpEnrollment | null>(null);
+  const [verifiedFactorId, setVerifiedFactorId] = useState<string | null>(null);
 
   useEffect(() => {
     if (policy && policy.allowedAuthMethods.length === 1) {
@@ -70,7 +103,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
     }
   }, [activeRole, navigate]);
 
-  const finalizeAuth = (credentials: { username: string; password: string; role: UserRole }) => {
+  const finalizeAuth = useCallback((credentials: { username: string; password: string; role: UserRole }) => {
     if (onAuthenticated) {
       onAuthenticated(credentials);
       return;
@@ -79,20 +112,179 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
     console.log("Navigating to destination:", { destination, role: credentials.role });
     setActiveModule("dashboard");
     navigate(destination);
-  };
+  }, [navigate, onAuthenticated, setActiveModule]);
 
-  const handleBack = onBack ?? (() => navigate("/auth"));
+  const handleBack = onBack ?? (async () => {
+    if (step === "mfa-setup" || step === "mfa-verify" || pendingAuth) {
+      await signOut();
+      setPendingAuth(null);
+    }
+    navigate("/auth");
+  });
   const usernamePattern = /^[a-zA-Z0-9._-]{3,24}$/;
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   
   const buildAuthEmail = (value: string): string => {
     const trimmed = value.trim().toLowerCase();
-    // If input is already an email, use it as-is
     if (emailPattern.test(trimmed)) {
-      return trimmed;
+      return trimmed.replace(/@aegis\.systems$/i, "@aegis.example");
     }
-    // Otherwise, construct email from username
     return `${trimmed}@aegis.example`;
+  };
+
+  const completeAuthentication = useCallback((credentials: { username: string; password: string; role: UserRole }) => {
+    setSuccess(true);
+    window.setTimeout(() => {
+      finalizeAuth(credentials);
+    }, 900);
+  }, [finalizeAuth]);
+
+  const resolveMfaStep = useCallback(async (
+    nextAuth: PendingAuthState,
+    mismatchWarning?: string | null
+  ) => {
+    if (!requiresMfaForRole(nextAuth.role)) {
+      completeAuthentication(nextAuth);
+      return;
+    }
+
+    const { data: assurance, error: assuranceError } = await fetchMfaAssurance();
+    if (assuranceError) {
+      throw assuranceError;
+    }
+
+    if (assurance?.currentLevel === "aal2") {
+      await updateOwnMfaEnabled(nextAuth.userId, true);
+      completeAuthentication(nextAuth);
+      return;
+    }
+
+    const { data: factors, error: factorsError } = await listMfaFactors();
+    if (factorsError) {
+      throw factorsError;
+    }
+
+    setPendingAuth(nextAuth);
+    setMfaCode("");
+    setMfaEnrollment(null);
+    setVerifiedFactorId(factors?.verifiedTotp[0]?.id ?? null);
+    setWarning(
+      mismatchWarning
+      ?? (factors?.verifiedTotp.length
+        ? "Enter your authenticator code to complete sign-in."
+        : "Set up multi-factor authentication to continue.")
+    );
+    setStep(factors?.verifiedTotp.length ? "mfa-verify" : "mfa-setup");
+  }, [completeAuthentication]);
+
+  const validateAccessProfile = useCallback(async (userId: string, selectedRole: UserRole) => {
+    const { data: profile, error: profileError } = await fetchAccessProfile(userId);
+
+    if (profileError || !profile) {
+      await signOut();
+      throw new Error("Profile not found. Contact an administrator.");
+    }
+
+    if (profile.is_active === false) {
+      await signOut();
+      throw new Error("Your account is inactive. Contact an administrator.");
+    }
+
+    const isPrivilegedRole = profile.role !== "survivor";
+    if (isPrivilegedRole && profile.approval_status !== "approved") {
+      await signOut();
+      const approvalMessage = profile.approval_status === "rejected"
+        ? "Your privileged access request was declined. Contact an administrator."
+        : profile.approval_status === "suspended"
+          ? "Your privileged account is suspended. Contact an administrator."
+          : "Your privileged account is pending approval. Contact an administrator.";
+      throw new Error(approvalMessage);
+    }
+
+    const assignedRole = profile.role as UserRole;
+    const mismatchWarning = assignedRole !== selectedRole
+      ? `Signed in with your authorized ${assignedRole} role.`
+      : null;
+
+    return { assignedRole, mismatchWarning };
+  }, [signOut]);
+
+  const startMfaEnrollment = async () => {
+    if (!pendingAuth) {
+      return;
+    }
+
+    setError(null);
+    setWarning(null);
+    setMfaLoading(true);
+
+    try {
+      const { data: factors, error: factorsError } = await listMfaFactors();
+      if (factorsError) {
+        throw factorsError;
+      }
+
+      for (const factor of factors?.unverifiedTotp ?? []) {
+        const { error: unenrollError } = await unenrollMfaFactor(factor.id);
+        if (unenrollError) {
+          throw unenrollError;
+        }
+      }
+
+      const friendlyName = `${pendingAuth.role}-${pendingAuth.username}`;
+      const { data, error } = await enrollTotpFactor(friendlyName);
+      if (error || !data) {
+        throw error ?? new Error("Unable to start MFA enrollment");
+      }
+
+      setMfaEnrollment(data);
+      setWarning("Scan the QR code with your authenticator app, then enter the current 6-digit code.");
+    } catch (enrollmentError) {
+      const message = enrollmentError instanceof Error ? enrollmentError.message : "Unable to start MFA enrollment";
+      setError(message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!pendingAuth) {
+      setError("Your session expired. Please sign in again.");
+      return;
+    }
+
+    if (!mfaCode.trim()) {
+      setError("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
+
+    const factorId = step === "mfa-setup" ? mfaEnrollment?.id : verifiedFactorId;
+    if (!factorId) {
+      setError("No MFA factor is available. Start setup again.");
+      return;
+    }
+
+    setMfaLoading(true);
+    try {
+      const { error } = step === "mfa-setup"
+        ? await verifyMfaFactor(factorId, mfaCode.trim())
+        : await challengeAndVerifyTotp(factorId, mfaCode.trim());
+
+      if (error) {
+        throw error;
+      }
+
+      await updateOwnMfaEnabled(pendingAuth.userId, true);
+      completeAuthentication(pendingAuth);
+    } catch (verificationError) {
+      const message = verificationError instanceof Error ? verificationError.message : "MFA verification failed";
+      setError(message);
+    } finally {
+      setMfaLoading(false);
+    }
   };
 
   const handleCredentialAuth = async (e: React.FormEvent) => {
@@ -116,7 +308,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
 
     const trimmedUsername = username.trim();
     const isEmail = emailPattern.test(trimmedUsername.toLowerCase());
-    
+
     if (!isEmail && !usernamePattern.test(trimmedUsername)) {
       setError("Username must be 3-24 characters and may include letters, numbers, dots, dashes, or underscores. Or enter a valid email address.");
       return;
@@ -129,58 +321,88 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
 
     setLoading(true);
 
-    const authEmail = buildAuthEmail(username);
-    const { error, user } = await signInWithPassword(authEmail, password);
-    if (error || !user) {
-      setLoading(false);
-      const message = error?.message || "Authentication failed";
+    try {
+      const authEmail = buildAuthEmail(trimmedUsername);
+      const { error, user: signedInUser } = await signInWithPassword(authEmail, password);
+      if (error || !signedInUser) {
+        const message = error?.message || "Authentication failed";
+        setError(message.replace(/email/gi, "username"));
+        return;
+      }
+
+      const { assignedRole, mismatchWarning } = await validateAccessProfile(signedInUser.id, activeRole);
+      await resolveMfaStep(
+        {
+          role: assignedRole,
+          username: trimmedUsername,
+          password,
+          userId: signedInUser.id,
+        },
+        mismatchWarning
+      );
+    } catch (authError) {
+      const message = authError instanceof Error ? authError.message : "Authentication failed";
       setError(message.replace(/email/gi, "username"));
-      return;
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("role,is_active")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      await signOut();
+    } finally {
       setLoading(false);
-      setError("Profile not found. Contact an administrator.");
-      return;
     }
-
-    // Emergency Role Correction for seeding issues
-    if (username.toLowerCase() === "admin" && profile.role !== "admin") {
-      console.warn("Emergency: Correcting role for Admin user", { previous: profile.role });
-      await supabase.from("user_profiles").update({ role: "admin" }).eq("id", user.id);
-      profile.role = "admin";
-    }
-
-    if (profile.role !== activeRole) {
-      // Selection mismatch: User selected one role but is assigned another.
-      // We log this but allow access to their authorized role automatically.
-      console.warn("Role selection mismatch. Redirecting to authorized destination.", {
-        selected: activeRole,
-        assigned: profile.role
-      });
-    }
-
-    if (profile.is_active === false) {
-      await signOut();
-      setLoading(false);
-      setError("Your account is awaiting approval.");
-      return;
-    }
-
-    setSuccess(true);
-    setTimeout(() => {
-      // We use profile.role to ensure they land in the correct module for their actual role
-      finalizeAuth({ username, password, role: profile.role as UserRole });
-    }, 900);
-    setLoading(false);
   };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const resumePrivilegedAuth = async () => {
+      if (!user || !activeRole || success || loading || pendingAuth) {
+        return;
+      }
+
+      if (!requiresMfaForRole(activeRole)) {
+        return;
+      }
+
+      try {
+        const { assignedRole } = await validateAccessProfile(user.id, activeRole);
+        if (!mounted) {
+          return;
+        }
+
+        if (assignedRole !== activeRole) {
+          await signOut();
+          if (!mounted) {
+            return;
+          }
+          setPendingAuth(null);
+          setMfaEnrollment(null);
+          setVerifiedFactorId(null);
+          setMfaCode("");
+          setPassword("");
+          setError(null);
+          setWarning(`Signed out of your existing ${assignedRole} session. Sign in as ${activeRole} to continue.`);
+          setStep(policy.allowedAuthMethods.length === 1 ? "auth" : "method-select");
+          return;
+        }
+
+        await resolveMfaStep({
+          role: assignedRole,
+          username: username.trim() || user.email?.replace(/@aegis\.example$/i, "") || assignedRole,
+          password,
+          userId: user.id,
+        });
+      } catch (resumeError) {
+        if (!mounted) {
+          return;
+        }
+        const message = resumeError instanceof Error ? resumeError.message : "Unable to resume secure sign-in";
+        setError(message);
+      }
+    };
+
+    void resumePrivilegedAuth();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeRole, loading, password, pendingAuth, policy, resolveMfaStep, signOut, success, user, username, validateAccessProfile]);
 
   const handleBiometricAuth = async () => {
     if (!activeRole) {
@@ -201,119 +423,118 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
     return null;
   }
 
-  const stepLabels = policy.allowedAuthMethods.length > 1 ? ["Method", "Credentials"] : ["Credentials"];
-  const stepIndex = step === "method-select" ? 0 : stepLabels.length - 1;
+  const stepLabels = step === "mfa-setup"
+    ? ["Credentials", "MFA Setup"]
+    : requiresMfa
+      ? ["Credentials", "MFA"]
+      : policy.allowedAuthMethods.length > 1
+        ? ["Method", "Credentials"]
+        : ["Credentials"];
+  const stepIndex = step === "method-select"
+    ? 0
+    : step === "auth"
+      ? stepLabels.length > 1 && policy.allowedAuthMethods.length > 1
+        ? 1
+        : 0
+      : stepLabels.length - 1;
+  const roleLabel = `${activeRole.charAt(0).toUpperCase()}${activeRole.slice(1)}`;
+  const roleSummary = policy.requiresCredentials
+    ? "Restricted role access requires verified credentials and approved clearance."
+    : "Open access remains protected by identity verification and session controls.";
+  const securityLevel = requiresMfa || policy.requiresBiometric ? "High assurance" : "Standard assurance";
+  const securityNotes = [
+    `Session timeout: ${policy.sessionTimeout} minutes`,
+    `Max concurrent sessions: ${policy.maxConcurrentSessions}`,
+    policy.requiresCredentials ? "Credential verification required" : "Self-service access available",
+    requiresMfa ? "Multi-factor verification required" : "Single-factor verification permitted",
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0a1020] text-white relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_18%_18%,rgba(30,64,175,0.32),transparent_46%),radial-gradient(circle_at_85%_14%,rgba(225,29,72,0.2),transparent_55%),radial-gradient(circle_at_30%_88%,rgba(148,163,184,0.18),transparent_46%)]" />
-      <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(145deg,rgba(7,11,22,0.96),rgba(5,9,18,0.98))]" />
+    <AuthSplitLayout>
+      <AuthTopBar
+        icon={Shield}
+        title="Access Verification"
+        subtitle={`${roleLabel} Authentication`}
+        actionLabel="Back"
+        onActionClick={handleBack}
+        emergencyLabel="Emergency"
+        onEmergencyClick={() => navigate("/auth")}
+      />
 
-      <div className="fixed top-0 w-full z-40 border-b border-white/5 backdrop-blur-xl bg-[#0a1020]/85">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-slate-700 to-rose-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <Shield className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.4em] text-blue-200/70">AEGIS-AI</p>
-                <h1 className="text-lg font-semibold">Access Verification</h1>
-                <p className="text-xs text-slate-400">{activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Authentication</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="hidden md:inline-flex rounded-full border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-              >
-                English
-              </Button>
-              <Button
-                variant="outline"
-                className="hidden sm:inline-flex rounded-full border-rose-500/40 text-rose-200 hover:bg-rose-500/10"
-              >
-                Emergency
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleBack}
-                className="rounded-full border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="min-h-screen flex items-center justify-center pt-24 px-4 pb-12 relative z-10">
-        <motion.div
-          className="w-full max-w-6xl grid lg:grid-cols-[0.55fr_0.45fr] gap-10 items-start"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
+      <motion.div
+        className="grid lg:grid-cols-[0.55fr_0.45fr] gap-10 items-start"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
           <div className="space-y-6">
-            <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-xl shadow-blue-500/10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-blue-200">
-                Access protocol
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold">Verify your {activeRole} credentials</h2>
-              <p className="mt-3 text-slate-300 leading-relaxed">
-                Confirm identity, validate clearance, and activate a secure session before accessing
-                operational workflows.
-              </p>
-              <div className="mt-6 grid gap-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Clearance</p>
-                  <p className="mt-2 text-sm text-slate-200">
-                    {policy.requiresCredentials
-                      ? "Restricted role access requires verified credentials and clearance."
-                      : "Open access with identity verification and OTP validation."}
-                  </p>
+            <AuthContextIntro
+              badge="Access protocol"
+              title={`Verify your ${roleLabel} credentials`}
+              description="Confirm identity, validate clearance, and activate a secure session before entering operational workflows."
+              highlights={[
+                { label: "Clearance", value: roleSummary },
+                { label: "Security level", value: securityLevel },
+              ]}
+            >
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Authorized methods</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {policy.allowedAuthMethods.map((method) => (
+                    <span
+                      key={method}
+                      className="rounded-full border border-white/10 bg-slate-800/60 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-slate-300"
+                    >
+                      {method}
+                    </span>
+                  ))}
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Authorized Methods</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {policy.allowedAuthMethods.map((method) => (
-                      <span
-                        key={method}
-                        className="rounded-full border border-white/10 bg-slate-800/60 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-slate-300"
-                      >
-                        {method}
-                      </span>
-                    ))}
+              </div>
+            </AuthContextIntro>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <AuthInfoPanel
+                icon={Clock3}
+                title="Session controls"
+                description="Access governance and time-bound enforcement."
+              >
+                <div className="grid gap-3 text-sm text-slate-300">
+                  {securityNotes.map((note) => (
+                    <div key={note} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                      {note}
+                    </div>
+                  ))}
+                </div>
+              </AuthInfoPanel>
+
+              <div className="rounded-[28px] border border-white/10 bg-slate-900/60 p-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/10">
+                    <Sparkles className="h-5 w-5 text-blue-200" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Current stage</p>
+                    <p className="text-xs text-slate-400">The flow changes based on method and MFA requirements.</p>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/10">
-                  <Shield className="h-5 w-5 text-blue-200" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Session Controls</p>
-                  <p className="text-xs text-slate-400">Active governance and audit visibility.</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 text-sm text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>Session timeout</span>
-                  <span className="text-blue-200">{policy.sessionTimeout} min</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Max concurrent sessions</span>
-                  <span className="text-blue-200">{policy.maxConcurrentSessions}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Assurance level</span>
-                  <span className="text-blue-200">
-                    {policy.requiresMFA || policy.requiresBiometric ? "High" : "Standard"}
-                  </span>
+
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Stage</p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">{stepLabels[stepIndex]}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Next action</p>
+                    <p className="mt-1 text-sm text-slate-300">
+                      {step === "method-select"
+                        ? "Choose a supported authentication method."
+                        : step === "auth"
+                          ? "Enter your credentials to continue."
+                          : step === "mfa-setup"
+                            ? "Enroll an authenticator app and verify the current code."
+                            : "Enter the authenticator code to elevate this session."}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -325,32 +546,19 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <Card className="border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-slate-950/50 shadow-[0_24px_60px_rgba(2,6,23,0.65)]">
+            <Card className="overflow-hidden rounded-[32px] border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-slate-950/50 shadow-[0_24px_60px_rgba(2,6,23,0.65)]">
               <CardHeader className="border-b border-white/10 bg-slate-950/70">
                 <CardTitle className="text-xl">Secure Authentication</CardTitle>
                 <CardDescription className="text-slate-400">
-                  Complete the authentication process for your {activeRole} account
+                  Complete the authentication process for your {roleLabel.toLowerCase()} account
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="mb-6">
-                  <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.35em] text-slate-500">
-                    {stepLabels.map((label, index) => (
-                      <span key={label} className={index <= stepIndex ? "text-blue-200" : "text-slate-600"}>
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-3 h-2 w-full rounded-full bg-slate-800/70">
-                    <div
-                      className="h-full rounded-full bg-rose-500 transition-all"
-                      style={{ width: `${((stepIndex + 1) / stepLabels.length) * 100}%` }}
-                    />
-                  </div>
-                </div>
+                <AuthProgressSteps labels={stepLabels} currentIndex={stepIndex} />
                 <AnimatePresence mode="sync">
                   {error && (
                     <motion.div
+                      key="auth-error"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -366,6 +574,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
 
                   {warning && (
                     <motion.div
+                      key="auth-warning"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -381,6 +590,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
 
                   {success && (
                     <motion.div
+                      key="auth-success"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="mb-4"
@@ -403,40 +613,39 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
                       exit={{ opacity: 0 }}
                       className="space-y-3"
                     >
-                      <Label>Select Authentication Method</Label>
+                      <div>
+                        <Label>Select Authentication Method</Label>
+                        <p className="mt-1 text-sm text-slate-400">Choose one of the methods authorized for this role.</p>
+                      </div>
                       <div className="grid gap-3">
                         {policy.allowedAuthMethods.map((method) => (
                           <motion.button
                             key={method}
+                            type="button"
                             onClick={() => {
                               setAuthMethod(method as AuthMethod);
                               setStep("auth");
                             }}
-                            className={`
-                              p-4 rounded-xl border transition-all text-left
-                              ${
-                                authMethod === method
-                                  ? "border-blue-400/60 bg-slate-900/80"
-                                  : "border-white/10 bg-slate-900/40 hover:border-white/30"
-                              }
-                            `}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                            className={cn(
+                              "rounded-2xl border p-4 text-left transition-all",
+                              authMethod === method
+                                ? "border-blue-400/60 bg-slate-900/80"
+                                : "border-white/10 bg-slate-900/40 hover:border-white/30"
+                            )}
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
                           >
                             <div className="flex items-start gap-3">
-                              <div
-                                className={`
-                                  w-5 h-5 rounded-full border-2 mt-0.5
-                                  ${
-                                    authMethod === method
-                                      ? "bg-blue-400 border-blue-400"
-                                      : "border-slate-600"
-                                  }
-                                `}
-                              />
+                              <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+                                {method === "credential" ? (
+                                  <KeyRound className="h-4 w-4 text-blue-200" />
+                                ) : (
+                                  <Fingerprint className="h-4 w-4 text-blue-200" />
+                                )}
+                              </div>
                               <div>
-                                <h4 className="font-semibold capitalize">{method} Authentication</h4>
-                                <p className="text-xs text-slate-400 mt-1">
+                                <h4 className="font-semibold capitalize text-white">{method} authentication</h4>
+                                <p className="mt-1 text-xs text-slate-400">
                                   {getAuthMethodDescription(method as AuthMethod)}
                                 </p>
                               </div>
@@ -456,6 +665,9 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
                       onSubmit={handleCredentialAuth}
                       className="space-y-4"
                     >
+                      <AuthInlineNotice>
+                        Use your assigned username or email alias and secure passphrase.
+                      </AuthInlineNotice>
                       <div className="space-y-2">
                         <Label htmlFor="username" className="text-slate-300">
                           <div className="flex items-center gap-2 mb-1">
@@ -465,7 +677,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
                         <Input
                           id="username"
                           type="text"
-                          placeholder="Enter your username"
+                          placeholder="Enter your username or email"
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           disabled={loading}
@@ -525,6 +737,129 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
                     </motion.form>
                   )}
 
+
+                  {step === "mfa-setup" && (
+                    <motion.div
+                      key="mfa-setup"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="space-y-4"
+                    >
+                      <AuthInlineNotice className="bg-slate-900/60">
+                        Privileged access requires a verified authenticator app before this session can continue.
+                      </AuthInlineNotice>
+
+                      {!mfaEnrollment ? (
+                        <Button
+                          type="button"
+                          onClick={startMfaEnrollment}
+                          disabled={mfaLoading}
+                          className="w-full bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 hover:shadow-lg hover:shadow-blue-500/40"
+                        >
+                          {mfaLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Preparing MFA Setup...
+                            </>
+                          ) : (
+                            "Generate MFA Setup"
+                          )}
+                        </Button>
+                      ) : (
+                        <form onSubmit={handleMfaVerification} className="space-y-4">
+                          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5 space-y-4">
+                            <div className="flex justify-center">
+                              <img
+                                src={mfaEnrollment.qrCode}
+                                alt="Authenticator QR code"
+                                className="rounded-2xl bg-white p-3 w-56 h-56"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-slate-300">Manual setup key</Label>
+                              <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 font-mono text-sm break-all text-slate-200">
+                                {mfaEnrollment.secret}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="mfa-setup-code" className="text-slate-300">Authenticator code</Label>
+                              <Input
+                                id="mfa-setup-code"
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                placeholder="Enter the 6-digit code"
+                                value={mfaCode}
+                                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                disabled={mfaLoading}
+                                className="bg-slate-950/70 border-slate-800 text-white focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:border-blue-400/50"
+                              />
+                            </div>
+                          </div>
+
+                          <Button
+                            type="submit"
+                            disabled={mfaLoading || success}
+                            className="w-full bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 hover:shadow-lg hover:shadow-blue-500/40"
+                          >
+                            {mfaLoading ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Verifying MFA...
+                              </>
+                            ) : (
+                              "Verify and Continue"
+                            )}
+                          </Button>
+                        </form>
+                      )}
+                    </motion.div>
+                  )}
+
+                  {step === "mfa-verify" && (
+                    <motion.form
+                      key="mfa-verify"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onSubmit={handleMfaVerification}
+                      className="space-y-4"
+                    >
+                      <AuthInlineNotice className="bg-slate-900/60">
+                        Enter the current 6-digit code from your authenticator app to elevate this session to privileged access.
+                      </AuthInlineNotice>
+                      <div className="space-y-2">
+                        <Label htmlFor="mfa-code" className="text-slate-300">Authenticator code</Label>
+                        <Input
+                          id="mfa-code"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          placeholder="Enter the 6-digit code"
+                          value={mfaCode}
+                          onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          disabled={mfaLoading}
+                          className="bg-slate-950/70 border-slate-800 text-white focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:border-blue-400/50"
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={mfaLoading || success}
+                        className="w-full bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 hover:shadow-lg hover:shadow-blue-500/40"
+                      >
+                        {mfaLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Verifying MFA...
+                          </>
+                        ) : (
+                          "Complete Secure Sign-In"
+                        )}
+                      </Button>
+                    </motion.form>
+                  )}
 
                   {step === "auth" && authMethod === "biometric" && (
                     <motion.div
@@ -589,24 +924,9 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
               </CardContent>
             </Card>
 
-            <motion.div
-              className="mt-6 rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-xs text-slate-400"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              <p className="font-semibold text-slate-300 mb-2">Security Notice</p>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>Your session is encrypted end-to-end</li>
-                <li>All authentication attempts are logged for audit purposes</li>
-                <li>Session timeout: {policy?.sessionTimeout} minutes</li>
-                <li>Unauthorized access attempts may be reported to authorities</li>
-              </ul>
-            </motion.div>
           </motion.div>
-        </motion.div>
-      </div>
-    </div>
+      </motion.div>
+    </AuthSplitLayout>
   );
 };
 

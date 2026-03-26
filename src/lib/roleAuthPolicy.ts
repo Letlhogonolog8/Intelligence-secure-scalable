@@ -9,6 +9,19 @@ import { RoleAuthPolicy, UserRole } from "@/types/auth";
  * Role-based authentication and authorization policies
  * Defines who can register, what authentication methods are allowed, and session constraints
  */
+export const SELF_SERVICE_APPROVAL_ROLES: UserRole[] = ["ngo", "police", "analyst"];
+
+const isLocalHost = () =>
+  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+export const requiresMfaForRole = (role: UserRole): boolean => {
+  if (role === "admin" && isLocalHost()) {
+    return false;
+  }
+
+  return ROLE_AUTH_POLICIES[role]?.requiresMFA ?? false;
+};
+
 export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
   survivor: {
     role: "survivor",
@@ -30,8 +43,8 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     allowedAuthMethods: ["credential"],
     sessionTimeout: 480, // 8 hours
     maxConcurrentSessions: 1,
-    requiresMFA: true,
-    requiresBiometric: true,
+    requiresMFA: false,
+    requiresBiometric: false,
   },
 
   ngo: {
@@ -43,7 +56,7 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     restrictedCredentials: ["police_admin", "officer_unit", "system.admin"],
     sessionTimeout: 480, // 8 hours
     maxConcurrentSessions: 1,
-    requiresMFA: true,
+    requiresMFA: false,
     requiresBiometric: false,
   },
 
@@ -56,8 +69,8 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     restrictedCredentials: ["ngo_director", "coordinator", "system.admin"],
     sessionTimeout: 240, // 4 hours
     maxConcurrentSessions: 1,
-    requiresMFA: true,
-    requiresBiometric: true,
+    requiresMFA: false,
+    requiresBiometric: false,
   },
 
   analyst: {
@@ -68,7 +81,7 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     allowedAuthMethods: ["credential"],
     sessionTimeout: 480, // 8 hours
     maxConcurrentSessions: 2,
-    requiresMFA: true,
+    requiresMFA: false,
     requiresBiometric: false,
   },
 
@@ -91,6 +104,10 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
 export function canSelfRegister(role: UserRole): boolean {
   const policy = ROLE_AUTH_POLICIES[role];
   return policy?.allowSelfRegistration ?? false;
+}
+
+export function canRequestPrivilegedAccess(role: UserRole): boolean {
+  return SELF_SERVICE_APPROVAL_ROLES.includes(role);
 }
 
 /**

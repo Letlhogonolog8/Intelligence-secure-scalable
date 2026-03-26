@@ -48,7 +48,12 @@ const AppLayout: React.FC = () => {
     addRecentModule,
     setModuleStatus,
     setOrganizationContext,
+    syncSessionContext,
   } = useAppStore();
+
+  useEffect(() => {
+    syncSessionContext(user?.id ?? null, defaultModule);
+  }, [defaultModule, syncSessionContext, user?.id]);
 
   useEffect(() => {
     if (!allowedModules.includes(activeModule)) {
