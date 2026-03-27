@@ -37,7 +37,7 @@ function resolveTelkomCallbackUrl(): string {
   return `${publicBackendUrl.replace(/\/+$/, '')}/api/ussd/telkom/callback`;
 }
 
-export type USSDAction = 'report' | 'help' | 'status' | 'emergency' | 'back' | 'quit';
+export type USSDAction = 'report' | 'help' | 'status' | 'emergency' | 'language' | 'back' | 'quit';
 export type Language = 'en' | 'zu' | 'xh' | 'st' | 'af' | 'ss' | 'tn' | 'ts' | 've' | 'nso' | 'nr';
 
 export interface USSDSession {
@@ -70,6 +70,20 @@ export interface USSDResponse {
 }
 
 const SUPPORTED_LANGUAGES: Language[] = ['en', 'zu', 'xh', 'st', 'af', 'ss', 'tn', 'ts', 've', 'nso', 'nr'];
+
+const LANGUAGE_SELECTION_MAP: Record<string, Language> = {
+  '1': 'en',
+  '2': 'zu',
+  '3': 'xh',
+  '4': 'st',
+  '5': 'af',
+  '6': 'ss',
+  '7': 'tn',
+  '8': 'ts',
+  '9': 've',
+  '10': 'nso',
+  '11': 'nr',
+};
 
 type SessionState = Record<string, unknown>;
 type TemplateVariables = Record<string, string | number | boolean | undefined>;
@@ -213,14 +227,10 @@ export class USSDGateway {
     externalSessionId?: string
   ): Promise<USSDResponse> {
     try {
-      // Get or create session
       const session = await this.getOrCreateSession(phoneNumber, language, externalSessionId);
-
-      // Process user input
-      const response = await this.processInput(session, userInput, language);
-
-      // Update session
-      await this.updateSession(session.sessionId, response);
+      const activeLanguage = session.language || language;
+      const response = await this.processInput(session, userInput, activeLanguage);
+      await this.updateSession(session.sessionId, response, session.language || activeLanguage);
 
       return response;
     } catch (error) {
@@ -258,8 +268,16 @@ export class USSDGateway {
         if (option.action === 'emergency') {
           return await this.handleEmergencyAlert(session, language);
         }
+
+        if (option.action === 'language') {
+          session.currentMenu = 'language_menu';
+          return this.getMenuResponse(session, language);
+        }
+
         session.currentMenu = option.nextMenu;
       }
+    } else if (session.currentMenu === 'language_menu') {
+      return await this.handleLanguageSelection(session, trimmedInput, language);
     } else if (session.currentMenu === 'report_details') {
       return await this.handleReportSubmission(session, trimmedInput, language);
     } else if (session.currentMenu === 'help_details') {
@@ -377,6 +395,28 @@ export class USSDGateway {
       console.error('Help request error:', error);
       return this.getErrorResponse(language);
     }
+  }
+
+  private async handleLanguageSelection(
+    session: USSDSession,
+    languageChoice: string,
+    currentLanguage: Language
+  ): Promise<USSDResponse> {
+    const selectedLanguage = LANGUAGE_SELECTION_MAP[languageChoice];
+    if (!selectedLanguage) {
+      return {
+        sessionId: session.sessionId,
+        menu: 'language_menu',
+        text: this.buildMenuText('language_menu', [], currentLanguage),
+        options: this.menus[currentLanguage]?.language_menu || [],
+        endSession: false,
+      };
+    }
+
+    session.language = selectedLanguage;
+    session.currentMenu = 'main';
+
+    return this.getMenuResponse(session, selectedLanguage);
   }
 
   private async handleEmergencyAlert(
@@ -727,7 +767,7 @@ export class USSDGateway {
   /**
    * Update session state
    */
-  private async updateSession(sessionId: string, response: USSDResponse): Promise<void> {
+  private async updateSession(sessionId: string, response: USSDResponse, language: Language): Promise<void> {
     try {
       const isActive = !response.endSession;
       const now = new Date().toISOString();
@@ -735,6 +775,7 @@ export class USSDGateway {
       if (cachedSession) {
         this.storeOfflineSession({
           ...cachedSession,
+          language,
           currentMenu: response.menu,
           lastAccessedAt: now,
         });
@@ -743,6 +784,7 @@ export class USSDGateway {
       const modernUpdate = await this.supabase
         .from('ussd_sessions')
         .update({
+          language,
           current_menu: response.menu,
           is_active: isActive,
           last_accessed_at: now,
@@ -906,7 +948,7 @@ export class USSDGateway {
   ): string {
     const texts: Record<string, Record<Language, string>> = {
       confirmation: {
-        en: 'Case reported. ID: {{caseId}}. Help coming soon.',
+        en: 'Case reported. ID: {{caseId}}. Save this ID for option 3 (Case Status).',
         zu: 'Icala libhalisiwe. Isithombelo: {{caseId}}. Usizo luza ngesikhashana.',
         xh: 'Ikesi licaciswe. Ikhowudi: {{caseId}}. Uncedo luza ngokukhawuleza.',
         st: 'Kgetsi ya fapano e be e lentswe. ID: {{caseId}}. Thuso e tlo tla ka potlako.',

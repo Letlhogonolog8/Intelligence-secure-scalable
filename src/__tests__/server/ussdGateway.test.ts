@@ -193,6 +193,36 @@ describe('USSDGateway', () => {
       expect(statusPrompt.text).toContain('Enter case ID or number');
     });
 
+    it('should open language menu on option 5 and switch to selected language', async () => {
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_lang',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'main',
+          state: {}
+        }
+      });
+
+      const languageMenu = await gateway.handleUSSDRequest('27821234567', '5');
+      expect(languageMenu.menu).toBe('language_menu');
+      expect(languageMenu.text).toContain('Choose language');
+
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_lang',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'language_menu',
+          state: {}
+        }
+      });
+
+      const switchedMenu = await gateway.handleUSSDRequest('27821234567', '2');
+      expect(switchedMenu.menu).toBe('main');
+      expect(switchedMenu.text).toContain('Isisebenzi se-AEGIS');
+    });
+
     it('should render multilingual main menu and prompts in Zulu', async () => {
       const mainResponse = await gateway.handleUSSDRequest('27821234567', '', 'zu');
 
