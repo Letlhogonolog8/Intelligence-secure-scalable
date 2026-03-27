@@ -239,17 +239,24 @@ export class USSDGateway {
   ): Promise<USSDResponse> {
     const trimmedInput = (userInput || '').trim();
 
-    // Handle navigation
-    if (trimmedInput === '0' || trimmedInput === '*') {
+    if (trimmedInput === '*') {
+      return this.getExitResponse(session, language);
+    }
+
+    if (trimmedInput === '0') {
+      if (session.currentMenu === 'main') {
+        return this.getExitResponse(session, language);
+      }
+
       session.currentMenu = 'main';
       return this.getMenuResponse(session, language);
-    } 
+    }
 
     if (session.currentMenu === 'main') {
       const option = this.menus[language]?.main?.find((opt) => opt.key === trimmedInput);
       if (option) {
         if (option.action === 'emergency') {
-          return await this.handleHelpRequest(session, 'Emergency', language);
+          return await this.handleEmergencyAlert(session, language);
         }
         session.currentMenu = option.nextMenu;
       }
@@ -368,6 +375,46 @@ export class USSDGateway {
       };
     } catch (error) {
       console.error('Help request error:', error);
+      return this.getErrorResponse(language);
+    }
+  }
+
+  private async handleEmergencyAlert(
+    session: USSDSession,
+    language: Language
+  ): Promise<USSDResponse> {
+    try {
+      const emergencyId = this.generateEmergencyId();
+      const createdAt = new Date().toISOString();
+
+      const insertResult = await this.supabase.from('emergency_requests').insert({
+        id: emergencyId,
+        phone_number: session.phoneNumber,
+        help_type: 'Emergency Alert',
+        channel: 'ussd',
+        status: 'received',
+        created_at: createdAt,
+        updated_at: createdAt,
+        source_session_id: session.sessionId,
+      });
+
+      if (insertResult.error) {
+        throw insertResult.error;
+      }
+
+      const resources = await this.findNearestResources(session.phoneNumber);
+      await this.sendResourceSMS(session.phoneNumber, resources, language);
+
+      return {
+        sessionId: session.sessionId,
+        menu: 'emergency_alert',
+        text: this.buildMenuText('emergency_alert', [], language),
+        options: this.menus[language]?.end || [],
+        endSession: true,
+        smsFollowUp: 'Emergency alert received. Help is being dispatched.',
+      };
+    } catch (error) {
+      console.error('Emergency alert error:', error);
       return this.getErrorResponse(language);
     }
   }
@@ -936,6 +983,19 @@ export class USSDGateway {
         nso: 'Mafelo a go iphihla: {{shelters}}. Dintlo tša polokego di gona 24/7.',
         nr: 'Iindawo zokuphephela: {{shelters}}. Iindlu eziphephileko zikhona 24/7.',
       },
+      session_closed: {
+        en: 'Session closed. Stay safe.',
+        zu: 'Iseshini ivaliwe. Hlala uphephile.',
+        xh: 'Iseshoni ivaliwe. Hlala ukhuselekile.',
+        st: 'Seshene e tswaletswe. Dula o bolokehile.',
+        af: 'Sessie gesluit. Bly veilig.',
+        ss: 'I-session ivaliwe. Hlala uphephile.',
+        tn: 'Session e tswaletswe. Nna o bolokegile.',
+        ts: 'Sesheni yi pfariwile. Tshama u sirhelelekile.',
+        ve: 'Session yo valiwa. Dzudzani no tsireledzea.',
+        nso: 'Session e tswaletšwe. Dula o bolokegile.',
+        nr: 'Iseshini ivaliwe. Hlala uphephile.',
+      },
     };
 
     let text = texts[key]?.[language] || texts[key]?.en || `[${key}]`;
@@ -1004,6 +1064,16 @@ export class USSDGateway {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = crypto.randomBytes(3).toString('hex').toUpperCase();
     return `EMRG${timestamp}${random}`;
+  }
+
+  private getExitResponse(session: USSDSession, language: Language): USSDResponse {
+    return {
+      sessionId: session.sessionId,
+      menu: 'end',
+      text: this.getLocalizedText('session_closed', language),
+      options: [],
+      endSession: true,
+    };
   }
 
   private getErrorResponse(language: Language): USSDResponse {

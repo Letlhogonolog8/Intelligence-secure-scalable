@@ -86,6 +86,42 @@ describe('USSDGateway', () => {
       expect(response.text).toContain('Describe incident');
     });
 
+    it('should end session when user selects "0" on the main menu', async () => {
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_123',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'main',
+          state: {}
+        }
+      });
+
+      const response = await gateway.handleUSSDRequest('27821234567', '0');
+
+      expect(response.menu).toBe('end');
+      expect(response.text).toContain('Session closed');
+      expect(response.endSession).toBe(true);
+    });
+
+    it('should return to main menu when user selects "0" from a sub-menu', async () => {
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_123',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'help_details',
+          state: {}
+        }
+      });
+
+      const response = await gateway.handleUSSDRequest('27821234567', '0');
+
+      expect(response.menu).toBe('main');
+      expect(response.text).toContain('AEGIS GBV Support');
+      expect(response.endSession).toBe(false);
+    });
+
     it('should handle report submission correctly', async () => {
       // Mock existing session at report_details menu
       mockSupabase.single.mockResolvedValueOnce({
@@ -108,26 +144,74 @@ describe('USSDGateway', () => {
       expect(mockSupabase.from).toHaveBeenCalledWith('cases');
     });
 
-    it('should handle emergency request correctly', async () => {
-      // Mock existing session at menu_2
+    it('should handle emergency request correctly from main menu option 4', async () => {
       mockSupabase.single.mockResolvedValueOnce({
         data: {
           session_id: 'session_123',
           phone_number: '27821234567',
           language: 'en',
-          current_menu: 'help_details',
+          current_menu: 'main',
           state: {}
         }
       });
-      
-      const response = await gateway.handleUSSDRequest('27821234567', '1');
-      
-      expect(response.menu).toBe('help_confirmation');
-      expect(response.text).toContain('Help received');
+
+      const response = await gateway.handleUSSDRequest('27821234567', '4');
+
+      expect(response.menu).toBe('emergency_alert');
+      expect(response.text).toContain('Emergency - Police being notified');
       expect(response.endSession).toBe(true);
-      
-      // Verify emergency request was inserted
       expect(mockSupabase.from).toHaveBeenCalledWith('emergency_requests');
+    });
+
+    it('should route option 2 to help prompt and option 3 to case status prompt', async () => {
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_help',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'main',
+          state: {}
+        }
+      });
+
+      const helpPrompt = await gateway.handleUSSDRequest('27821234567', '2');
+      expect(helpPrompt.menu).toBe('help_details');
+      expect(helpPrompt.text).toContain('What help do you need?');
+
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_status',
+          phone_number: '27821234567',
+          language: 'en',
+          current_menu: 'main',
+          state: {}
+        }
+      });
+
+      const statusPrompt = await gateway.handleUSSDRequest('27821234567', '3');
+      expect(statusPrompt.menu).toBe('case_reference');
+      expect(statusPrompt.text).toContain('Enter case ID or number');
+    });
+
+    it('should render multilingual main menu and prompts in Zulu', async () => {
+      const mainResponse = await gateway.handleUSSDRequest('27821234567', '', 'zu');
+
+      expect(mainResponse.menu).toBe('main');
+      expect(mainResponse.text).toContain('Isisebenzi se-AEGIS');
+
+      mockSupabase.single.mockResolvedValueOnce({
+        data: {
+          session_id: 'session_zu',
+          phone_number: '27821234567',
+          language: 'zu',
+          current_menu: 'main',
+          state: {}
+        }
+      });
+
+      const reportPrompt = await gateway.handleUSSDRequest('27821234567', '1', 'zu');
+      expect(reportPrompt.menu).toBe('report_details');
+      expect(reportPrompt.text).toContain('Chaza lento okwenzeka');
     });
 
     it('should return case status if case exists', async () => {
