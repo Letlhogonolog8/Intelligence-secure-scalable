@@ -3,8 +3,8 @@ import { z } from "zod"
 type RawEnv = Record<string, string | undefined>
 
 const envSchema = z.object({
-  VITE_SUPABASE_URL: z.string().url().refine((value) => value.startsWith("https://"), {
-    message: "VITE_SUPABASE_URL must use https://",
+  VITE_SUPABASE_URL: z.string().url().refine((value) => value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1"), {
+    message: "VITE_SUPABASE_URL must use https:// (or a localhost URL for development)",
   }).optional(),
   VITE_SUPABASE_KEY: z.string().min(1).optional(),
   VITE_API_URL: z.string().url().refine((value) => value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1"), {

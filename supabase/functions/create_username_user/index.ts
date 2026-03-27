@@ -11,6 +11,12 @@ const usernamePattern = /^[a-zA-Z0-9._-]{3,24}$/;
 const allowedRoles = new Set(["admin", "counselor", "survivor", "ngo", "police", "analyst"]);
 const privilegedRoles = new Set(["admin", "counselor", "ngo", "police", "analyst"]);
 const selfServiceApprovalRoles = new Set(["ngo", "police", "analyst"]);
+const localDevLocationKey = "0123456789abcdef0123456789abcdef";
+
+const isLocalSupabaseRuntime = (supabaseUrl: string) =>
+  supabaseUrl.includes("127.0.0.1")
+  || supabaseUrl.includes("localhost")
+  || supabaseUrl.includes("kong:8000");
 
 type LocationPayload = {
   province: string;
@@ -181,7 +187,8 @@ async function handleRequest(req: Request): Promise<Response> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
-    const locationKey = Deno.env.get("SURVIVOR_LOCATION_KEY") ?? Deno.env.get("CHAT_ENCRYPTION_KEY") ?? "";
+    const configuredLocationKey = Deno.env.get("SURVIVOR_LOCATION_KEY") ?? Deno.env.get("CHAT_ENCRYPTION_KEY") ?? "";
+    const locationKey = configuredLocationKey || (isLocalSupabaseRuntime(supabaseUrl) ? localDevLocationKey : "");
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Missing environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");

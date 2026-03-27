@@ -138,6 +138,7 @@ const invokeEdgeFunction = async <TResponse, TPayload = unknown>(
         headers: {
           "Content-Type": "application/json",
           apikey: env.VITE_SUPABASE_KEY as string,
+          Authorization: `Bearer ${accessToken ?? (env.VITE_SUPABASE_KEY as string)}`,
           ...(accessToken ? { [accessTokenHeaderName]: accessToken } : {}),
         },
         body: JSON.stringify(payload),

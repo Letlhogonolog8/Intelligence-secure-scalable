@@ -25,11 +25,6 @@ CREATE TABLE IF NOT EXISTS public.ussd_sessions (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_ussd_sessions_phone_number ON public.ussd_sessions(phone_number);
-CREATE INDEX IF NOT EXISTS idx_ussd_sessions_is_active ON public.ussd_sessions(is_active);
-CREATE INDEX IF NOT EXISTS idx_ussd_sessions_session_id ON public.ussd_sessions(session_id);
-CREATE INDEX IF NOT EXISTS idx_ussd_sessions_last_accessed_at ON public.ussd_sessions(last_accessed_at DESC);
-
 CREATE TABLE IF NOT EXISTS public.cases (
   id TEXT PRIMARY KEY,
   case_number TEXT UNIQUE,
@@ -67,15 +62,45 @@ CREATE INDEX IF NOT EXISTS idx_emergency_requests_created_at ON public.emergency
 ALTER TABLE public.ussd_sessions
   ADD COLUMN IF NOT EXISTS language VARCHAR(10) NOT NULL DEFAULT 'en',
   ADD COLUMN IF NOT EXISTS state JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS current_menu VARCHAR(50) NOT NULL DEFAULT 'main',
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_ussd_sessions_phone_number ON public.ussd_sessions(phone_number);
+CREATE INDEX IF NOT EXISTS idx_ussd_sessions_is_active ON public.ussd_sessions(is_active);
+CREATE INDEX IF NOT EXISTS idx_ussd_sessions_session_id ON public.ussd_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_ussd_sessions_last_accessed_at ON public.ussd_sessions(last_accessed_at DESC);
+
+DO $$
+DECLARE
+  state_data_type TEXT;
+BEGIN
+  SELECT data_type
+  INTO state_data_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'ussd_sessions'
+    AND column_name = 'state';
+
+  IF state_data_type IS NOT NULL AND state_data_type <> 'jsonb' THEN
+    EXECUTE $sql$
+      ALTER TABLE public.ussd_sessions
+      ALTER COLUMN state TYPE JSONB
+      USING CASE
+        WHEN state IS NULL OR BTRIM(state::text, '"') = '' THEN '{}'::jsonb
+        WHEN LEFT(BTRIM(state::text, '"'), 1) IN ('{', '[') THEN BTRIM(state::text, '"')::jsonb
+        ELSE jsonb_build_object('value', state::text)
+      END
+    $sql$;
+  END IF;
+END $$;
 
 DO $$
 DECLARE
   has_current_state BOOLEAN;
-  has_metadata BOOLEAN;
-  has_last_activity BOOLEAN;
-  has_updated_at BOOLEAN;
-  sync_sql TEXT;
 BEGIN
   SELECT EXISTS (
     SELECT 1
@@ -83,38 +108,21 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'ussd_sessions' AND column_name = 'current_state'
   ) INTO has_current_state;
 
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'ussd_sessions' AND column_name = 'metadata'
-  ) INTO has_metadata;
-
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'ussd_sessions' AND column_name = 'last_activity'
-  ) INTO has_last_activity;
-
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'ussd_sessions' AND column_name = 'updated_at'
-  ) INTO has_updated_at;
-
-  sync_sql := 'UPDATE public.ussd_sessions SET '
-    || 'current_menu = COALESCE(NULLIF(current_menu, ''''), '
-    || CASE WHEN has_current_state THEN 'current_state, ' ELSE '' END
-    || '''main''), '
-    || 'state = COALESCE(state, '
-    || CASE WHEN has_metadata THEN 'metadata, ' ELSE '' END
-    || '''{}''::jsonb), '
-    || 'last_accessed_at = COALESCE(last_accessed_at, '
-    || CASE WHEN has_last_activity THEN 'last_activity, ' ELSE '' END
-    || CASE WHEN has_updated_at THEN 'updated_at, ' ELSE '' END
-    || 'created_at, NOW()), '
-    || 'language = COALESCE(NULLIF(language, ''''), ''en'')';
-
-  EXECUTE sync_sql;
+  IF has_current_state THEN
+    EXECUTE $sql$
+      UPDATE public.ussd_sessions
+      SET current_menu = COALESCE(NULLIF(current_menu, ''), current_state, 'main'),
+          state = COALESCE(state, metadata, '{}'::jsonb),
+          last_accessed_at = COALESCE(last_accessed_at, last_activity, updated_at, created_at, NOW()),
+          language = COALESCE(NULLIF(language, ''), 'en')
+    $sql$;
+  ELSE
+    UPDATE public.ussd_sessions
+    SET current_menu = COALESCE(NULLIF(current_menu, ''), 'main'),
+        state = COALESCE(state, metadata, '{}'::jsonb),
+        last_accessed_at = COALESCE(last_accessed_at, last_activity, updated_at, created_at, NOW()),
+        language = COALESCE(NULLIF(language, ''), 'en');
+  END IF;
 END $$;
 
 CREATE OR REPLACE VIEW public.profiles

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Globe } from "lucide-react";
-import { SUPPORTED_LANGUAGES } from "@/i18n";
+import { changeAppLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from "@/i18n";
 
 interface LanguageSwitcherProps {
   variant?: "landing" | "compact";
@@ -10,8 +10,8 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact"
   const { i18n } = useTranslation();
   const current = i18n.language.split("-")[0];
 
-  const handleChange = (code: string) => {
-    i18n.changeLanguage(code);
+  const handleChange = async (code: SupportedLanguage) => {
+    await changeAppLanguage(code);
   };
 
   if (variant === "landing") {
@@ -21,7 +21,7 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact"
         {SUPPORTED_LANGUAGES.map((lang) => (
           <button
             key={lang.code}
-            onClick={() => handleChange(lang.code)}
+            onClick={() => void handleChange(lang.code)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-all whitespace-nowrap flex-shrink-0 ${
               current === lang.code
                 ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
@@ -39,7 +39,7 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact"
     <div className="relative">
       <select
         value={current}
-        onChange={(e) => handleChange(e.target.value)}
+        onChange={(e) => void handleChange(e.target.value as SupportedLanguage)}
         className="appearance-none bg-slate-900/60 border border-white/10 text-slate-300 text-xs rounded px-7 py-1.5 focus:outline-none focus:border-blue-500/40 cursor-pointer"
       >
         {SUPPORTED_LANGUAGES.map((lang) => (

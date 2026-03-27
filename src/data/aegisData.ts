@@ -431,6 +431,12 @@ const toString = (value: unknown, fallback = "") => {
   return String(value)
 }
 
+const toPercentValue = (value: unknown, fallback = 0) => {
+  const parsed = toNumber(value, fallback)
+  const normalized = parsed > 0 && parsed <= 1 ? parsed * 100 : parsed
+  return Number(normalized.toFixed(normalized >= 10 ? 0 : 1))
+}
+
 const toRiskLevel = (value: unknown): RiskLevel => {
   if (value === "low" || value === "medium" || value === "high" || value === "critical") {
     return value
@@ -488,7 +494,7 @@ const mapPolicyScenario = (row: Record<string, unknown>): PolicyScenario => ({
   impact: toNumber(row.impact ?? row.impact_score ?? row.impactScore),
   cost: toString(row.cost ?? row.estimated_cost ?? row.estimatedCost),
   timeframe: toString(row.timeframe),
-  confidence: toNumber(row.confidence),
+  confidence: toPercentValue(row.confidence),
   gbvReduction: toNumber(row.gbv_reduction ?? row.gbv_reduction_percent ?? row.gbvReduction),
   iterations: toNumber(row.iterations),
 })
@@ -531,9 +537,9 @@ const mapTimeSeries = (row: Record<string, unknown>): TimeSeriesPoint => ({
 })
 
 const mapFairnessMetric = (row: Record<string, unknown>): FairnessMetric => ({
-  metric: toString(row.metric),
-  score: toNumber(row.score),
-  threshold: toNumber(row.threshold),
+  metric: toString(row.metric ?? row.metric_name ?? row.metricName),
+  score: toPercentValue(row.score ?? row.metric_value ?? row.metricValue),
+  threshold: toPercentValue(row.threshold ?? 0.85),
   status: (row.status === "pass" || row.status === "warning" || row.status === "fail") ? row.status : "warning",
 })
 
@@ -1011,8 +1017,8 @@ const fetchFairnessMetrics = async (options?: FetchOptions) => {
   const query = applyPagination(
     supabase
       .from("fairness_metrics")
-      .select("metric,score,threshold,status")
-      .order("metric", { ascending: true }),
+      .select("metric_name,metric_value,status,created_at")
+      .order("created_at", { ascending: false }),
     options
   )
   const { data, error } = await query
@@ -1020,7 +1026,16 @@ const fetchFairnessMetrics = async (options?: FetchOptions) => {
     if (isMissingTableError(error)) return [] as FairnessMetric[]
     throw error
   }
-  return (data ?? []).map((row) => mapFairnessMetric(row as Record<string, unknown>))
+  const latestByMetric = new Map<string, Record<string, unknown>>()
+  ;((data ?? []) as Record<string, unknown>[]).forEach((row) => {
+    const key = toString(row.metric_name ?? row.metric).trim().toLowerCase()
+    if (key && !latestByMetric.has(key)) {
+      latestByMetric.set(key, row)
+    }
+  })
+  return Array.from(latestByMetric.values())
+    .map((row) => mapFairnessMetric(row))
+    .sort((left, right) => left.metric.localeCompare(right.metric))
 }
 
 const fetchGovernanceModels = async (options?: FetchOptions) => {

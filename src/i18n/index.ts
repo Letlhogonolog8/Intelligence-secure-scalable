@@ -2,16 +2,6 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import en from "./locales/en";
-import zu from "./locales/zu";
-import af from "./locales/af";
-import xh from "./locales/xh";
-import st from "./locales/st";
-import tn from "./locales/tn";
-import ts from "./locales/ts";
-import ve from "./locales/ve";
-import nso from "./locales/nso";
-import nr from "./locales/nr";
-import ss from "./locales/ss";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
@@ -28,6 +18,57 @@ export const SUPPORTED_LANGUAGES = [
 ] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["code"];
+type TranslationResource = typeof en;
+
+const supportedLanguageCodes = SUPPORTED_LANGUAGES.map((language) => language.code);
+const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
+  typeof value === "string" && supportedLanguageCodes.includes(value as SupportedLanguage);
+
+const loadLanguageResource = async (language: SupportedLanguage): Promise<TranslationResource> => {
+  switch (language) {
+    case "en":
+      return en;
+    case "zu":
+      return (await import("./locales/zu")).default;
+    case "af":
+      return (await import("./locales/af")).default;
+    case "xh":
+      return (await import("./locales/xh")).default;
+    case "st":
+      return (await import("./locales/st")).default;
+    case "tn":
+      return (await import("./locales/tn")).default;
+    case "ts":
+      return (await import("./locales/ts")).default;
+    case "ve":
+      return (await import("./locales/ve")).default;
+    case "nso":
+      return (await import("./locales/nso")).default;
+    case "nr":
+      return (await import("./locales/nr")).default;
+    case "ss":
+      return (await import("./locales/ss")).default;
+    default:
+      return en;
+  }
+};
+
+const resolveInitialLanguage = (): SupportedLanguage => {
+  const localStorageLanguage =
+    typeof window !== "undefined" ? window.localStorage.getItem("aegis_language") : null;
+  const navigatorLanguage =
+    typeof navigator !== "undefined" ? navigator.language?.split("-")[0] : null;
+
+  if (isSupportedLanguage(localStorageLanguage)) {
+    return localStorageLanguage;
+  }
+
+  if (isSupportedLanguage(navigatorLanguage)) {
+    return navigatorLanguage;
+  }
+
+  return "en";
+};
 
 const suppressLocizeNotice = () => {
   const shouldSuppress = (value: unknown) =>
@@ -65,35 +106,53 @@ const suppressLocizeNotice = () => {
   }
 }
 
-const restoreConsole = suppressLocizeNotice()
+const ensureLanguageResource = async (language: string) => {
+  const languageCode = language.split("-")[0];
+  if (!isSupportedLanguage(languageCode) || i18n.hasResourceBundle(languageCode, "translation")) {
+    return;
+  }
 
-i18n
-  .use(LanguageDetector)
-  .use(initReactI18next)
-  .init({
-    resources: {
-      en: { translation: en },
-      zu: { translation: zu },
-      af: { translation: af },
-      xh: { translation: xh },
-      st: { translation: st },
-      tn: { translation: tn },
-      ts: { translation: ts },
-      ve: { translation: ve },
-      nso: { translation: nso },
-      nr: { translation: nr },
-      ss: { translation: ss },
-    },
-    fallbackLng: "en",
-    supportedLngs: ["en", "zu", "af", "xh", "st", "tn", "ts", "ve", "nso", "nr", "ss"],
-    detection: {
-      order: ["localStorage", "navigator"],
-      caches: ["localStorage"],
-      lookupLocalStorage: "aegis_language",
-    },
-    interpolation: { escapeValue: false },
+  const translation = await loadLanguageResource(languageCode);
+  i18n.addResourceBundle(languageCode, "translation", translation, true, true);
+};
+
+export const initializeI18n = async () => {
+  const restoreConsole = suppressLocizeNotice();
+  const initialLanguage = resolveInitialLanguage();
+  const initialResources: Partial<Record<SupportedLanguage, { translation: TranslationResource }>> = {
+    en: { translation: en },
+  };
+
+  if (initialLanguage !== "en") {
+    initialResources[initialLanguage] = { translation: await loadLanguageResource(initialLanguage) };
+  }
+
+  i18n.on("languageChanged", async (language) => {
+    await ensureLanguageResource(language);
   });
 
-setTimeout(restoreConsole, 0)
+  await i18n
+    .use(LanguageDetector)
+    .use(initReactI18next)
+    .init({
+      resources: initialResources,
+      lng: initialLanguage,
+      fallbackLng: "en",
+      supportedLngs: supportedLanguageCodes,
+      detection: {
+        order: ["localStorage", "navigator"],
+        caches: ["localStorage"],
+        lookupLocalStorage: "aegis_language",
+      },
+      interpolation: { escapeValue: false },
+    });
+
+  setTimeout(restoreConsole, 0);
+};
+
+export const changeAppLanguage = async (language: SupportedLanguage) => {
+  await ensureLanguageResource(language);
+  await i18n.changeLanguage(language);
+};
 
 export default i18n;

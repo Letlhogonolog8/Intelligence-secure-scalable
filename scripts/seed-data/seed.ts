@@ -440,9 +440,23 @@ async function seedRegions(): Promise<RegionSeed[]> {
   let insertedRegions: Array<{ id: string; name: string; latitude: number; longitude: number }> = [];
 
   if (missingRegions.length > 0) {
+    const regionRows = missingRegions.map(({ name, country, risk_level, risk_score, incidents, trend, trend_percent, latitude, longitude, population, active_shelters, active_agents }) => ({
+      name,
+      country,
+      risk_level,
+      risk_score,
+      incidents,
+      trend,
+      trend_percent,
+      latitude,
+      longitude,
+      population,
+      active_shelters,
+      active_agents,
+    }));
     const { data, error } = await supabase
       .from("regions")
-      .insert(missingRegions)
+      .insert(regionRows)
       .select("id, name, latitude, longitude");
 
     if (error) {

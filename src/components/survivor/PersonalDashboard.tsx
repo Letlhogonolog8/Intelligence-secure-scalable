@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppStore } from "@/store/appStore";
+import { dedupeBy } from "@/lib/dashboardMetrics";
 
 const PersonalDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -18,7 +19,7 @@ const PersonalDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const displayName = profile?.full_name || profile?.fullName || profile?.name || "Survivor";
-  const recentUpdates = alertsFeed.slice(0, 4);
+  const recentUpdates = dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4);
 
   const handleOpenSupport = () => {
     setActiveModule("survivor_support");

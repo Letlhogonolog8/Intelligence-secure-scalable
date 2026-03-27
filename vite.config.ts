@@ -21,10 +21,6 @@ export default defineConfig(() => ({
             return undefined;
           }
 
-          if (id.includes("recharts") || id.includes("d3-")) {
-            return "charts-vendor";
-          }
-
           if (
             id.includes("react-router") ||
             id.includes("@tanstack/react-query") ||

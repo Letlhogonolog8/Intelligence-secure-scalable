@@ -115,7 +115,7 @@ ALTER TABLE survivors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "survivors_view_own_data"
   ON survivors FOR SELECT
-  USING (auth.uid() = user_id OR anonymous = TRUE);
+  USING (auth.uid() = user_id OR anonymous_id IS NOT NULL);
 
 CREATE POLICY "survivors_update_own_data"
   ON survivors FOR UPDATE
@@ -331,7 +331,7 @@ CREATE POLICY "admins_manage_organizations"
 CREATE OR REPLACE FUNCTION audit_log_changes()
 RETURNS TRIGGER AS $$
 BEGIN
-  LOG('userId=' || auth.uid() || ' action=' || TG_OP || ' table=' || TG_TABLE_NAME);
+  RAISE LOG 'userId=% action=% table=%', auth.uid(), TG_OP, TG_TABLE_NAME;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

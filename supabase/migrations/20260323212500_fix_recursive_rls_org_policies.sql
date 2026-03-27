@@ -87,7 +87,7 @@ BEGIN
       ON public.justice_cases FOR UPDATE
       USING (
         public.is_police()
-        AND assigned_officer_id = auth.uid()
+        AND assigned_to = auth.uid()
         AND region_id IN (
           SELECT region_id
           FROM public.police_departments

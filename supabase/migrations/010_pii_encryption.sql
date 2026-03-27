@@ -141,10 +141,6 @@ BEGIN
     NEW.phone_encrypted := encrypt_text(NEW.phone, encryption_key);
   END IF;
   
-  IF NEW.alternate_email IS NOT NULL THEN
-    NEW.alternate_email_encrypted := encrypt_text(NEW.alternate_email, encryption_key);
-  END IF;
-  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = public;

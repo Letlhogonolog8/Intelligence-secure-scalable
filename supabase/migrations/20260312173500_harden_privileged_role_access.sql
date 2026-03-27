@@ -25,11 +25,11 @@ WHERE approval_status = 'approved' AND approved_at IS NULL;
 CREATE OR REPLACE FUNCTION public.has_approved_role(target_role TEXT)
 RETURNS BOOLEAN AS $$
 DECLARE
-  current_role TEXT;
+  resolved_role TEXT;
 BEGIN
   -- 1. Check JWT metadata first (fastest, avoids table lookup)
-  current_role := auth.jwt() -> 'user_metadata' ->> 'role';
-  IF current_role = target_role THEN
+  resolved_role := auth.jwt() -> 'user_metadata' ->> 'role';
+  IF resolved_role = target_role THEN
     RETURN TRUE;
   END IF;
 
@@ -169,7 +169,7 @@ BEGIN
       ON public.justice_cases FOR UPDATE
       USING (
         public.is_police()
-        AND assigned_officer_id = auth.uid()
+        AND assigned_to = auth.uid()
         AND region_id IN (
           SELECT region_id FROM public.police_departments
           WHERE organization_id = public.current_user_organization_id()

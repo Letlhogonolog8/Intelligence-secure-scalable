@@ -50,6 +50,13 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
+const localDevLocationKey = "0123456789abcdef0123456789abcdef";
+
+const isLocalSupabaseRuntime = (supabaseUrl: string) =>
+  supabaseUrl.includes("127.0.0.1")
+  || supabaseUrl.includes("localhost")
+  || supabaseUrl.includes("kong:8000");
+
 const getEncryptionKey = async (locationKey: string) => {
   let rawKey: Uint8Array | null = null;
 
@@ -118,7 +125,8 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
-    const locationKey = Deno.env.get("SURVIVOR_LOCATION_KEY") ?? Deno.env.get("CHAT_ENCRYPTION_KEY") ?? "";
+    const configuredLocationKey = Deno.env.get("SURVIVOR_LOCATION_KEY") ?? Deno.env.get("CHAT_ENCRYPTION_KEY") ?? "";
+    const locationKey = configuredLocationKey || (isLocalSupabaseRuntime(supabaseUrl) ? localDevLocationKey : "");
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       throw new Error("Missing environment variables: SUPABASE_URL or SERVICE_ROLE_KEY");

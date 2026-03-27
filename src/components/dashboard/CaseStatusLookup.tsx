@@ -1,0 +1,114 @@
+import { useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { StatusPill } from "@/components/dashboard/DashboardPrimitives";
+import { formatRelativeDateTime } from "@/lib/dashboardMetrics";
+
+type LookupResult = {
+  id: string;
+  status: string;
+  risk_level: string;
+  priority: string;
+  updated_at: string | null;
+  created_at: string | null;
+};
+
+export const CaseStatusLookup = ({
+  title = "Case Status Lookup",
+  description = "Use a secure case reference to retrieve live status updates.",
+  placeholder = "Enter case ID",
+  emptyHint = "Enter a case reference to load the latest official record.",
+}: {
+  title?: string;
+  description?: string;
+  placeholder?: string;
+  emptyHint?: string;
+}) => {
+  const [caseId, setCaseId] = useState("");
+  const [result, setResult] = useState<LookupResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLookup = async () => {
+    const trimmed = caseId.trim();
+    if (!trimmed) {
+      setError("Enter a case ID to check status.");
+      setResult(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    const { data, error: lookupError } = await supabase
+      .from("case_reports")
+      .select("id,status,risk_level,priority,updated_at,created_at")
+      .eq("id", trimmed)
+      .maybeSingle();
+
+    if (lookupError || !data) {
+      setResult(null);
+      setError("Case not found. Please verify the ID.");
+      setLoading(false);
+      return;
+    }
+
+    setResult(data);
+    setLoading(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
+        <p className="mt-1 text-sm text-slate-400">{description}</p>
+      </div>
+
+      <div className="flex flex-col gap-3 md:flex-row">
+        <Input
+          value={caseId}
+          onChange={(event) => {
+            setCaseId(event.target.value);
+            setError(null);
+            setResult(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !loading) {
+              void handleLookup();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-12 border-white/10 bg-slate-950/70 text-white"
+        />
+        <Button className="h-12 min-w-[180px]" disabled={loading} onClick={() => void handleLookup()}>
+          {loading ? "Checking..." : "Check Status"}
+        </Button>
+      </div>
+
+      {error ? <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+
+      {result ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Status</p>
+            <div className="mt-3"><StatusPill tone="emerald">{result.status}</StatusPill></div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Priority</p>
+            <p className="mt-3 text-lg font-semibold text-white">{result.priority}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Risk level</p>
+            <p className="mt-3 text-lg font-semibold text-rose-300">{result.risk_level}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Last update</p>
+            <p className="mt-3 text-sm font-medium text-slate-100">{formatRelativeDateTime(result.updated_at)}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-slate-300">{emptyHint}</div>
+      )}
+    </div>
+  );
+};

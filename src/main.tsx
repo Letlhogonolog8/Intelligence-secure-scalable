@@ -4,7 +4,7 @@ import App from "./App.tsx"
 import "./index.css"
 import { initLogger } from "@/lib/logger"
 import { initDatadog } from "@/lib/datadog"
-import "./i18n"
+import { initializeI18n } from "@/i18n"
 
 const cleanupLocalServiceWorkers = async () => {
   if (!("serviceWorker" in navigator)) {
@@ -29,4 +29,10 @@ const cleanupLocalServiceWorkers = async () => {
 initLogger()
 void initDatadog()
 void cleanupLocalServiceWorkers()
-createRoot(document.getElementById("root")!).render(<App />)
+
+const bootstrap = async () => {
+  await initializeI18n()
+  createRoot(document.getElementById("root")!).render(<App />)
+}
+
+void bootstrap()
