@@ -85,14 +85,27 @@ const Sidebar: React.FC<SidebarProps> = ({
   const favoriteModsData = visibleModules.filter(m => favoriteModules.includes(m.id));
   const recentModsData = visibleModules.filter(m => recentModules.includes(m.id) && m.id !== activeModule);
 
+  const highlightedModuleIds = useMemo(() => {
+    if (collapsed) {
+      return new Set<ModuleType>();
+    }
+
+    return new Set<ModuleType>([
+      ...favoriteModsData.map((mod) => mod.id),
+      ...recentModsData.map((mod) => mod.id),
+    ]);
+  }, [collapsed, favoriteModsData, recentModsData]);
+
   const renderRoleSpecificSections = useMemo(() => {
     if (!roleConfig) return null;
     return roleConfig.sections.map((section: SidebarSection) => {
-      const sectionModules = visibleModules.filter(m => section.modules.includes(m.id));
+      const sectionModules = visibleModules.filter(
+        (m) => section.modules.includes(m.id) && !highlightedModuleIds.has(m.id)
+      );
       if (sectionModules.length === 0) return null;
       return { ...section, modules: sectionModules };
     }).filter(Boolean);
-  }, [roleConfig, visibleModules]);
+  }, [highlightedModuleIds, roleConfig, visibleModules]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {

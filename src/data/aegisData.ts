@@ -405,6 +405,14 @@ const isMissingTableError = (error: unknown) => {
   )
 }
 
+const isMissingColumnError = (error: unknown) => {
+  if (!error) return false
+  const err = error as { code?: string; message?: string }
+  const code = err.code
+  const message = err.message?.toLowerCase() ?? ""
+  return code === "42703" || message.includes("column") && message.includes("does not exist")
+}
+
 const toNumber = (value: unknown, fallback = 0) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -503,8 +511,8 @@ const mapContinentalStat = (row: Record<string, unknown>): ContinentalStat => ({
   incidents: toNumber(row.incidents),
   riskScore: toNumber(row.risk_score ?? row.riskScore),
   trend: toNumber(row.trend),
-  shelters: toNumber(row.shelters),
-  agents: toNumber(row.agents),
+  shelters: toNumber(row.shelters ?? row.active_shelters ?? row.activeShelters),
+  agents: toNumber(row.agents ?? row.active_agents ?? row.activeAgents),
 })
 
 const mapTimeSeries = (row: Record<string, unknown>): TimeSeriesPoint => ({
@@ -779,14 +787,40 @@ const fetchAlertsFeed = async (options?: FetchOptions) => {
 
 const fetchContinentalStats = async () => {
   if (!hasSupabase) return {} as ContinentalStats
-  const { data, error } = await supabase
-    .from("continental_stats")
-    .select("incidents,risk_score,trend,shelters,agents,region_key,region,id")
-  if (error) {
-    if (isMissingTableError(error)) return {} as ContinentalStats
-    throw error
+
+  const selectVariants = [
+    "incidents,risk_score,trend,shelters,agents,region_key,region,id",
+    "incidents,risk_score,trend,shelters,agents,region_key,id",
+    "incidents,risk_score,trend,active_shelters,active_agents,region_key,id",
+    "incidents,risk_score,trend,active_shelters,active_agents,id",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const result = await supabase.from("continental_stats").select(selectColumns)
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return {} as ContinentalStats
+    throw result.error
   }
-  return (data ?? []).reduce<ContinentalStats>((acc, row: Record<string, unknown>) => {
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return {} as ContinentalStats
+    throw lastError
+  }
+
+  return (data ?? []).reduce<ContinentalStats>((acc, row) => {
     const key = String(row.region_key ?? row.region ?? row.id ?? "")
     if (key) {
       acc[key] = mapContinentalStat(row)
@@ -1045,19 +1079,44 @@ const fetchBiasReports = async (options?: FetchOptions) => {
 
 const fetchEthicalConstraints = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as EthicalConstraint[]
-  const query = applyPagination(
-    supabase
-      .from("ethical_constraints")
-      .select("name,active")
-      .order("name", { ascending: true }),
-    options
-  )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as EthicalConstraint[]
-    throw error
+
+  const selectVariants = ["name,active", "constraint_text,active", "constraint_code,active", "constraint,active"]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase
+        .from("ethical_constraints")
+        .select(selectColumns),
+      options
+    )
+
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as EthicalConstraint[]
+    throw result.error
   }
-  return (data ?? []).map((row) => mapEthicalConstraint(row as Record<string, unknown>))
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as EthicalConstraint[]
+    throw lastError
+  }
+
+  return (data ?? [])
+    .map((row) => mapEthicalConstraint(row))
+    .sort((a, b) => a.constraint.localeCompare(b.constraint))
 }
 
 const fetchJusticeConvictions = async (options?: FetchOptions) => {
