@@ -11,7 +11,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "build:server": "tsc --project tsconfig.server.json",
+    "build:server": "tsc --project tsconfig.server.json && node -e \"const fs=require('fs');fs.mkdirSync('dist/server',{recursive:true});fs.writeFileSync('dist/server/package.json','{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "build:all": "npm run build:server && npm run build",
     "start": "node dist/server/index.js",
     "lint": "eslint .",
