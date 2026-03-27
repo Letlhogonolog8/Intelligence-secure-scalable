@@ -418,6 +418,13 @@ const toNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const toNormalizedRiskScore = (value: unknown) => {
+  const parsed = toNumber(value)
+  if (parsed <= 1) return parsed
+  if (parsed <= 10) return parsed / 10
+  return parsed / 100
+}
+
 const toString = (value: unknown, fallback = "") => {
   if (typeof value === "string") return value
   if (value === null || value === undefined) return fallback
@@ -443,15 +450,15 @@ const mapRegion = (row: Record<string, unknown>): RegionData => ({
   name: toString(row.name),
   country: toString(row.country),
   riskLevel: toRiskLevel(row.risk_level ?? row.riskLevel),
-  riskScore: toNumber(row.risk_score ?? row.riskScore),
+  riskScore: toNormalizedRiskScore(row.risk_score ?? row.riskScore),
   incidents: toNumber(row.incidents),
   trend: toTrendDirection(row.trend),
   trendPercent: toNumber(row.trend_percent ?? row.trendPercent),
-  lat: toNumber(row.lat),
-  lng: toNumber(row.lng),
+  lat: toNumber(row.lat ?? row.latitude),
+  lng: toNumber(row.lng ?? row.longitude),
   population: toNumber(row.population),
-  shelters: toNumber(row.shelters),
-  agents: toNumber(row.agents),
+  shelters: toNumber(row.shelters ?? row.active_shelters ?? row.activeShelters),
+  agents: toNumber(row.agents ?? row.active_agents ?? row.activeAgents),
 })
 
 const mapSystemMetrics = (row: Record<string, unknown>): SystemMetrics => ({
@@ -478,19 +485,19 @@ const mapPolicyScenario = (row: Record<string, unknown>): PolicyScenario => ({
   name: toString(row.name),
   description: toString(row.description),
   category: toString(row.category),
-  impact: toNumber(row.impact),
-  cost: toString(row.cost),
+  impact: toNumber(row.impact ?? row.impact_score ?? row.impactScore),
+  cost: toString(row.cost ?? row.estimated_cost ?? row.estimatedCost),
   timeframe: toString(row.timeframe),
   confidence: toNumber(row.confidence),
-  gbvReduction: toNumber(row.gbv_reduction ?? row.gbvReduction),
+  gbvReduction: toNumber(row.gbv_reduction ?? row.gbv_reduction_percent ?? row.gbvReduction),
   iterations: toNumber(row.iterations),
 })
 
 const mapJusticeCase = (row: Record<string, unknown>): JusticeCase => ({
   id: toString(row.id),
   caseNumber: toString(row.case_number ?? row.caseNumber),
-  type: toString(row.type),
-  region: toString(row.region),
+  type: toString(row.type ?? row.case_type ?? row.caseType),
+  region: toString(row.region ?? row.region_name ?? row.regionName ?? row.region_id ?? row.regionId),
   status: toString(row.status),
   daysOpen: toNumber(row.days_open ?? row.daysOpen),
   stage: toString(row.stage),
@@ -509,7 +516,7 @@ const mapAlert = (row: Record<string, unknown>): AlertItem => ({
 
 const mapContinentalStat = (row: Record<string, unknown>): ContinentalStat => ({
   incidents: toNumber(row.incidents),
-  riskScore: toNumber(row.risk_score ?? row.riskScore),
+  riskScore: toNormalizedRiskScore(row.risk_score ?? row.riskScore),
   trend: toNumber(row.trend),
   shelters: toNumber(row.shelters ?? row.active_shelters ?? row.activeShelters),
   agents: toNumber(row.agents ?? row.active_agents ?? row.activeAgents),
@@ -536,8 +543,8 @@ const mapGovernanceModel = (row: Record<string, unknown>): GovernanceModel => ({
   module: toString(row.module),
   status: toString(row.status),
   accuracy: toNumber(row.accuracy),
-  fairness: toNumber(row.fairness),
-  drift: toNumber(row.drift),
+  fairness: toNumber(row.fairness ?? row.fairness_score ?? row.fairnessScore),
+  drift: toNumber(row.drift ?? row.drift_score ?? row.driftScore ?? (row.drift_detected ? 1 : 0)),
 })
 
 const mapAuditLog = (row: Record<string, unknown>): AuditLog => ({
@@ -637,9 +644,9 @@ const mapUserProfile = (row: Record<string, unknown>): UserProfile => ({
 })
 
 const mapJusticeConviction = (row: Record<string, unknown>): JusticeConviction => ({
-  region: toString(row.region),
-  rate: toNumber(row.rate),
-  cases: toNumber(row.cases),
+  region: toString(row.region ?? row.region_name ?? row.regionName ?? row.region_id ?? row.regionId),
+  rate: toNumber(row.rate ?? row.conviction_rate ?? row.convictionRate),
+  cases: toNumber(row.cases ?? row.total_cases ?? row.totalCases),
 })
 
 const mapOrganization = (row: Record<string, unknown>): Organization => {
@@ -692,10 +699,10 @@ const mapRegionForecast = (row: Record<string, unknown>): RegionForecast => ({
 
 const mapAnomalyAlert = (row: Record<string, unknown>): AnomalyAlert => ({
   id: toString(row.id),
-  region: toString(row.region),
-  type: toString(row.type),
+  region: toString(row.region ?? row.region_name ?? row.regionName ?? row.region_id ?? row.regionId),
+  type: toString(row.type ?? row.alert_type ?? row.alertType),
   severity: (row.severity === "low" || row.severity === "medium" || row.severity === "high" || row.severity === "critical") ? row.severity : "low",
-  time: toString(row.time),
+  time: toString(row.time ?? row.created_at ?? row.createdAt),
 })
 
 type RealtimeQueryOptions = {
@@ -710,6 +717,7 @@ type ListQueryOptions = FetchOptions & RealtimeQueryOptions
 const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: () => Promise<T>, options?: RealtimeQueryOptions) => {
   const queryClient = useQueryClient()
   const tableKey = Array.isArray(table) ? table.join(",") : table
+  const tables = tableKey.split(",").map((name) => name.trim()).filter(Boolean)
   const enabled = options?.enabled ?? true
   const queryKey = ["aegis", key, ...(options?.queryKey ?? [])]
   const query = useQuery({
@@ -722,7 +730,6 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
 
   useEffect(() => {
     if (!hasSupabase || !enabled) return
-    const tables = Array.isArray(table) ? table : [table]
     const channels = tables.map((tableName) => (
       supabase
         .channel(`aegis:${key}:${tableName}`)
@@ -734,23 +741,49 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
     return () => {
       channels.forEach((channel) => supabase.removeChannel(channel))
     }
-  }, [queryClient, key, tableKey, enabled, table])
+  }, [queryClient, key, tableKey, enabled, tables])
 
   return query
 }
 
 const fetchRegions = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as RegionData[]
-  const query = applyPagination(
-    supabase.from("regions").select("id,name,country,risk_level,risk_score,incidents,trend,trend_percent,lat,lng,population,shelters,agents"),
-    options
-  )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as RegionData[]
-    throw error
+
+  const selectVariants = [
+    "id,name,country,risk_level,risk_score,incidents,trend,trend_percent,lat,lng,population,shelters,agents",
+    "id,name,country,risk_level,risk_score,incidents,trend,trend_percent,latitude,longitude,population,active_shelters,active_agents",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase.from("regions").select(selectColumns),
+      options
+    )
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as RegionData[]
+    throw result.error
   }
-  return (data ?? []).map((row) => mapRegion(row as Record<string, unknown>))
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as RegionData[]
+    throw lastError
+  }
+
+  return (data ?? []).map((row) => mapRegion(row))
 }
 
 const fetchSystemMetrics = async () => {
@@ -876,36 +909,101 @@ const fetchIncidentTimeSeries = async () => {
 
 const fetchPolicyScenarios = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as PolicyScenario[]
-  const query = applyPagination(
-    supabase
-      .from("policy_scenarios")
-      .select("id,name,description,category,impact,cost,timeframe,confidence,gbv_reduction,iterations")
-      .order("name", { ascending: true }),
-    options
-  )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as PolicyScenario[]
-    throw error
+
+  const selectVariants = [
+    "id,name,description,category,impact,cost,timeframe,confidence,gbv_reduction,iterations",
+    "id,name,description,category,impact_score,estimated_cost,timeframe,confidence,gbv_reduction_percent,iterations",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase
+        .from("policy_scenarios")
+        .select(selectColumns)
+        .order("name", { ascending: true }),
+      options
+    )
+
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as PolicyScenario[]
+    throw result.error
   }
-  return (data ?? []).map((row) => mapPolicyScenario(row as Record<string, unknown>))
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as PolicyScenario[]
+    throw lastError
+  }
+
+  return (data ?? []).map((row) => mapPolicyScenario(row))
 }
 
 const fetchJusticeCases = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as JusticeCase[]
-  const query = applyPagination(
-    supabase
-      .from("justice_cases")
-      .select("id,case_number,type,region,status,days_open,stage,assigned_to,priority")
-      .order("days_open", { ascending: false }),
-    options
-  )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as JusticeCase[]
-    throw error
+
+  const selectVariants = [
+    "id,case_number,type,region,status,days_open,stage,assigned_to,priority",
+    "id,case_number,case_type,status,days_open,stage,assigned_to,priority,region_id,regions(name)",
+    "id,case_number,case_type,status,days_open,stage,assigned_to,priority,region_id",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase
+        .from("justice_cases")
+        .select(selectColumns)
+        .order("days_open", { ascending: false }),
+      options
+    )
+
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as JusticeCase[]
+    throw result.error
   }
-  return (data ?? []).map((row) => mapJusticeCase(row as Record<string, unknown>))
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as JusticeCase[]
+    throw lastError
+  }
+
+  return (data ?? []).map((row) => {
+    const relatedRegions = row.regions as { name?: unknown } | Array<{ name?: unknown }> | undefined
+    const regionName = Array.isArray(relatedRegions)
+      ? toString(relatedRegions[0]?.name)
+      : toString(relatedRegions?.name)
+
+    return mapJusticeCase({
+      ...row,
+      region_name: regionName || row.region_name,
+    })
+  })
 }
 
 const fetchFairnessMetrics = async (options?: FetchOptions) => {
@@ -927,19 +1025,45 @@ const fetchFairnessMetrics = async (options?: FetchOptions) => {
 
 const fetchGovernanceModels = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as GovernanceModel[]
-  const query = applyPagination(
-    supabase
-      .from("governance_models")
-      .select("name,version,module,status,accuracy,fairness,drift")
-      .order("name", { ascending: true }),
-    options
-  )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as GovernanceModel[]
-    throw error
+
+  const selectVariants = [
+    "name,version,module,status,accuracy,fairness,drift",
+    "name,version,module,status,accuracy,fairness_score,drift_detected",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase
+        .from("governance_models")
+        .select(selectColumns)
+        .order("name", { ascending: true }),
+      options
+    )
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as GovernanceModel[]
+    throw result.error
   }
-  return (data ?? []).map((row) => mapGovernanceModel(row as Record<string, unknown>))
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as GovernanceModel[]
+    throw lastError
+  }
+
+  return (data ?? []).map((row) => mapGovernanceModel(row))
 }
 
 const fetchAuditLogs = async (options?: FetchOptions) => {
@@ -1121,41 +1245,127 @@ const fetchEthicalConstraints = async (options?: FetchOptions) => {
 
 const fetchJusticeConvictions = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as JusticeConviction[]
-  const query = applyPagination(
+
+  const preferredQuery = applyPagination(
     supabase
       .from("justice_convictions")
       .select("region,rate,cases")
       .order("region", { ascending: true }),
     options
   )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as JusticeConviction[]
-    throw error
+
+  const preferredResult = await preferredQuery
+  if (!preferredResult.error) {
+    return (preferredResult.data ?? []).map((row) => mapJusticeConviction(row as Record<string, unknown>))
   }
-  return (data ?? []).map((row) => mapJusticeConviction(row as Record<string, unknown>))
+
+  if (!isMissingTableError(preferredResult.error) && !isMissingColumnError(preferredResult.error)) {
+    throw preferredResult.error
+  }
+
+  const metricsQuery = applyPagination(
+    supabase
+      .from("justice_metrics")
+      .select("region_id,total_cases,conviction_rate")
+      .order("region_id", { ascending: true }),
+    options
+  )
+
+  const metricsResult = await metricsQuery
+  if (metricsResult.error) {
+    if (isMissingTableError(metricsResult.error)) return [] as JusticeConviction[]
+    throw metricsResult.error
+  }
+
+  const metricsRows = (metricsResult.data ?? []) as Record<string, unknown>[]
+  const regionIds = Array.from(new Set(metricsRows.map((row) => toString(row.region_id)).filter(Boolean)))
+
+  let regionNameById = new Map<string, string>()
+  if (regionIds.length > 0) {
+    const regionsResult = await supabase
+      .from("regions")
+      .select("id,name")
+      .in("id", regionIds)
+
+    if (!regionsResult.error) {
+      regionNameById = new Map(
+        ((regionsResult.data ?? []) as Array<{ id: string; name: string }>).map((region) => [region.id, region.name])
+      )
+    }
+  }
+
+  return metricsRows
+    .map((row) => mapJusticeConviction({
+      region: regionNameById.get(toString(row.region_id)) ?? row.region_id,
+      conviction_rate: row.conviction_rate,
+      total_cases: row.total_cases,
+    }))
+    .filter((row) => row.region)
 }
 
 const fetchJusticeBottlenecks = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as JusticeBottleneck[]
-  const query = applyPagination(
+
+  const preferredQuery = applyPagination(
     supabase
       .from("justice_bottlenecks")
       .select("stage,avg_delay,severity,description")
       .order("avg_delay", { ascending: false }),
     options
   )
-  const { data, error } = await query
-  if (error) {
-    if (isMissingTableError(error)) return [] as JusticeBottleneck[]
-    throw error
+
+  const preferredResult = await preferredQuery
+  if (!preferredResult.error) {
+    return (preferredResult.data ?? []).map((row) => mapJusticeBottleneck(row as Record<string, unknown>))
   }
-  return (data ?? []).map((row) => mapJusticeBottleneck(row as Record<string, unknown>))
+
+  if (!isMissingTableError(preferredResult.error) && !isMissingColumnError(preferredResult.error)) {
+    throw preferredResult.error
+  }
+
+  const sourceQuery = applyPagination(
+    supabase
+      .from("justice_cases")
+      .select("stage,days_open")
+      .order("days_open", { ascending: false }),
+    options
+  )
+
+  const sourceResult = await sourceQuery
+  if (sourceResult.error) {
+    if (isMissingTableError(sourceResult.error)) return [] as JusticeBottleneck[]
+    throw sourceResult.error
+  }
+
+  const grouped = new Map<string, { count: number; totalDays: number }>()
+  for (const row of (sourceResult.data ?? []) as Record<string, unknown>[]) {
+    const stage = toString(row.stage, "unknown")
+    const daysOpen = toNumber(row.days_open)
+    const current = grouped.get(stage) ?? { count: 0, totalDays: 0 }
+    grouped.set(stage, {
+      count: current.count + 1,
+      totalDays: current.totalDays + daysOpen,
+    })
+  }
+
+  return Array.from(grouped.entries())
+    .map(([stage, stats]) => {
+      const avgDelay = stats.count ? stats.totalDays / stats.count : 0
+      const severity = avgDelay >= 180 ? "high" : avgDelay >= 90 ? "medium" : "low"
+      return mapJusticeBottleneck({
+        stage,
+        avg_delay: avgDelay,
+        severity,
+        description: `${stats.count} active case(s) in ${stage}`,
+      })
+    })
+    .sort((a, b) => b.avgDelay - a.avgDelay)
 }
 
 const fetchRegionIncidentTypes = async (regionId: string, options?: FetchOptions) => {
   if (!hasSupabase) return [] as RegionIncidentType[]
-  const query = applyPagination(
+
+  const preferredQuery = applyPagination(
     supabase
       .from("region_incident_types")
       .select("type,pct")
@@ -1163,14 +1373,51 @@ const fetchRegionIncidentTypes = async (regionId: string, options?: FetchOptions
       .order("pct", { ascending: false }),
     options
   )
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map((row) => mapRegionIncidentType(row as Record<string, unknown>))
+
+  const preferredResult = await preferredQuery
+  if (!preferredResult.error) {
+    return (preferredResult.data ?? []).map((row) => mapRegionIncidentType(row as Record<string, unknown>))
+  }
+
+  if (!isMissingTableError(preferredResult.error) && !isMissingColumnError(preferredResult.error)) {
+    throw preferredResult.error
+  }
+
+  const incidentsResult = await applyPagination(
+    supabase
+      .from("incidents")
+      .select("incident_type")
+      .eq("region_id", regionId),
+    options
+  )
+
+  if (incidentsResult.error) {
+    if (isMissingTableError(incidentsResult.error)) return [] as RegionIncidentType[]
+    throw incidentsResult.error
+  }
+
+  const rows = (incidentsResult.data ?? []) as Array<{ incident_type?: string | null }>
+  const total = rows.length
+  if (!total) return [] as RegionIncidentType[]
+
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const type = toString(row.incident_type, "unknown")
+    counts.set(type, (counts.get(type) ?? 0) + 1)
+  }
+
+  return Array.from(counts.entries())
+    .map(([type, count]) => mapRegionIncidentType({
+      type,
+      pct: Number(((count / total) * 100).toFixed(1)),
+    }))
+    .sort((a, b) => b.pct - a.pct)
 }
 
 const fetchRegionForecasts = async (regionId: string, options?: FetchOptions) => {
   if (!hasSupabase) return [] as RegionForecast[]
-  const query = applyPagination(
+
+  const preferredQuery = applyPagination(
     supabase
       .from("region_forecasts")
       .select("forecast_days,label,risk_change")
@@ -1178,23 +1425,124 @@ const fetchRegionForecasts = async (regionId: string, options?: FetchOptions) =>
       .order("forecast_days", { ascending: true }),
     options
   )
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map((row) => mapRegionForecast(row as Record<string, unknown>))
+
+  const preferredResult = await preferredQuery
+  if (!preferredResult.error) {
+    return (preferredResult.data ?? []).map((row) => mapRegionForecast(row as Record<string, unknown>))
+  }
+
+  if (!isMissingTableError(preferredResult.error) && !isMissingColumnError(preferredResult.error)) {
+    throw preferredResult.error
+  }
+
+  const predictionResult = await applyPagination(
+    supabase
+      .from("risk_predictions")
+      .select("forecast_date,predicted_risk_level,predicted_incidents")
+      .eq("region_id", regionId)
+      .order("forecast_date", { ascending: true }),
+    options
+  )
+
+  if (predictionResult.error) {
+    if (isMissingTableError(predictionResult.error)) return [] as RegionForecast[]
+    throw predictionResult.error
+  }
+
+  const points = (predictionResult.data ?? []) as Array<{
+    forecast_date?: string
+    predicted_risk_level?: string | null
+    predicted_incidents?: number | null
+  }>
+
+  const riskWeight = (level?: string | null) => {
+    switch (level) {
+      case "critical":
+        return 20
+      case "high":
+        return 10
+      case "medium":
+        return 3
+      case "low":
+      default:
+        return -2
+    }
+  }
+
+  const sorted = [...points].sort((a, b) => {
+    const aTime = a.forecast_date ? new Date(a.forecast_date).getTime() : 0
+    const bTime = b.forecast_date ? new Date(b.forecast_date).getTime() : 0
+    return aTime - bTime
+  })
+
+  return sorted.map((point, index) => {
+    const forecastDays = index + 1
+    const predictedIncidents = toNumber(point.predicted_incidents)
+    const change = predictedIncidents !== 0 ? predictedIncidents : riskWeight(point.predicted_risk_level)
+    return mapRegionForecast({
+      forecast_days: forecastDays,
+      label: `Day ${forecastDays}`,
+      risk_change: Number(change.toFixed(1)),
+    })
+  })
 }
 
 const fetchAnomalyAlerts = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as AnomalyAlert[]
-  const query = applyPagination(
-    supabase
-      .from("anomaly_alerts")
-      .select("id,region,type,severity,time")
-      .order("time", { ascending: false }),
-    options
-  )
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map((row) => mapAnomalyAlert(row as Record<string, unknown>))
+
+  const selectVariants = [
+    "id,region,type,severity,time",
+    "id,region_name,type,severity,created_at",
+    "id,region_id,alert_type,severity,created_at,regions(name)",
+    "id,region_id,alert_type,severity,created_at",
+  ]
+
+  let data: Record<string, unknown>[] | null = null
+  let lastError: unknown = null
+
+  for (const selectColumns of selectVariants) {
+    const query = applyPagination(
+      supabase
+        .from("anomaly_alerts")
+        .select(selectColumns)
+        .order("created_at", { ascending: false }),
+      options
+    )
+
+    const result = await query
+    if (!result.error) {
+      data = (result.data ?? []) as Record<string, unknown>[]
+      lastError = null
+      break
+    }
+
+    if (isMissingColumnError(result.error)) {
+      lastError = result.error
+      continue
+    }
+
+    if (isMissingTableError(result.error)) return [] as AnomalyAlert[]
+    throw result.error
+  }
+
+  if (lastError) {
+    if (isMissingTableError(lastError)) return [] as AnomalyAlert[]
+    throw lastError
+  }
+
+  return (data ?? []).map((row) => {
+    const relatedRegions = row.regions as { name?: unknown } | Array<{ name?: unknown }> | undefined
+    const regionName = Array.isArray(relatedRegions)
+      ? toString(relatedRegions[0]?.name)
+      : toString(relatedRegions?.name)
+
+    return mapAnomalyAlert({
+      ...row,
+      region_name: regionName || row.region_name,
+      type: row.type ?? row.alert_type,
+      time: row.time ?? row.created_at,
+    })
+  })
 }
 
 export const useRegions = (options?: ListQueryOptions) => useRealtimeQuery(
@@ -1358,7 +1706,7 @@ export const useRegionIncidentTypes = (regionId?: string | null, options?: ListQ
   const enabled = Boolean(regionId) && (options?.enabled ?? true)
   return useRealtimeQuery(
     `regionIncidentTypes:${regionId ?? "none"}`,
-    "region_incident_types",
+    ["region_incident_types", "incidents"],
     () => (regionId ? fetchRegionIncidentTypes(regionId, options) : Promise.resolve([] as RegionIncidentType[])),
     { ...options, enabled, queryKey: [regionId ?? "none", options?.limit, options?.offset] }
   )
@@ -1368,7 +1716,7 @@ export const useRegionForecasts = (regionId?: string | null, options?: ListQuery
   const enabled = Boolean(regionId) && (options?.enabled ?? true)
   return useRealtimeQuery(
     `regionForecasts:${regionId ?? "none"}`,
-    "region_forecasts",
+    ["region_forecasts", "risk_predictions"],
     () => (regionId ? fetchRegionForecasts(regionId, options) : Promise.resolve([] as RegionForecast[])),
     { ...options, enabled, queryKey: [regionId ?? "none", options?.limit, options?.offset] }
   )
@@ -1376,7 +1724,7 @@ export const useRegionForecasts = (regionId?: string | null, options?: ListQuery
 
 export const useAnomalyAlerts = (options?: ListQueryOptions) => useRealtimeQuery(
   "anomalyAlerts",
-  "anomaly_alerts",
+  ["anomaly_alerts", "regions"],
   () => fetchAnomalyAlerts(options),
   { ...options, queryKey: [options?.limit, options?.offset] }
 )

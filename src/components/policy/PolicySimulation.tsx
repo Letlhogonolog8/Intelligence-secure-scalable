@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { usePolicyScenarios } from '@/data/aegisData';
 import {
@@ -19,10 +19,20 @@ const PolicySimulation: React.FC = () => {
       setSelectedScenarios(policyScenarios.slice(0, 2).map((scenario) => scenario.id));
     }
   }, [policyScenarios, selectedScenarios.length]);
+
+  useEffect(() => {
+    return () => {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
+      }
+    };
+  }, []);
   const [simulationProgress, setSimulationProgress] = useState(0);
   const [iterations, setIterations] = useState(10000);
   const [simulationResults, setSimulationResults] = useState<Record<string, { reduction: number; confidence: number; cost: string }>>({});
   const [compareMode, setCompareMode] = useState(false);
+  const simulationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleExport = () => {
     const rows = selectedScenariosData.length > 0 ? selectedScenariosData : policyScenarios;
@@ -60,28 +70,61 @@ const PolicySimulation: React.FC = () => {
     );
   };
 
+  const stopSimulation = () => {
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
+    setIsSimulating(false);
+  };
+
   const runSimulation = () => {
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
+
     setIsSimulating(true);
     setSimulationProgress(0);
     setSimulationResults({});
 
-    const interval = setInterval(() => {
+    simulationIntervalRef.current = setInterval(() => {
       setSimulationProgress(prev => {
         if (prev >= 100) {
-          clearInterval(interval);
+          if (simulationIntervalRef.current) {
+            clearInterval(simulationIntervalRef.current);
+            simulationIntervalRef.current = null;
+          }
           setIsSimulating(false);
-          // Generate results
+
+          const iterationFactor = Math.min(1.3, Math.max(0.85, Math.log10(Math.max(1000, iterations)) / 4));
+          const selectedScenariosData = policyScenarios.filter((scenario) => selectedScenarios.includes(scenario.id));
+          const averageImpact = selectedScenariosData.length
+            ? selectedScenariosData.reduce((sum, scenario) => sum + scenario.impact, 0) / selectedScenariosData.length
+            : 0;
+
           const results: Record<string, { reduction: number; confidence: number; cost: string }> = {};
-          selectedScenarios.forEach(id => {
-            const scenario = policyScenarios.find(s => s.id === id);
-            if (scenario) {
-              results[id] = {
-                reduction: scenario.gbvReduction + (Math.random() * 4 - 2),
-                confidence: scenario.confidence + (Math.random() * 0.06 - 0.03),
-                cost: scenario.cost,
-              };
-            }
+          selectedScenarios.forEach((id) => {
+            const scenario = policyScenarios.find((item) => item.id === id);
+            if (!scenario) return;
+
+            const impactMultiplier = 1 + (scenario.impact - averageImpact) * 0.05;
+            const reduction = Math.max(
+              0,
+              Number((scenario.gbvReduction * iterationFactor * impactMultiplier).toFixed(1))
+            );
+            const confidence = Math.min(
+              0.99,
+              Number((scenario.confidence + (iterationFactor - 1) * 0.08).toFixed(3))
+            );
+
+            results[id] = {
+              reduction,
+              confidence,
+              cost: scenario.cost,
+            };
           });
+
           setSimulationResults(results);
           return 100;
         }
@@ -166,7 +209,7 @@ const PolicySimulation: React.FC = () => {
           <div className="flex items-center gap-3">
             {isSimulating ? (
               <button
-                onClick={() => setIsSimulating(false)}
+                onClick={stopSimulation}
                 className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm hover:bg-red-500/20 transition-all"
               >
                 <PauseIcon size={16} />
