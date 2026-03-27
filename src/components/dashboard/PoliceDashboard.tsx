@@ -65,6 +65,7 @@ const PoliceDashboard: React.FC = () => {
     }
   };
 
+
   return (
     <DashboardPage accent="rose">
       <DashboardHero

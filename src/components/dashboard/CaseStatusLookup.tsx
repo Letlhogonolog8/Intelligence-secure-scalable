@@ -46,14 +46,45 @@ export const CaseStatusLookup = ({
       .eq("id", trimmed)
       .maybeSingle();
 
-    if (lookupError || !data) {
+    if (!lookupError && data) {
+      setResult(data);
+      setLoading(false);
+      return;
+    }
+
+    const missingCaseReports = Boolean(lookupError) && (
+      (lookupError as { code?: string; message?: string }).code === "42P01" ||
+      ((lookupError as { message?: string }).message ?? "").toLowerCase().includes("case_reports")
+    );
+
+    if (!missingCaseReports) {
       setResult(null);
       setError("Case not found. Please verify the ID.");
       setLoading(false);
       return;
     }
 
-    setResult(data);
+    const fallback = await supabase
+      .from("justice_cases")
+      .select("id,case_number,status,priority,updated_at,created_at")
+      .eq("case_number", trimmed)
+      .maybeSingle();
+
+    if (fallback.error || !fallback.data) {
+      setResult(null);
+      setError("Case not found. Please verify the ID.");
+      setLoading(false);
+      return;
+    }
+
+    setResult({
+      id: fallback.data.case_number ?? fallback.data.id,
+      status: fallback.data.status,
+      risk_level: fallback.data.priority ?? "medium",
+      priority: fallback.data.priority ?? "medium",
+      updated_at: fallback.data.updated_at,
+      created_at: fallback.data.created_at,
+    });
     setLoading(false);
   };
 

@@ -66,7 +66,27 @@ const VoiceIncidentReporter: React.FC<VoiceIncidentReporterProps> = ({ onReportS
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
-      if (error) throw error;
+
+      const missingCaseReports = Boolean(error) && (
+        (error as { code?: string; message?: string }).code === "42P01" ||
+        ((error as { message?: string }).message ?? "").toLowerCase().includes("case_reports")
+      );
+
+      if (missingCaseReports) {
+        const { error: fallbackError } = await supabase.from("justice_cases").insert({
+          case_number: caseId,
+          case_type: "gbv_report",
+          status: "open",
+          stage: "report",
+          priority: edgeRiskLevel === "critical" ? "critical" : edgeRiskLevel === "high" ? "high" : "medium",
+          days_open: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        if (fallbackError) throw fallbackError;
+      } else if (error) {
+        throw error;
+      }
       setSubmitted(caseId);
       onReportSubmitted?.(caseId);
     } catch {

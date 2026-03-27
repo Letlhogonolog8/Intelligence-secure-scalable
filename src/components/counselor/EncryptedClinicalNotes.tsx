@@ -56,7 +56,24 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
         })
         .eq('id', caseId);
 
-      if (caseError) throw caseError;
+      const missingCaseReports = Boolean(caseError) && (
+        (caseError as { code?: string; message?: string }).code === '42P01' ||
+        ((caseError as { message?: string }).message ?? '').toLowerCase().includes('case_reports')
+      );
+
+      if (missingCaseReports) {
+        const { error: justiceError } = await supabase
+          .from('justice_cases')
+          .update({
+            priority: riskLevel,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('case_number', caseId);
+
+        if (justiceError) throw justiceError;
+      } else if (caseError) {
+        throw caseError;
+      }
 
       setSaved(true);
       setNotes('');
