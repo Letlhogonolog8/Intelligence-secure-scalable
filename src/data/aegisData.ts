@@ -720,6 +720,10 @@ type RealtimeQueryOptions = {
 
 type ListQueryOptions = FetchOptions & RealtimeQueryOptions
 
+let realtimeConnectionDisabled = false
+let realtimeFailureCount = 0
+const realtimeFailureThreshold = 3
+
 const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: () => Promise<T>, options?: RealtimeQueryOptions) => {
   const queryClient = useQueryClient()
   const tableKey = Array.isArray(table) ? table.join(",") : table
@@ -735,17 +739,39 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
   })
 
   useEffect(() => {
-    if (!hasSupabase || !enabled) return
-    const channels = tables.map((tableName) => (
-      supabase
+    if (!hasSupabase || !enabled || realtimeConnectionDisabled) return
+    if (typeof navigator !== "undefined" && !navigator.onLine) return
+
+    const channels = tables.map((tableName) => {
+      const channel = supabase
         .channel(`aegis:${key}:${tableName}`)
         .on("postgres_changes", { event: "*", schema: "public", table: tableName }, () => {
           queryClient.invalidateQueries({ queryKey: ["aegis", key] })
         })
-        .subscribe()
-    ))
+
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          realtimeFailureCount = 0
+          return
+        }
+
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeFailureCount += 1
+          if (realtimeFailureCount >= realtimeFailureThreshold) {
+            realtimeConnectionDisabled = true
+          }
+          queryClient.invalidateQueries({ queryKey: ["aegis", key] })
+          supabase.removeChannel(channel)
+        }
+      })
+
+      return channel
+    })
+
     return () => {
-      channels.forEach((channel) => supabase.removeChannel(channel))
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel)
+      })
     }
   }, [queryClient, key, tableKey, enabled, tables])
 
