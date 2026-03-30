@@ -3,14 +3,16 @@ import { render, waitFor } from "@testing-library/react"
 import { vi } from "vitest"
 
 const channelHandlers: Array<() => void> = []
+const statusHandlers: Array<(status: string) => void> = []
+const removeChannelSpy = vi.fn()
 
 vi.mock("@/lib/env", () => ({
   hasSupabase: true,
   env: {
     VITE_LOG_SAMPLE_RATE: 1,
     VITE_SUPABASE_URL: "http://localhost",
-    VITE_SUPABASE_ANON_KEY: "test-key"
-  }
+    VITE_SUPABASE_ANON_KEY: "test-key",
+  },
 }))
 
 vi.mock("@/lib/supabase", () => {
@@ -20,7 +22,12 @@ vi.mock("@/lib/supabase", () => {
         channelHandlers.push(handler)
         return api
       },
-      subscribe: () => api,
+      subscribe: (handler?: (status: string) => void) => {
+        if (handler) {
+          statusHandlers.push(handler)
+        }
+        return api
+      },
     }
     return api
   })
@@ -31,7 +38,7 @@ vi.mock("@/lib/supabase", () => {
         select: async () => ({ data: [], error: null }),
       }),
       channel,
-      removeChannel: vi.fn(),
+      removeChannel: removeChannelSpy,
     },
   }
 })
@@ -44,6 +51,12 @@ const TestComponent = () => {
 }
 
 describe("aegisData realtime hooks", () => {
+  beforeEach(() => {
+    channelHandlers.length = 0
+    statusHandlers.length = 0
+    removeChannelSpy.mockClear()
+  })
+
   it("invalidates queries when realtime updates arrive", async () => {
     const queryClient = new QueryClient()
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
@@ -61,5 +74,43 @@ describe("aegisData realtime hooks", () => {
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["aegis", "regions"] })
     )
+  })
+
+  it("does not treat CLOSED status as transport failure", async () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestComponent />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => expect(statusHandlers.length).toBeGreaterThan(0))
+
+    statusHandlers.forEach((handler) => handler("CLOSED"))
+
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["aegis", "regions"] })
+    expect(removeChannelSpy).not.toHaveBeenCalled()
+  })
+
+  it("handles CHANNEL_ERROR by invalidating and removing the affected channel", async () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestComponent />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => expect(statusHandlers.length).toBeGreaterThan(0))
+
+    statusHandlers.forEach((handler) => handler("CHANNEL_ERROR"))
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["aegis", "regions"] })
+    )
+    expect(removeChannelSpy).toHaveBeenCalled()
   })
 })

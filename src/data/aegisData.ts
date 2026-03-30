@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { supabase } from "@/lib/supabase"
 import { hasSupabase } from "@/lib/env"
@@ -720,16 +720,30 @@ type RealtimeQueryOptions = {
 
 type ListQueryOptions = FetchOptions & RealtimeQueryOptions
 
-let realtimeConnectionDisabled = false
-let realtimeFailureCount = 0
+type RealtimeScopeState = {
+  failureCount: number
+  disabled: boolean
+}
+
 const realtimeFailureThreshold = 3
+const realtimeScopeStates = new Map<string, RealtimeScopeState>()
+
+const getRealtimeScopeState = (scopeKey: string): RealtimeScopeState => {
+  const existing = realtimeScopeStates.get(scopeKey)
+  if (existing) return existing
+
+  const next = { failureCount: 0, disabled: false }
+  realtimeScopeStates.set(scopeKey, next)
+  return next
+}
 
 const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: () => Promise<T>, options?: RealtimeQueryOptions) => {
   const queryClient = useQueryClient()
   const tableKey = Array.isArray(table) ? table.join(",") : table
-  const tables = tableKey.split(",").map((name) => name.trim()).filter(Boolean)
+  const tables = useMemo(() => tableKey.split(",").map((name) => name.trim()).filter(Boolean), [tableKey])
   const enabled = options?.enabled ?? true
   const queryKey = ["aegis", key, ...(options?.queryKey ?? [])]
+  const scopeKey = `${key}:${tableKey}`
   const query = useQuery({
     queryKey,
     queryFn,
@@ -739,8 +753,11 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
   })
 
   useEffect(() => {
-    if (!hasSupabase || !enabled || realtimeConnectionDisabled) return
+    if (!hasSupabase || !enabled) return
     if (typeof navigator !== "undefined" && !navigator.onLine) return
+
+    const scopeState = getRealtimeScopeState(scopeKey)
+    if (scopeState.disabled) return
 
     const channels = tables.map((tableName) => {
       const channel = supabase
@@ -751,14 +768,15 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
 
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          realtimeFailureCount = 0
+          scopeState.failureCount = 0
+          scopeState.disabled = false
           return
         }
 
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          realtimeFailureCount += 1
-          if (realtimeFailureCount >= realtimeFailureThreshold) {
-            realtimeConnectionDisabled = true
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          scopeState.failureCount += 1
+          if (scopeState.failureCount >= realtimeFailureThreshold) {
+            scopeState.disabled = true
           }
           queryClient.invalidateQueries({ queryKey: ["aegis", key] })
           supabase.removeChannel(channel)
@@ -773,7 +791,7 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
         supabase.removeChannel(channel)
       })
     }
-  }, [queryClient, key, tableKey, enabled, tables])
+  }, [queryClient, key, tableKey, enabled, tables, scopeKey])
 
   return query
 }
