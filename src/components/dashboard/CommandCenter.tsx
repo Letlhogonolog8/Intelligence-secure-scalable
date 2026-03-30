@@ -207,7 +207,7 @@ const CommandCenter: React.FC = () => {
             <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">AEGIS-AI Command Center</h1>
           </div>
           <div className="text-slate-400 text-sm max-w-2xl">
-            Continental-scale synthetic intelligence infrastructure monitoring {systemMetrics ? (
+            Continental-scale realtime intelligence infrastructure monitoring {systemMetrics ? (
               <span>{systemMetrics.regionsMonitored} regions across {systemMetrics.countriesActive} countries</span>
             ) : (
               <span className="inline-flex items-center gap-2"><Skeleton className="h-3 w-16 bg-slate-800/60" /><Skeleton className="h-3 w-16 bg-slate-800/60" /></span>
