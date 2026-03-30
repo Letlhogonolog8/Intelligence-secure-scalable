@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
@@ -20,6 +20,7 @@ export type LiveJusticeCase = JusticeCase & {
   createdAt?: string;
   updatedAt?: string;
   closedAt?: string;
+  regionId?: string | null;
   assignedPoliceDepartmentId?: string | null;
   assignedNgoProgramId?: string | null;
 };
@@ -124,11 +125,31 @@ const isMissingTableError = (error: unknown) => {
   return err?.status === 404 || err?.code === "42P01" || message.includes("does not exist");
 };
 
+type LiveRealtimeScopeState = {
+  failureCount: number;
+  disabled: boolean;
+};
+
+const liveRealtimeFailureThreshold = 3;
+const liveRealtimeScopeStates = new Map<string, LiveRealtimeScopeState>();
+
+const getLiveRealtimeScopeState = (scopeKey: string): LiveRealtimeScopeState => {
+  const existing = liveRealtimeScopeStates.get(scopeKey);
+  if (existing) return existing;
+
+  const next = { failureCount: 0, disabled: false };
+  liveRealtimeScopeStates.set(scopeKey, next);
+  return next;
+};
+
 const useLiveRealtimeQuery = <T,>(key: string, tables: string | string[], queryFn: () => Promise<T>, options?: RealtimeOptions) => {
   const queryClient = useQueryClient();
   const tableSignature = Array.isArray(tables) ? tables.join(",") : tables;
+  const tableNames = useMemo(() => tableSignature.split(",").map((tableName) => tableName.trim()).filter(Boolean), [tableSignature]);
   const enabled = options?.enabled ?? true;
+  const queryScope = useMemo(() => (options?.queryKey ?? []).map((entry) => String(entry ?? "none")).join("|"), [options?.queryKey]);
   const queryKey = ["live-dashboard", key, ...(options?.queryKey ?? [])];
+  const scopeKey = `${key}:${tableSignature}:${queryScope}`;
 
   const query = useQuery({
     queryKey,
@@ -139,29 +160,45 @@ const useLiveRealtimeQuery = <T,>(key: string, tables: string | string[], queryF
   });
 
   useEffect(() => {
-    if (!hasSupabase || !enabled) {
-      return;
-    }
+    if (!hasSupabase || !enabled) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
-    const channels = tableSignature
-      .split(",")
-      .map((tableName) => tableName.trim())
-      .filter(Boolean)
-      .map((tableName) =>
-      supabase
+    const scopeState = getLiveRealtimeScopeState(scopeKey);
+    if (scopeState.disabled) return;
+
+    const channels = tableNames.map((tableName) => {
+      const channel = supabase
         .channel(`live-dashboard:${key}:${tableName}`)
         .on("postgres_changes", { event: "*", schema: "public", table: tableName }, () => {
           queryClient.invalidateQueries({ queryKey: ["live-dashboard", key] });
-        })
-        .subscribe()
-    );
+        });
+
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          scopeState.failureCount = 0;
+          scopeState.disabled = false;
+          return;
+        }
+
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          scopeState.failureCount += 1;
+          if (scopeState.failureCount >= liveRealtimeFailureThreshold) {
+            scopeState.disabled = true;
+          }
+          queryClient.invalidateQueries({ queryKey: ["live-dashboard", key] });
+          void supabase.removeChannel(channel);
+        }
+      });
+
+      return channel;
+    });
 
     return () => {
       channels.forEach((channel) => {
         void supabase.removeChannel(channel);
       });
     };
-  }, [enabled, key, queryClient, tableSignature]);
+  }, [enabled, key, queryClient, scopeKey, tableNames]);
 
   return query;
 };
@@ -202,6 +239,7 @@ const mapJusticeCase = (row: Record<string, unknown>): LiveJusticeCase => ({
   createdAt: toNullableString(row.created_at ?? row.createdAt) ?? undefined,
   updatedAt: toNullableString(row.updated_at ?? row.updatedAt) ?? undefined,
   closedAt: toNullableString(row.closed_at ?? row.closedAt) ?? undefined,
+  regionId: toNullableString(row.region_id ?? row.regionId),
   assignedPoliceDepartmentId: toNullableString(row.assigned_police_department_id ?? row.assignedPoliceDepartmentId),
   assignedNgoProgramId: toNullableString(row.assigned_ngo_program_id ?? row.assignedNgoProgramId),
 });

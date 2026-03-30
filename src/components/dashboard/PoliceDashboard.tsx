@@ -23,8 +23,10 @@ const PoliceDashboard: React.FC = () => {
 
   const { data: organization } = useLiveOrganization(profile?.organizationId, { staleTime: 15000, refetchInterval: 30000 });
   const { data: departments = [], isLoading: departmentsLoading } = useLivePoliceDepartments({ organizationId: profile?.organizationId, staleTime: 15000, refetchInterval: 30000, limit: 10 });
+  const activeDepartment = departments.find((entry) => entry.isActive) ?? departments[0] ?? null;
+
   const { data: officers = [], isLoading: officersLoading } = useLiveUserProfiles({ role: "police", organizationId: profile?.organizationId, staleTime: 15000, refetchInterval: 30000, limit: 120 });
-  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ staleTime: 15000, refetchInterval: 30000, limit: 160 });
+  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ staleTime: 15000, refetchInterval: 30000, limit: 160, regionId: activeDepartment?.regionId ?? null });
   const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 12 });
   const { data: referrals = [], isLoading: referralsLoading } = useOrganizationCoordination({ staleTime: 15000, refetchInterval: 30000, limit: 30 });
 
@@ -34,12 +36,19 @@ const PoliceDashboard: React.FC = () => {
 
   const isLoadingData = departmentsLoading || officersLoading || casesLoading || alertsLoading || referralsLoading;
 
-  const activeDepartment = departments.find((entry) => entry.isActive) ?? departments[0] ?? null;
   const activeOfficers = useMemo(() => officers.filter((entry) => entry.isActive), [officers]);
-  const liveQueue = useMemo(() => sortByPriorityAndRecency(justiceCases).slice(0, 6), [justiceCases]);
-  const urgentCases = useMemo(() => justiceCases.filter((entry) => entry.priority === "critical"), [justiceCases]);
-  const highPriorityCases = useMemo(() => justiceCases.filter((entry) => entry.priority === "high"), [justiceCases]);
-  const openCases = useMemo(() => justiceCases.filter((entry) => !["closed", "resolved"].includes(entry.status.toLowerCase())), [justiceCases]);
+  const jurisdictionCases = useMemo(() => {
+    if (!activeDepartment) return justiceCases;
+    return justiceCases.filter((entry) => {
+      const matchesDepartment = Boolean(entry.assignedPoliceDepartmentId) && entry.assignedPoliceDepartmentId === activeDepartment.id;
+      const matchesRegion = Boolean(entry.regionId) && entry.regionId === activeDepartment.regionId;
+      return matchesDepartment || matchesRegion || (!entry.assignedPoliceDepartmentId && !entry.regionId);
+    });
+  }, [activeDepartment, justiceCases]);
+  const liveQueue = useMemo(() => sortByPriorityAndRecency(jurisdictionCases).slice(0, 6), [jurisdictionCases]);
+  const urgentCases = useMemo(() => jurisdictionCases.filter((entry) => entry.priority === "critical"), [jurisdictionCases]);
+  const highPriorityCases = useMemo(() => jurisdictionCases.filter((entry) => entry.priority === "high"), [jurisdictionCases]);
+  const openCases = useMemo(() => jurisdictionCases.filter((entry) => !["closed", "resolved"].includes(entry.status.toLowerCase())), [jurisdictionCases]);
   const pendingAlerts = useMemo(
     () => dedupeBy(alertsFeed.filter((entry) => entry.status !== "acknowledged"), (entry) => `${entry.module}|${entry.type}|${entry.message}`),
     [alertsFeed]
@@ -48,6 +57,10 @@ const PoliceDashboard: React.FC = () => {
   const assignedCaseRatio = percent(openCases.filter((entry) => Boolean(entry.assignedTo)).length, Math.max(openCases.length, 1));
   const responseLoad = Math.min(100, Math.round(((urgentCases.length * 2 + highPriorityCases.length) / Math.max(activeOfficers.length, 1)) * 20));
   const sessionExpiry = session?.expires_at ? new Date(session.expires_at * 1000).toLocaleTimeString() : "Session inactive";
+  const lastCaseUpdate = jurisdictionCases
+    .map((entry) => entry.updatedAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
   const selectedDispatchCase = liveQueue.find((entry) => entry.id === dispatchCaseId) ?? null;
 
   const handleAcknowledgeAlert = async (alertId: string) => {
@@ -102,6 +115,7 @@ const PoliceDashboard: React.FC = () => {
             <ListItemCard title="Jurisdiction" subtitle={activeDepartment?.departmentName ?? organization?.name ?? "Regional response desk"} meta={<StatusPill tone="sky">{activeDepartment?.jurisdictionLevel ?? (organization?.region ? "regional" : "syncing")}</StatusPill>} />
             <ListItemCard title="Response load" subtitle="Priority pressure versus available officers" meta={<StatusPill tone={responseLoad > 70 ? "rose" : responseLoad > 40 ? "amber" : "emerald"}>{responseLoad}%</StatusPill>} />
             <ListItemCard title="Session expiry" subtitle="Current secure access window" meta={sessionExpiry} />
+            <ListItemCard title="Last case sync" subtitle="Most recent jurisdiction case refresh" meta={lastCaseUpdate ? formatRelativeDateTime(lastCaseUpdate) : "Awaiting first update"} />
             <ListItemCard title="Coordination backlog" subtitle="Open inter-agency referrals" meta={pendingReferrals.length} />
           </div>
         </SectionCard>
@@ -186,10 +200,10 @@ const PoliceDashboard: React.FC = () => {
 
         <SectionCard title="Jurisdiction health" description="Stage distribution across accessible police cases.">
           <div className="grid gap-3 md:grid-cols-4">
-            <MetricCard label="Filed" value={justiceCases.length} accent="slate" loading={isLoadingData} />
-            <MetricCard label="Investigation" value={justiceCases.filter((entry) => entry.stage === "investigation").length} accent="sky" loading={isLoadingData} />
-            <MetricCard label="Prosecution" value={justiceCases.filter((entry) => entry.stage === "prosecution").length} accent="indigo" loading={isLoadingData} />
-            <MetricCard label="Closed" value={justiceCases.filter((entry) => ["closed", "resolved"].includes(entry.status.toLowerCase())).length} accent="emerald" loading={isLoadingData} />
+            <MetricCard label="Filed" value={jurisdictionCases.length} accent="slate" loading={isLoadingData} />
+            <MetricCard label="Investigation" value={jurisdictionCases.filter((entry) => entry.stage === "investigation").length} accent="sky" loading={isLoadingData} />
+            <MetricCard label="Prosecution" value={jurisdictionCases.filter((entry) => entry.stage === "prosecution").length} accent="indigo" loading={isLoadingData} />
+            <MetricCard label="Closed" value={jurisdictionCases.filter((entry) => ["closed", "resolved"].includes(entry.status.toLowerCase())).length} accent="emerald" loading={isLoadingData} />
           </div>
         </SectionCard>
       </section>
