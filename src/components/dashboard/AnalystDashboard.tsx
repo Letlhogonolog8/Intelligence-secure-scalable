@@ -52,6 +52,18 @@ const AnalystDashboard: React.FC = () => {
     return Math.round(activeModels.reduce((sum, entry) => sum + entry.fairness, 0) / activeModels.length);
   }, [activeModels]);
   const sessionExpiry = session?.expires_at ? new Date(session.expires_at * 1000).toLocaleTimeString() : "Session inactive";
+  const latestSignalAt = useMemo(() => {
+    const timestamps = [
+      ...incidentTimeSeries.map((entry) => entry.date),
+      ...alertsFeed.map((entry) => entry.time),
+      ...anomalyAlerts.map((entry) => entry.time),
+    ];
+    return timestamps
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => right - left)[0] ?? null;
+  }, [alertsFeed, anomalyAlerts, incidentTimeSeries]);
+  const hasRealtimeSignals = incidentTimeSeries.length > 0 || alertsFeed.length > 0 || anomalyAlerts.length > 0;
 
   return (
     <DashboardPage accent="indigo">
@@ -63,6 +75,7 @@ const AnalystDashboard: React.FC = () => {
           <HeroBadge key="fairness" className="border-indigo-500/20 bg-indigo-500/10 text-indigo-200">{passRate}% fairness pass rate</HeroBadge>,
           <HeroBadge key="models" className="border-sky-500/20 bg-sky-500/10 text-sky-200">{activeModels.length} active models</HeroBadge>,
           <HeroBadge key="anomalies" className="border-rose-500/20 bg-rose-500/10 text-rose-200">{anomalyAlerts.length} anomaly alerts</HeroBadge>,
+          <HeroBadge key="realtime" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200">{hasRealtimeSignals ? (latestSignalAt ? `Synced ${new Date(latestSignalAt).toLocaleTimeString()}` : "Live sync active") : "Awaiting live telemetry"}</HeroBadge>,
         ]}
         actions={
           <>
@@ -81,46 +94,68 @@ const AnalystDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Incident trend" description="Actual versus forecasted incident movement from the shared intelligence timeseries.">
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={incidentTimeSeries}>
-                <defs>
-                  <linearGradient id="analyst-actual" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="analyst-predicted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <Tooltip />
-                <Area type="monotone" dataKey="value" stroke="#22d3ee" fill="url(#analyst-actual)" strokeWidth={2} />
-                <Area type="monotone" dataKey="predicted" stroke="#6366f1" fill="url(#analyst-predicted)" strokeWidth={2} strokeDasharray="5 5" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {incidentTimeSeries.length === 0 ? (
+            <EmptyState
+              title="No incident telemetry yet"
+              description="Incident timeseries will render automatically as live telemetry arrives from the analytics pipeline."
+              guidance={[
+                "Confirm incident_timeseries is populated in Supabase for your connected environment.",
+                "Once new points are ingested, this chart refreshes through realtime invalidation and polling.",
+              ]}
+            />
+          ) : (
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={incidentTimeSeries}>
+                  <defs>
+                    <linearGradient id="analyst-actual" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="analyst-predicted" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="value" stroke="#22d3ee" fill="url(#analyst-actual)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="predicted" stroke="#6366f1" fill="url(#analyst-predicted)" strokeWidth={2} strokeDasharray="5 5" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title="Fairness breakdown" description="Current model-level fairness metric scores.">
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={fairnessMetrics}>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="metric" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} interval={0} />
-                <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} domain={[0, 100]} />
-                <Tooltip />
-                <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                  {fairnessMetrics.map((entry, index) => (
-                    <Cell key={`${entry.metric}-${index}`} fill={entry.status === "fail" ? "#fb7185" : entry.status === "warning" ? "#f59e0b" : "#6366f1"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {fairnessMetrics.length === 0 ? (
+            <EmptyState
+              title="No fairness metrics yet"
+              description="Fairness indicators appear here once governance metrics are published to the live feed."
+              guidance={[
+                "Verify fairness_metrics has recent records in Supabase.",
+                "Metric updates are consumed automatically through the same live query channel.",
+              ]}
+            />
+          ) : (
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fairnessMetrics}>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="metric" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} interval={0} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} domain={[0, 100]} />
+                  <Tooltip />
+                  <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                    {fairnessMetrics.map((entry, index) => (
+                      <Cell key={`${entry.metric}-${index}`} fill={entry.status === "fail" ? "#fb7185" : entry.status === "warning" ? "#f59e0b" : "#6366f1"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </SectionCard>
       </section>
 

@@ -30,16 +30,46 @@ const CounselorDashboard: React.FC = () => {
   const attentionNeeded = useMemo(() => activeCases.filter((entry) => ["critical", "high"].includes(entry.priority.toLowerCase())), [activeCases]);
   const openSessions = useMemo(() => sessions.filter((entry) => !entry.endedAt), [sessions]);
   const escalatedSessions = useMemo(() => sessions.filter((entry) => entry.escalatedToCounselor), [sessions]);
-  const activeCollaborations = useMemo(() => coordination.filter((entry) => ["pending", "accepted", "in_progress"].includes(entry.status)), [coordination]);
+  const counselorSessionIds = useMemo(() => new Set(sessions.map((entry) => entry.id)), [sessions]);
+  const counselorEscalationReviews = useMemo(() => {
+    return escalationReviews.filter((entry) => {
+      if (user?.id && entry.assignedTo === user.id) return true;
+      return counselorSessionIds.has(entry.sessionId);
+    });
+  }, [counselorSessionIds, escalationReviews, user?.id]);
+  const counselorCaseIds = useMemo(() => new Set(activeCases.map((entry) => entry.id)), [activeCases]);
+  const counselorCoordination = useMemo(() => {
+    if (counselorCaseIds.size === 0) return coordination;
+    return coordination.filter((entry) => counselorCaseIds.has(entry.caseId));
+  }, [coordination, counselorCaseIds]);
+  const activeCollaborations = useMemo(() => counselorCoordination.filter((entry) => ["pending", "accepted", "in_progress"].includes(entry.status)), [counselorCoordination]);
   const visibleCases = useMemo(() => sortByPriorityAndRecency(activeCases).slice(0, 5), [activeCases]);
   const alertHighlights = useMemo(
-    () => dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
+    () => dedupeBy(alertsFeed.filter((entry) => ["survivor_support", "justice", "command_center"].includes(entry.module || "")), (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
     [alertsFeed]
   );
   const coveredSafetyPlans = useMemo(() => new Set(safetyPlans.map((entry) => entry.survivorId)).size, [safetyPlans]);
-  const survivorCoverage = percent(coveredSafetyPlans, Math.max(survivors.length, 1));
+  const visibleSurvivorIds = useMemo(() => {
+    const ids = new Set<string>();
+    sessions.forEach((entry) => {
+      if (entry.survivorId) ids.add(entry.survivorId);
+    });
+    safetyPlans.forEach((entry) => {
+      if (entry.survivorId) ids.add(entry.survivorId);
+    });
+    return ids;
+  }, [safetyPlans, sessions]);
+  const scopedSurvivorCount = useMemo(() => {
+    if (visibleSurvivorIds.size === 0) return survivors.length;
+    return survivors.filter((entry) => visibleSurvivorIds.has(entry.id)).length;
+  }, [survivors, visibleSurvivorIds]);
+  const survivorCoverage = percent(coveredSafetyPlans, Math.max(scopedSurvivorCount, 1));
   const weeklySessionFlow = useMemo(() => buildWeeklyLifecycle(sessions, (entry) => entry.createdAt, (entry) => entry.endedAt, 4), [sessions]);
   const sessionExpiry = useMemo(() => (session?.expires_at ? new Date(session.expires_at * 1000).toLocaleTimeString() : "Session inactive"), [session?.expires_at]);
+  const lastCounselorSync = openSessions
+    .map((entry) => entry.updatedAt ?? entry.createdAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
 
   return (
     <DashboardPage accent="emerald">
@@ -63,8 +93,8 @@ const CounselorDashboard: React.FC = () => {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Active caseload" value={activeCases.length} helper={`${attentionNeeded.length} high-risk cases`} accent="emerald" loading={isLoadingData} />
         <MetricCard label="Open sessions" value={openSessions.length} helper={`${escalatedSessions.length} escalated to counselor`} accent="sky" loading={isLoadingData} />
-        <MetricCard label="Safety plans" value={coveredSafetyPlans} helper={`${survivors.length} visible survivor profiles`} accent="indigo" loading={isLoadingData} />
-        <MetricCard label="Coordination backlog" value={activeCollaborations.length} helper={`${escalationReviews.length} escalation reviews`} accent="amber" loading={isLoadingData} />
+        <MetricCard label="Safety plans" value={coveredSafetyPlans} helper={`${scopedSurvivorCount} visible survivor profiles`} accent="indigo" loading={isLoadingData} />
+        <MetricCard label="Coordination backlog" value={activeCollaborations.length} helper={`${counselorEscalationReviews.length} escalation reviews`} accent="amber" loading={isLoadingData} />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
@@ -73,6 +103,7 @@ const CounselorDashboard: React.FC = () => {
             <ListItemCard title="Risk load" subtitle="Share of open cases marked high or critical" meta={<StatusPill tone={attentionNeeded.length > 0 ? "rose" : "emerald"}>{percent(attentionNeeded.length, Math.max(activeCases.length, 1))}%</StatusPill>} />
             <ListItemCard title="Follow-ups due" subtitle="Open sessions still awaiting closure" meta={openSessions.length} />
             <ListItemCard title="Session expiry" subtitle="Current secure access window" meta={sessionExpiry} />
+            <ListItemCard title="Last queue sync" subtitle="Most recent counselor session update" meta={lastCounselorSync ? formatRelativeDateTime(lastCounselorSync) : "Awaiting first update"} />
             <ListItemCard title="Cross-team handoffs" subtitle="Pending partner coordination items" meta={activeCollaborations.length} />
           </div>
         </SectionCard>
@@ -172,7 +203,7 @@ const CounselorDashboard: React.FC = () => {
         <SectionCard title="Documentation posture" description="Live visibility into support plans and escalation workflow.">
           <div className="space-y-3">
             <ListItemCard title="Safety plans linked" subtitle="Visible survivor plans with active coverage" meta={<StatusPill tone="emerald">{coveredSafetyPlans}</StatusPill>} />
-            <ListItemCard title="Escalation reviews" subtitle="Support incidents awaiting counselor/admin closure" meta={<StatusPill tone={escalationReviews.length > 0 ? "amber" : "emerald"}>{escalationReviews.length}</StatusPill>} />
+            <ListItemCard title="Escalation reviews" subtitle="Support incidents awaiting counselor/admin closure" meta={<StatusPill tone={counselorEscalationReviews.length > 0 ? "amber" : "emerald"}>{counselorEscalationReviews.length}</StatusPill>} />
             <ListItemCard title="Partner handoffs" subtitle="Police and NGO coordination in motion" meta={<StatusPill tone={activeCollaborations.length > 0 ? "sky" : "emerald"}>{activeCollaborations.length}</StatusPill>} />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setActiveModule("personal_dashboard")}>Review safety plans</Button>

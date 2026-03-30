@@ -17,11 +17,12 @@ const NgoDashboard: React.FC = () => {
   const { data: profile } = useUserProfile(user?.id);
   const resolvedRole = (profile?.role ?? "ngo") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
+  const effectiveOrganizationId = organizationId ?? profile?.organizationId ?? null;
 
-  const { data: organization } = useLiveOrganization(organizationId, { staleTime: 15000, refetchInterval: 30000 });
-  const { data: teamMembers = [], isLoading: teamLoading } = useLiveUserProfiles({ organizationId, staleTime: 15000, refetchInterval: 30000, limit: 200 });
+  const { data: organization } = useLiveOrganization(effectiveOrganizationId, { staleTime: 15000, refetchInterval: 30000 });
+  const { data: teamMembers = [], isLoading: teamLoading } = useLiveUserProfiles({ organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 200 });
   const { data: survivors = [], isLoading: survivorsLoading } = useLiveSurvivors({ staleTime: 15000, refetchInterval: 30000, limit: 200 });
-  const { data: programs = [], isLoading: programsLoading } = useLiveNgoPrograms({ organizationId, staleTime: 15000, refetchInterval: 30000, limit: 50 });
+  const { data: programs = [], isLoading: programsLoading } = useLiveNgoPrograms({ organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 50 });
   const { data: resources = [], isLoading: resourcesLoading } = useLiveResources({ staleTime: 15000, refetchInterval: 30000, limit: 200 });
   const { data: coordination = [], isLoading: coordinationLoading } = useOrganizationCoordination({ staleTime: 15000, refetchInterval: 30000, limit: 50 });
   const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 10 });
@@ -31,21 +32,34 @@ const NgoDashboard: React.FC = () => {
 
   const counselors = useMemo(() => teamMembers.filter((entry) => entry.role === "counselor"), [teamMembers]);
   const coordinators = useMemo(() => teamMembers.filter((entry) => entry.role === "ngo"), [teamMembers]);
+  const organizationCoordination = useMemo(() => {
+    if (!effectiveOrganizationId) return coordination;
+    return coordination.filter((entry) => entry.fromOrganizationId === effectiveOrganizationId || entry.toOrganizationId === effectiveOrganizationId);
+  }, [coordination, effectiveOrganizationId]);
   const shelterResources = useMemo(() => resources.filter((entry) => entry.resourceType === "shelter"), [resources]);
   const alwaysOnResources = useMemo(() => resources.filter((entry) => entry.available247), [resources]);
-  const pendingHandoffs = useMemo(() => coordination.filter((entry) => entry.status === "pending"), [coordination]);
-  const completedHandoffs = useMemo(() => coordination.filter((entry) => entry.status === "completed"), [coordination]);
-  const urgentEscalations = useMemo(() => escalations.filter((entry) => ["high", "critical"].includes(entry.riskLevel.toLowerCase())), [escalations]);
-  const coordinationTrend = useMemo(() => buildWeeklyLifecycle(coordination, (entry) => entry.createdAt, (entry) => entry.completedAt, 4), [coordination]);
+  const pendingHandoffs = useMemo(() => organizationCoordination.filter((entry) => entry.status === "pending"), [organizationCoordination]);
+  const completedHandoffs = useMemo(() => organizationCoordination.filter((entry) => entry.status === "completed"), [organizationCoordination]);
+  const urgentEscalations = useMemo(() => {
+    return escalations.filter((entry) => {
+      if (!["high", "critical"].includes(entry.riskLevel.toLowerCase())) return false;
+      return !entry.assignedTo || !user?.id || entry.assignedTo === user.id;
+    });
+  }, [escalations, user?.id]);
+  const coordinationTrend = useMemo(() => buildWeeklyLifecycle(organizationCoordination, (entry) => entry.createdAt, (entry) => entry.completedAt, 4), [organizationCoordination]);
   const averageCompletionHours = useMemo(() => averageHoursBetween(completedHandoffs, (entry) => entry.createdAt, (entry) => entry.completedAt), [completedHandoffs]);
-  const partnerCoverage = useMemo(() => uniqueCount(coordination, (entry) => entry.toOrganizationId), [coordination]);
+  const partnerCoverage = useMemo(() => uniqueCount(organizationCoordination, (entry) => entry.toOrganizationId), [organizationCoordination]);
   const alertHighlights = useMemo(
-    () => dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
+    () => dedupeBy(alertsFeed.filter((entry) => ["survivor_support", "reporting", "command_center", "admin_console"].includes(entry.module || "")), (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
     [alertsFeed]
   );
   const activePrograms = useMemo(() => programs.filter((entry) => entry.isActive), [programs]);
   const survivorLoad = percent(survivors.length, Math.max(teamMembers.length, 1));
   const sessionExpiry = session?.expires_at ? new Date(session.expires_at * 1000).toLocaleTimeString() : "Session inactive";
+  const lastCoordinationSync = organizationCoordination
+    .map((entry) => entry.updatedAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
 
   return (
     <DashboardPage accent="cyan">
@@ -87,6 +101,7 @@ const NgoDashboard: React.FC = () => {
           <div className="space-y-3">
             <ListItemCard title="Session expiry" subtitle="Current secure NGO session window" meta={sessionExpiry} />
             <ListItemCard title="Organization verification" subtitle="Trust posture for inter-agency coordination" meta={<StatusPill tone={organization?.isVerified ? "emerald" : "amber"}>{organization?.isVerified ? "verified" : "pending"}</StatusPill>} />
+            <ListItemCard title="Last handoff sync" subtitle="Most recent referral update in your workspace" meta={lastCoordinationSync ? formatRelativeDateTime(lastCoordinationSync) : "Awaiting first referral"} />
             <ListItemCard title="Subscription tier" subtitle="Active workspace level" meta={organization?.subscriptionLevel || "standard"} />
           </div>
         </SectionCard>
@@ -95,7 +110,7 @@ const NgoDashboard: React.FC = () => {
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Referral pipeline" description="Live outbound and inbound referral queue.">
           <div className="space-y-3">
-            {coordination.length === 0 ? (
+            {organizationCoordination.length === 0 ? (
                 <EmptyState
                   title="No referral activity yet"
                   description="Partner coordination events will appear here as soon as cases are routed to or from your organization."
@@ -105,7 +120,7 @@ const NgoDashboard: React.FC = () => {
                   ]}
                 />
               ) : (
-              coordination.slice(0, 6).map((entry) => (
+              organizationCoordination.slice(0, 6).map((entry) => (
                 <ListItemCard
                   key={entry.id}
                   title={`${entry.referralType} referral`}
