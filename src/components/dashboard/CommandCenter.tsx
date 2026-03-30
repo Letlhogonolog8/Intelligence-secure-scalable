@@ -60,6 +60,17 @@ const CommandCenter: React.FC = () => {
     () => alertsFeed.slice(alertsPage * alertsPerPage, alertsPage * alertsPerPage + alertsPerPage),
     [alertsFeed, alertsPage, alertsPerPage]
   );
+  const filteredTimeline = useMemo(() => {
+    const rangeDays = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+    if (incidentTimeSeries.length === 0) return [];
+    return incidentTimeSeries.slice(-rangeDays);
+  }, [incidentTimeSeries, timeRange]);
+  const commandHealthLabel = useMemo(() => {
+    if (!systemMetrics) return 'Syncing telemetry';
+    if (systemMetrics.activeAlerts > 20) return 'High alert pressure';
+    if (systemMetrics.activeAlerts > 0) return 'Monitoring active alerts';
+    return 'Operational baseline';
+  }, [systemMetrics]);
 
   useEffect(() => {
     if (alertsPage > totalAlertPages - 1) {
@@ -187,7 +198,7 @@ const CommandCenter: React.FC = () => {
         <div className="absolute top-4 right-4 lg:right-8">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-emerald-400 font-medium">All Systems Operational</span>
+            <span className="text-xs text-emerald-400 font-medium">{commandHealthLabel}</span>
           </div>
         </div>
         <div className="relative">
@@ -281,7 +292,7 @@ const CommandCenter: React.FC = () => {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Continental Risk Map (placeholder) */}
+        {/* Continental Risk Map */}
         <div className="lg:col-span-2 bg-slate-950/60 border border-white/10 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <div>
@@ -358,7 +369,9 @@ const CommandCenter: React.FC = () => {
             </div>
           </div>
           <div className="overflow-y-auto max-h-[430px]">
-            {pagedAlerts.map((alert) => (
+            {pagedAlerts.length === 0 ? (
+              <div className="px-4 py-6 text-xs text-slate-500">No live alerts in the current feed.</div>
+            ) : pagedAlerts.map((alert) => (
               <div
                 key={alert.id}
                 className="px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors cursor-pointer"
@@ -482,7 +495,11 @@ const CommandCenter: React.FC = () => {
 
       {/* Continental Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {Object.entries(continentalStats).map(([key, stats]) => {
+        {Object.entries(continentalStats).length === 0 ? (
+          <div className="md:col-span-2 lg:col-span-5 bg-slate-950/60 border border-white/10 rounded-xl p-4 text-xs text-slate-500">
+            No continental summary rows available yet.
+          </div>
+        ) : Object.entries(continentalStats).map(([key, stats]) => {
           const name = key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
           return (
             <div key={key} className="bg-slate-950/60 border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all">
@@ -533,8 +550,8 @@ const CommandCenter: React.FC = () => {
           <HotspotHeatmap compact />
         </div>
         <div className="h-48 flex items-end gap-[2px]">
-          {incidentTimeSeries.slice(-60).map((point, i) => {
-            const maxVal = Math.max(...incidentTimeSeries.slice(-60).map(p => p.value));
+          {filteredTimeline.map((point, i) => {
+            const maxVal = Math.max(...filteredTimeline.map(p => p.value), 1);
             const height = (point.value / maxVal) * 100;
             const isPredicted = point.predicted !== undefined;
             return (
@@ -555,9 +572,9 @@ const CommandCenter: React.FC = () => {
           })}
         </div>
         <div className="flex justify-between mt-2 text-[10px] text-slate-600">
-          <span>60 days ago</span>
+          <span>{timeRange} window start</span>
           <span className="text-indigo-400">Forecast zone</span>
-          <span>Today + 14d</span>
+          <span>Current window</span>
         </div>
       </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   useRegions,
   useRiskTrendData,
@@ -14,6 +14,7 @@ import {
   DownloadIcon, RefreshIcon,
   SearchIcon
 } from '@/components/ui/AegisIcons';
+import { useQueryClient } from '@tanstack/react-query';
 
 const RiskPrediction: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -21,6 +22,7 @@ const RiskPrediction: React.FC = () => {
   const [forecastDays, setForecastDays] = useState<7 | 14 | 30 | 90>(14);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAnomalies, setShowAnomalies] = useState(true);
+  const queryClient = useQueryClient();
   const { data: regions = [], isLoading: regionsLoading, error: regionsError } = useRegions({ staleTime: 60000 });
   const { data: riskTrendData = [], isLoading: trendLoading, error: trendError } = useRiskTrendData({ staleTime: 60000 });
   const { data: incidentTypes = [], isLoading: incidentTypesLoading, error: incidentTypesError } = useRegionIncidentTypes(selectedRegion, { staleTime: 60000 });
@@ -51,6 +53,25 @@ const RiskPrediction: React.FC = () => {
   };
 
   const selectedRegionData = selectedRegion ? regions.find(r => r.id === selectedRegion) : null;
+  const latestTelemetrySync = useMemo(() => {
+    const timestamps = [
+      ...riskTrendData.map((entry) => entry.date),
+      ...anomalyAlerts.map((entry) => entry.time),
+    ];
+    const latest = timestamps
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => right - left)[0];
+    return typeof latest === 'number' ? new Date(latest).toLocaleTimeString() : null;
+  }, [anomalyAlerts, riskTrendData]);
+
+  const handleRefreshModels = () => {
+    void queryClient.invalidateQueries({ queryKey: ['aegis', 'regions'] });
+    void queryClient.invalidateQueries({ queryKey: ['aegis', 'riskTrendData'] });
+    void queryClient.invalidateQueries({ queryKey: ['aegis', 'regionForecasts'] });
+    void queryClient.invalidateQueries({ queryKey: ['aegis', 'governanceModels'] });
+    void queryClient.invalidateQueries({ queryKey: ['aegis', 'anomalyAlerts'] });
+  };
 
   const handleExport = () => {
     if (sortedRegions.length === 0) {
@@ -102,6 +123,7 @@ const RiskPrediction: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-white">Spatio-Temporal Risk Intelligence</h2>
           <p className="text-sm text-slate-500">Predictive analytics across {regions.length} monitored regions</p>
+          <p className="text-[11px] text-slate-600 mt-1">{latestTelemetrySync ? `Live sync: ${latestTelemetrySync}` : 'Awaiting first telemetry sync'}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -122,7 +144,10 @@ const RiskPrediction: React.FC = () => {
             <DownloadIcon size={14} />
             Export
           </button>
-          <button className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-400 hover:bg-amber-500/20 transition-all">
+          <button
+            onClick={handleRefreshModels}
+            className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-400 hover:bg-amber-500/20 transition-all"
+          >
             <RefreshIcon size={14} />
             Refresh Models
           </button>
@@ -313,7 +338,11 @@ const RiskPrediction: React.FC = () => {
           <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4">
             <h4 className="text-white font-semibold text-sm mb-3">Prediction Models</h4>
             <div className="space-y-3">
-              {predictionModels.map((model, i) => (
+              {predictionModels.length === 0 ? (
+                <div className="bg-slate-800/20 rounded-lg p-3 text-xs text-slate-500">
+                  No prediction models found in live governance feed.
+                </div>
+              ) : predictionModels.map((model, i) => (
                 <div key={i} className="bg-slate-800/30 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-white font-medium">{model.name}</span>
@@ -345,7 +374,9 @@ const RiskPrediction: React.FC = () => {
               </button>
             </div>
             <div className="space-y-2">
-              {visibleAnomalies.map((anomaly, i) => (
+              {visibleAnomalies.length === 0 ? (
+                <div className="text-xs text-slate-500 bg-slate-800/20 rounded-lg p-3">No live anomalies detected for current filter.</div>
+              ) : visibleAnomalies.map((anomaly, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 bg-slate-800/20 rounded-lg">
                   <div className={`w-1.5 h-1.5 rounded-full ${
                     anomaly.severity === 'critical' ? 'bg-red-500 animate-pulse' :

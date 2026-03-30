@@ -129,6 +129,16 @@ const JusticeAnalytics: React.FC = () => {
     mediation: '#10B981',
   };
 
+  const shapSignals = useMemo(() => {
+    const maxDelay = Math.max(...bottlenecks.map((entry) => entry.avgDelay), 1);
+    return bottlenecks.slice(0, 6).map((entry) => ({
+      feature: entry.stage,
+      importance: Math.min(1, entry.avgDelay / maxDelay),
+      direction: entry.severity === 'high' || entry.severity === 'medium' ? 'negative' : 'positive',
+      detail: entry.description,
+    }));
+  }, [bottlenecks]);
+
   const handleExport = () => {
     if (filteredCases.length === 0) {
       return;
@@ -383,23 +393,20 @@ const JusticeAnalytics: React.FC = () => {
             <h4 className="text-white font-semibold text-sm mb-3">SHAP Feature Importance</h4>
             <p className="text-[10px] text-slate-500 mb-3">Key factors affecting case outcomes</p>
             <div className="space-y-2">
-              {[
-                { feature: 'Evidence Quality', importance: 0.34, direction: 'positive' },
-                { feature: 'Time to Report', importance: 0.22, direction: 'negative' },
-                { feature: 'Legal Representation', importance: 0.18, direction: 'positive' },
-                { feature: 'Witness Availability', importance: 0.14, direction: 'positive' },
-                { feature: 'Court Backlog', importance: 0.08, direction: 'negative' },
-                { feature: 'Region', importance: 0.04, direction: 'neutral' },
-              ].map((f, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 w-28 truncate">{f.feature}</span>
-                  <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden relative">
-                    <div className={`h-full rounded-full ${
-                      f.direction === 'positive' ? 'bg-blue-500/60' :
-                      f.direction === 'negative' ? 'bg-red-500/60' : 'bg-slate-500/60'
-                    }`} style={{ width: `${f.importance * 100 * 2.5}%` }} />
+              {shapSignals.length === 0 ? (
+                <p className="text-[10px] text-slate-500">No live bottleneck features available.</p>
+              ) : shapSignals.map((f, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 w-28 truncate">{f.feature}</span>
+                    <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden relative">
+                      <div className={`h-full rounded-full ${
+                        f.direction === 'positive' ? 'bg-blue-500/60' : 'bg-red-500/60'
+                      }`} style={{ width: `${f.importance * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] text-slate-500 w-8 text-right">{(f.importance * 100).toFixed(0)}%</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 w-8 text-right">{(f.importance * 100).toFixed(0)}%</span>
+                  <p className="text-[10px] text-slate-600 pl-[116px]">{f.detail}</p>
                 </div>
               ))}
             </div>
@@ -439,34 +446,25 @@ const JusticeAnalytics: React.FC = () => {
                   <p className="text-sm text-white font-medium">{selectedCaseData.assignedTo}</p>
                 </div>
               </div>
-              {/* Timeline */}
               <div>
-                <h4 className="text-sm text-white font-medium mb-3">Case Timeline</h4>
-                <div className="space-y-3">
-                  {[
-                    { date: '2026-01-15', event: 'Incident Reported', status: 'complete' },
-                    { date: '2026-01-16', event: 'Case Filed', status: 'complete' },
-                    { date: '2026-01-20', event: 'Investigation Opened', status: 'complete' },
-                    { date: '2026-02-01', event: 'Evidence Collected', status: 'complete' },
-                    { date: '2026-02-10', event: 'Awaiting Court Date', status: 'current' },
-                    { date: 'TBD', event: 'Trial', status: 'pending' },
-                    { date: 'TBD', event: 'Resolution', status: 'pending' },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-3 h-3 rounded-full border-2 ${
-                          item.status === 'complete' ? 'bg-emerald-500 border-emerald-500' :
-                          item.status === 'current' ? 'bg-blue-500 border-blue-500 animate-pulse' :
-                          'bg-transparent border-slate-600'
-                        }`} />
-                        {i < 6 && <div className="w-px h-6 bg-slate-700" />}
-                      </div>
-                      <div className="-mt-0.5">
-                        <p className={`text-xs ${item.status === 'pending' ? 'text-slate-600' : 'text-white'}`}>{item.event}</p>
-                        <p className="text-[10px] text-slate-500">{item.date}</p>
-                      </div>
-                    </div>
-                  ))}
+                <h4 className="text-sm text-white font-medium mb-3">Case progression snapshot</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-slate-800/30 rounded-lg p-3">
+                    <p className="text-[10px] text-slate-500">Current stage</p>
+                    <p className="text-sm text-white capitalize">{selectedCaseData.stage || 'unknown'}</p>
+                  </div>
+                  <div className="bg-slate-800/30 rounded-lg p-3">
+                    <p className="text-[10px] text-slate-500">Workflow status</p>
+                    <p className="text-sm text-white">{selectedCaseData.status}</p>
+                  </div>
+                  <div className="bg-slate-800/30 rounded-lg p-3">
+                    <p className="text-[10px] text-slate-500">Open duration</p>
+                    <p className="text-sm text-white">{selectedCaseData.daysOpen} days</p>
+                  </div>
+                  <div className="bg-slate-800/30 rounded-lg p-3">
+                    <p className="text-[10px] text-slate-500">Priority</p>
+                    <p className="text-sm text-white uppercase">{selectedCaseData.priority}</p>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3">

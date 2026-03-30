@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { usePolicyScenarios } from '@/data/aegisData';
 import {
@@ -19,20 +19,10 @@ const PolicySimulation: React.FC = () => {
       setSelectedScenarios(policyScenarios.slice(0, 2).map((scenario) => scenario.id));
     }
   }, [policyScenarios, selectedScenarios.length]);
-
-  useEffect(() => {
-    return () => {
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-        simulationIntervalRef.current = null;
-      }
-    };
-  }, []);
   const [simulationProgress, setSimulationProgress] = useState(0);
   const [iterations, setIterations] = useState(10000);
   const [simulationResults, setSimulationResults] = useState<Record<string, { reduction: number; confidence: number; cost: string }>>({});
   const [compareMode, setCompareMode] = useState(false);
-  const simulationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleExport = () => {
     const rows = selectedScenariosData.length > 0 ? selectedScenariosData : policyScenarios;
@@ -71,70 +61,57 @@ const PolicySimulation: React.FC = () => {
   };
 
   const stopSimulation = () => {
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
-    }
     setIsSimulating(false);
+    setSimulationProgress(0);
   };
 
   const runSimulation = () => {
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
-    }
-
     setIsSimulating(true);
     setSimulationProgress(0);
-    setSimulationResults({});
 
-    simulationIntervalRef.current = setInterval(() => {
-      setSimulationProgress(prev => {
-        if (prev >= 100) {
-          if (simulationIntervalRef.current) {
-            clearInterval(simulationIntervalRef.current);
-            simulationIntervalRef.current = null;
-          }
-          setIsSimulating(false);
+    const results: Record<string, { reduction: number; confidence: number; cost: string }> = {};
+    selectedScenarios.forEach((id) => {
+      const scenario = policyScenarios.find((item) => item.id === id);
+      if (!scenario) return;
 
-          const iterationFactor = Math.min(1.3, Math.max(0.85, Math.log10(Math.max(1000, iterations)) / 4));
-          const selectedScenariosData = policyScenarios.filter((scenario) => selectedScenarios.includes(scenario.id));
-          const averageImpact = selectedScenariosData.length
-            ? selectedScenariosData.reduce((sum, scenario) => sum + scenario.impact, 0) / selectedScenariosData.length
-            : 0;
+      results[id] = {
+        reduction: Number(scenario.gbvReduction.toFixed(1)),
+        confidence: Number(scenario.confidence.toFixed(3)),
+        cost: scenario.cost,
+      };
+    });
 
-          const results: Record<string, { reduction: number; confidence: number; cost: string }> = {};
-          selectedScenarios.forEach((id) => {
-            const scenario = policyScenarios.find((item) => item.id === id);
-            if (!scenario) return;
-
-            const impactMultiplier = 1 + (scenario.impact - averageImpact) * 0.05;
-            const reduction = Math.max(
-              0,
-              Number((scenario.gbvReduction * iterationFactor * impactMultiplier).toFixed(1))
-            );
-            const confidence = Math.min(
-              0.99,
-              Number((scenario.confidence + (iterationFactor - 1) * 0.08).toFixed(3))
-            );
-
-            results[id] = {
-              reduction,
-              confidence,
-              cost: scenario.cost,
-            };
-          });
-
-          setSimulationResults(results);
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 100);
+    setSimulationResults(results);
+    setSimulationProgress(100);
+    setIsSimulating(false);
   };
 
   const selectedScenariosData = policyScenarios.filter(s => selectedScenarios.includes(s.id));
   const maxReduction = policyScenarios.length ? Math.max(...policyScenarios.map(s => s.gbvReduction)) : 1;
+  const combinedReduction = useMemo(() => {
+    if (selectedScenariosData.length === 0) return 0;
+    const values = selectedScenariosData.map((scenario) => simulationResults[scenario.id]?.reduction ?? scenario.gbvReduction);
+    return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1));
+  }, [selectedScenariosData, simulationResults]);
+  const causalFactors = useMemo(() => {
+    const source = selectedScenariosData.length > 0 ? selectedScenariosData : policyScenarios;
+    const grouped = new Map<string, { totalStrength: number; totalReduction: number; count: number }>();
+
+    source.forEach((scenario) => {
+      const key = scenario.category || 'General policy';
+      const existing = grouped.get(key) ?? { totalStrength: 0, totalReduction: 0, count: 0 };
+      existing.totalStrength += scenario.confidence;
+      existing.totalReduction += scenario.gbvReduction;
+      existing.count += 1;
+      grouped.set(key, existing);
+    });
+
+    return Array.from(grouped.entries()).slice(0, 6).map(([factor, values]) => ({
+      factor,
+      strength: Math.min(1, values.totalStrength / Math.max(values.count, 1)),
+      direction: values.totalReduction >= 0 ? 'negative' : 'positive',
+    }));
+  }, [policyScenarios, selectedScenariosData]);
 
   return (
     <div className="h-full overflow-y-auto p-4 lg:p-6 space-y-6">
@@ -157,7 +134,7 @@ const PolicySimulation: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white">Policy Simulation & Foresight Lab</h2>
-          <p className="text-sm text-slate-500">Multi-agent Monte Carlo simulation engine with Bayesian causal modeling</p>
+          <p className="text-sm text-slate-500">Live scenario projection workspace using realtime policy scenario telemetry</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -203,7 +180,7 @@ const PolicySimulation: React.FC = () => {
             </div>
             <div>
               <label className="text-[10px] text-slate-500 uppercase tracking-wider">Engine</label>
-              <p className="text-sm text-white font-medium mt-1">Monte Carlo + Bayesian</p>
+              <p className="text-sm text-white font-medium mt-1">Live policy projection</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -344,13 +321,10 @@ const PolicySimulation: React.FC = () => {
           {selectedScenariosData.length > 1 && (
             <div className="bg-gradient-to-br from-purple-500/5 to-indigo-500/5 border border-purple-500/20 rounded-xl p-4">
               <h4 className="text-white font-semibold text-sm mb-2">Combined Impact Estimate</h4>
-              <p className="text-[10px] text-slate-500 mb-3">Non-linear interaction effects modeled</p>
+              <p className="text-[10px] text-slate-500 mb-3">Average projected reduction across selected live scenarios</p>
               <div className="text-center py-3">
                 <p className="text-4xl font-bold text-emerald-400">
-                  -{Math.min(
-                    selectedScenariosData.reduce((sum, s) => sum + s.gbvReduction, 0) * 0.7,
-                    65
-                  ).toFixed(1)}%
+                  -{combinedReduction.toFixed(1)}%
                 </p>
                 <p className="text-xs text-slate-500 mt-1">Projected GBV Reduction</p>
               </div>
@@ -373,16 +347,15 @@ const PolicySimulation: React.FC = () => {
 
           {/* Simulation Parameters */}
           <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4">
-            <h4 className="text-white font-semibold text-sm mb-3">Simulation Engine</h4>
+            <h4 className="text-white font-semibold text-sm mb-3">Projection Context</h4>
             <div className="space-y-2">
               {[
-                { label: 'Monte Carlo Iterations', value: iterations.toLocaleString() },
-                { label: 'Bayesian Priors', value: 'Informative' },
-                { label: 'Population Model', value: 'Synthetic (1M agents)' },
-                { label: 'Temporal Resolution', value: 'Monthly' },
-                { label: 'Spatial Resolution', value: '10km grid' },
-                { label: 'Interaction Effects', value: 'Non-linear' },
-                { label: 'Convergence Check', value: 'Gelman-Rubin' },
+                { label: 'Data source', value: 'policy_scenarios (live)' },
+                { label: 'Selected scenarios', value: `${selectedScenariosData.length}` },
+                { label: 'Scenario records', value: `${policyScenarios.length}` },
+                { label: 'Average confidence', value: selectedScenariosData.length ? `${(selectedScenariosData.reduce((sum, scenario) => sum + scenario.confidence, 0) / selectedScenariosData.length * 100).toFixed(1)}%` : '--' },
+                { label: 'Average timeframe', value: selectedScenariosData.length ? `${Math.round(selectedScenariosData.reduce((sum, scenario) => sum + parseInt(scenario.timeframe), 0) / selectedScenariosData.length)} months` : '--' },
+                { label: 'Last run iterations', value: iterations.toLocaleString() },
               ].map((param, i) => (
                 <div key={i} className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">{param.label}</span>
@@ -394,16 +367,11 @@ const PolicySimulation: React.FC = () => {
 
           {/* Causal Graph Summary */}
           <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-4">
-            <h4 className="text-white font-semibold text-sm mb-3">Bayesian Causal Factors</h4>
+            <h4 className="text-white font-semibold text-sm mb-3">Live Influence Factors</h4>
             <div className="space-y-2">
-              {[
-                { factor: 'Economic Inequality', strength: 0.82, direction: 'positive' },
-                { factor: 'Alcohol Availability', strength: 0.71, direction: 'positive' },
-                { factor: 'Education Access', strength: 0.68, direction: 'negative' },
-                { factor: 'Law Enforcement', strength: 0.54, direction: 'negative' },
-                { factor: 'Social Norms', strength: 0.47, direction: 'positive' },
-                { factor: 'Shelter Proximity', strength: 0.39, direction: 'negative' },
-              ].map((f, i) => (
+              {causalFactors.length === 0 ? (
+                <p className="text-xs text-slate-500">No scenario factors available yet.</p>
+              ) : causalFactors.map((f, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="text-[10px] text-slate-400 w-28 truncate">{f.factor}</span>
                   <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
