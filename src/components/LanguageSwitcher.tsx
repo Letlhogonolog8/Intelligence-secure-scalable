@@ -8,7 +8,7 @@ interface LanguageSwitcherProps {
 
 const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact" }) => {
   const { i18n } = useTranslation();
-  const current = i18n.language.split("-")[0];
+  const current = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0] || "en";
 
   const handleChange = async (code: SupportedLanguage) => {
     await changeAppLanguage(code);

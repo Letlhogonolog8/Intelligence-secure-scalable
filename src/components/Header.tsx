@@ -18,6 +18,18 @@ interface HeaderProps {
 
 const moduleLabels = MODULE_METADATA;
 
+const getSafeLocale = (value?: string | null) => {
+  if (!value || typeof value !== "string") {
+    return "en-US";
+  }
+
+  try {
+    return Intl.getCanonicalLocales(value)[0] ?? "en-US";
+  } catch {
+    return "en-US";
+  }
+};
+
 type SearchResult = {
   id: string;
   title: string;
@@ -45,8 +57,8 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
   const { data: justiceCases = [] } = useJusticeCases({ staleTime: 60000 });
   const { data: alertsFeed = [] } = useAlertsFeed({ staleTime: 5000, refetchInterval: 15000 });
   const { data: systemMetricsData } = useSystemMetrics({ staleTime: 10000, refetchInterval: 30000 });
-  const locale = typeof navigator === "undefined" ? "en-US" : navigator.language;
-  const mod = moduleLabels[activeModule];
+  const locale = getSafeLocale(typeof navigator === "undefined" ? "en-US" : navigator.language);
+  const mod = moduleLabels[activeModule] ?? moduleLabels.command_center;
   const userUsername = user?.email ? user.email.split("@")[0] : "Admin";
   const roleKey = (profile?.role ?? "analyst") as UserRole;
   const roleLabel = ROLE_DEFINITIONS[roleKey]?.label ?? "Analyst";

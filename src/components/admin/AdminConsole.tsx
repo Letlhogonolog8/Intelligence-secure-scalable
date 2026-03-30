@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,12 +44,10 @@ import {
   Smartphone, 
   ChevronRight, 
   ChevronLeft,
-  MoreVertical,
   Activity,
   UserPlus,
   RefreshCw,
   Clock,
-  ExternalLink,
   Shield,
   Eye,
   EyeOff,
@@ -107,12 +105,19 @@ const AdminConsole: React.FC = () => {
   const isAdmin = profile?.role === "admin";
   const { setActiveModule } = useAppStore();
   const navigate = useNavigate();
-  
-  const { data: organizations = [], isLoading: orgLoading, refetch: refetchOrganizations } = useOrganizations({ enabled: isAdmin, limit: 100 });
-  const { data: users = [], isLoading: userLoading, refetch: refetchUsers } = useUserProfiles({ enabled: isAdmin, limit: 200 });
-  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: isAdmin, staleTime: 30000, refetchInterval: 60000 });
-  const { data: auditLogs = [], isLoading: auditLoading } = useAuditLogs({ enabled: isAdmin, limit: 100 });
-  
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>("overview");
+  const [verificationClock, setVerificationClock] = useState(() => Date.now());
+
+  const shouldLoadOrganizations = isAdmin && ["overview", "approvals", "operations", "identities"].includes(activeSection);
+  const shouldLoadUsers = isAdmin && ["overview", "approvals", "identities"].includes(activeSection);
+  const shouldLoadDeletionRequests = isAdmin && ["overview", "compliance"].includes(activeSection);
+  const shouldLoadAuditLogs = isAdmin && ["overview", "compliance"].includes(activeSection);
+
+  const { data: organizations = [], isLoading: orgLoading, refetch: refetchOrganizations } = useOrganizations({ enabled: shouldLoadOrganizations, limit: 100 });
+  const { data: users = [], isLoading: userLoading, refetch: refetchUsers } = useUserProfiles({ enabled: shouldLoadUsers, limit: 200 });
+  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: shouldLoadDeletionRequests, staleTime: 30000, refetchInterval: activeSection === "overview" ? 60000 : undefined });
+  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useAuditLogs({ enabled: shouldLoadAuditLogs, limit: 100, staleTime: 30000, refetchInterval: activeSection === "overview" ? 60000 : undefined });
+
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [organizationAssignments, setOrganizationAssignments] = useState<Record<string, string | null>>({});
   const [searchQuery, setSearchQuery] = useState("");
@@ -162,11 +167,11 @@ const AdminConsole: React.FC = () => {
   const [adminVerifiedUntil, setAdminVerifiedUntil] = useState(0);
   const pendingAdminActionRef = useRef<(() => Promise<void>) | null>(null);
 
-  // Audit state
   const [auditSearch, setAuditSearch] = useState("");
   const [auditSeverity, setAuditSeverity] = useState<string>("all");
-  const [activeSection, setActiveSection] = useState<AdminSectionKey>("overview");
-  
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const deferredAuditSearch = useDeferredValue(auditSearch);
+
   const usersPerPage = 10;
   const orgsPerPage = 5;
 
@@ -203,11 +208,11 @@ const AdminConsole: React.FC = () => {
   );
   const pendingApprovalCount = pendingApprovalProfiles.length;
   const adminAttentionItems = pendingApprovalCount + pendingRequests + organizationsAwaitingSchemaSync;
-  const adminStepUpActive = adminVerifiedUntil > Date.now();
-  const adminStepUpMinutesRemaining = Math.max(0, Math.ceil((adminVerifiedUntil - Date.now()) / 60000));
+  const adminStepUpActive = adminVerifiedUntil > verificationClock;
+  const adminStepUpMinutesRemaining = Math.max(0, Math.ceil((adminVerifiedUntil - verificationClock) / 60000));
 
   const filteredProfiles = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
+    const normalized = deferredSearchQuery.trim().toLowerCase();
     let results = users;
     if (normalized) {
       results = results.filter((item) =>
@@ -220,23 +225,23 @@ const AdminConsole: React.FC = () => {
       results = results.filter((item) => !item.isActive);
     }
     return results;
-  }, [users, searchQuery, showInactiveOnly]);
+  }, [users, deferredSearchQuery, showInactiveOnly]);
 
   const filteredAuditLogs = useMemo(() => {
     let logs = auditLogs;
-    if (auditSearch) {
-      const search = auditSearch.toLowerCase();
-      logs = logs.filter(log => 
-        log.action.toLowerCase().includes(search) || 
+    if (deferredAuditSearch) {
+      const search = deferredAuditSearch.toLowerCase();
+      logs = logs.filter((log) =>
+        log.action.toLowerCase().includes(search) ||
         log.description?.toLowerCase().includes(search) ||
         log.user?.toLowerCase().includes(search)
       );
     }
     if (auditSeverity !== "all") {
-      logs = logs.filter(log => log.severity === auditSeverity);
+      logs = logs.filter((log) => log.severity === auditSeverity);
     }
     return logs;
-  }, [auditLogs, auditSearch, auditSeverity]);
+  }, [auditLogs, deferredAuditSearch, auditSeverity]);
 
   const totalUserPages = Math.max(1, Math.ceil(filteredProfiles.length / usersPerPage));
   const pagedProfiles = useMemo(
@@ -257,6 +262,38 @@ const AdminConsole: React.FC = () => {
   useEffect(() => {
     if (orgPage > totalOrgPages - 1) setOrgPage(Math.max(0, totalOrgPages - 1));
   }, [totalOrgPages, orgPage]);
+
+  useEffect(() => {
+    setUserPage(0);
+  }, [deferredSearchQuery, showInactiveOnly]);
+
+  useEffect(() => {
+    setOrganizationAssignments((current) => {
+      const validUserIds = new Set(users.map((item) => item.id));
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([userId]) => {
+          const keep = validUserIds.has(userId);
+          if (!keep) changed = true;
+          return keep;
+        })
+      );
+      return changed ? next : current;
+    });
+  }, [users]);
+
+  useEffect(() => {
+    if (!adminStepUpActive) {
+      setVerificationClock(Date.now());
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setVerificationClock(Date.now());
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [adminStepUpActive]);
 
   useEffect(() => {
     pendingAdminActionRef.current = null;
@@ -465,17 +502,16 @@ const AdminConsole: React.FC = () => {
     }
 
     await runAdminProtectedAction("provision a specialized account", async () => {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      const session = refreshData.session;
-
-      if (refreshError || !session?.access_token) {
-        logError(refreshError || new Error("No active session found"), { source: "admin.session_check" });
-        toast.error("Your session has expired. Please log out and log back in.");
-        return;
-      }
-
       setProvisionLoading(true);
       try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        const session = refreshData.session;
+
+        if (refreshError || !session?.access_token) {
+          logError(refreshError || new Error("No active session found"), { source: "admin.session_check" });
+          toast.error("Your session has expired. Please log out and log back in.");
+          return;
+        }
         logInfo("Invoking create_username_user Edge Function");
         const timestamp = new Date().toISOString();
 
@@ -582,17 +618,16 @@ const AdminConsole: React.FC = () => {
     const normalizedIsActive = editForm.approvalStatus === "approved" ? editForm.isActive : false;
 
     await runAdminProtectedAction("edit a managed privileged profile", async () => {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      const session = refreshData.session;
-
-      if (refreshError || !session?.access_token) {
-        logError(refreshError || new Error("No active session found"), { source: "admin.edit_profile.session_check" });
-        toast.error("Your session has expired. Please log out and log back in.");
-        return;
-      }
-
       setEditLoading(true);
       try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        const session = refreshData.session;
+
+        if (refreshError || !session?.access_token) {
+          logError(refreshError || new Error("No active session found"), { source: "admin.edit_profile.session_check" });
+          toast.error("Your session has expired. Please log out and log back in.");
+          return;
+        }
         const { data: updateData, error: updateError } = await updatePrivilegedAccount(
           {
             target_user_id: editingProfileId,
@@ -645,19 +680,18 @@ const AdminConsole: React.FC = () => {
     }
 
     await runAdminProtectedAction("reset managed account credentials", async () => {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      const session = refreshData.session;
-
-      if (refreshError || !session?.access_token) {
-        logError(refreshError || new Error("No active session found"), { source: "admin.reset_credentials.session_check" });
-        toast.error("Your session has expired. Please log out and log back in.");
-        return;
-      }
-
-      const temporaryPassword = generateTemporaryPassword();
       setResetLoadingId(item.id);
-
       try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        const session = refreshData.session;
+
+        if (refreshError || !session?.access_token) {
+          logError(refreshError || new Error("No active session found"), { source: "admin.reset_credentials.session_check" });
+          toast.error("Your session has expired. Please log out and log back in.");
+          return;
+        }
+
+        const temporaryPassword = generateTemporaryPassword();
         const { data: updateData, error: updateError } = await updatePrivilegedAccount(
           {
             target_user_id: item.id,
@@ -694,6 +728,32 @@ const AdminConsole: React.FC = () => {
       toast.error("Unable to copy the temporary password")
     }
   }
+
+  const closeResetDialog = () => {
+    setIsResetDialogOpen(false);
+    setResetCredentialName("");
+    setResetCredentialPassword("");
+  };
+
+  const handleRefreshVisibleData = async () => {
+    const tasks: Array<Promise<unknown>> = [];
+
+    if (shouldLoadOrganizations) {
+      tasks.push(refetchOrganizations());
+    }
+    if (shouldLoadUsers) {
+      tasks.push(refetchUsers());
+    }
+    if (shouldLoadDeletionRequests) {
+      tasks.push(refetchDeletionRequests());
+    }
+    if (shouldLoadAuditLogs) {
+      tasks.push(refetchAuditLogs());
+    }
+
+    await Promise.all(tasks);
+    toast.success("Visible admin data refreshed");
+  };
 
   const handleOrgVerificationToggle = async (orgId: string, nextStatus: boolean) => {
     const targetOrganization = organizations.find((item) => item.id === orgId);
@@ -865,6 +925,15 @@ const AdminConsole: React.FC = () => {
               >
                 <ChevronLeft className="mr-2 h-4 w-4 text-sky-300" />
                 Return to Dashboard
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-12 border-white/15 bg-white/5 text-white hover:bg-white/10"
+                onClick={() => void handleRefreshVisibleData()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4 text-emerald-300" />
+                Refresh Visible Data
               </Button>
               <Button
                 size="lg"
@@ -1207,7 +1276,16 @@ const AdminConsole: React.FC = () => {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <Dialog
+          open={isResetDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsResetDialogOpen(true);
+              return;
+            }
+            closeResetDialog();
+          }}
+        >
           <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md backdrop-blur-2xl shadow-2xl">
             <DialogHeader>
               <DialogTitle className="text-2xl font-black flex items-center gap-3">
@@ -1247,7 +1325,7 @@ const AdminConsole: React.FC = () => {
               <Button
                 type="button"
                 className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold"
-                onClick={() => setIsResetDialogOpen(false)}
+                onClick={closeResetDialog}
               >
                 Done
               </Button>
@@ -1620,8 +1698,16 @@ const AdminConsole: React.FC = () => {
                 <Filter className="mr-2 h-4 w-4" />
                 {showInactiveOnly ? "Inactive Selected" : "Show Inactive"}
               </Button>
-              <Button variant="outline" className="h-11 border-white/10 bg-white/5 font-bold text-xs uppercase tracking-widest" onClick={() => setSearchQuery("")}>
-                Clear
+              <Button
+                variant="outline"
+                className="h-11 border-white/10 bg-white/5 font-bold text-xs uppercase tracking-widest"
+                onClick={() => {
+                  setSearchQuery("");
+                  setShowInactiveOnly(false);
+                  setUserPage(0);
+                }}
+              >
+                Clear Filters
               </Button>
             </div>
           </div>
@@ -1724,9 +1810,6 @@ const AdminConsole: React.FC = () => {
                                   ? "Revoke Access"
                                   : "Restore Access"}
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-white hover:bg-white/5 transition-all">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -1737,9 +1820,14 @@ const AdminConsole: React.FC = () => {
           </div>
 
           <div className="p-6 bg-slate-950/20 border-t border-white/5 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-xs font-black uppercase text-slate-500 tracking-[0.1em]">
-              Showing {pagedProfiles.length} of {filteredProfiles.length} access records
-            </p>
+            <div>
+              <p className="text-xs font-black uppercase text-slate-500 tracking-[0.1em]">
+                Showing {pagedProfiles.length} of {filteredProfiles.length} access records
+              </p>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
+                Page {userPage + 1} of {totalUserPages}
+              </p>
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -1750,15 +1838,6 @@ const AdminConsole: React.FC = () => {
               >
                 <ChevronLeft className="h-4 w-4 mr-1" /> Prev
               </Button>
-              <div className="flex items-center gap-1.5 px-3">
-                {[...Array(totalUserPages)].map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setUserPage(i)}
-                    className={`h-1.5 w-6 rounded-full transition-all ${userPage === i ? "bg-indigo-500" : "bg-white/10 hover:bg-white/20"}`}
-                  />
-                ))}
-              </div>
               <Button
                 size="sm"
                 variant="outline"
@@ -1849,7 +1928,14 @@ const AdminConsole: React.FC = () => {
                   <Database className="h-3.5 w-3.5" />
                   {organizationsAwaitingSchemaSync > 0 ? "Verification Schema Pending" : "Verification Controls Live"}
                 </div>
-                <Button size="sm" variant="ghost" className="text-emerald-400 font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500/10">View Network Map</Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-emerald-400 font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500/10"
+                  onClick={() => void refetchOrganizations()}
+                >
+                  Refresh Partners
+                </Button>
               </div>
             </div>
             <div className="p-8 space-y-4 flex-1">
@@ -1895,9 +1981,9 @@ const AdminConsole: React.FC = () => {
                             ? org.isVerified ? "Revoke Status" : "Verify Partner"
                             : "Sync Verification Schema"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 border border-white/5 hover:border-white/10 ml-auto">
-                        <ExternalLink className="h-3 w-3 text-slate-500" />
-                      </Button>
+                      <span className="ml-auto inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-300">
+                        {org.supportsVerification ? (org.isVerified ? "Trusted partner" : "Pending verification") : "Migration required"}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -1973,8 +2059,8 @@ const AdminConsole: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {filteredAuditLogs.map((log, idx) => (
-                    <div key={idx} className="p-4 hover:bg-white/[0.02] transition-colors flex items-start gap-4">
+                  {filteredAuditLogs.map((log) => (
+                    <div key={`${log.time}-${log.action}-${log.user ?? "system"}`} className="p-4 hover:bg-white/[0.02] transition-colors flex items-start gap-4">
                       <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${
                         log.severity === "critical" ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" : 
                         log.severity === "error" ? "bg-orange-500" : 
@@ -2071,17 +2157,24 @@ const AdminConsole: React.FC = () => {
                           disabled={updatingId === request.id}
                           className="flex-1 h-10 bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-rose-900/20"
                         >
-                          {updatingId === request.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Purge Subject Data"}
+                          {updatingId === request.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Mark as Processed"}
                         </Button>
-                        <Button variant="outline" className="h-10 border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-widest">
-                          Audit
+                        <Button
+                          variant="outline"
+                          className="h-10 border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-widest"
+                          onClick={() => {
+                            setActiveSection("compliance");
+                            setAuditSearch(request.userId.slice(0, 8));
+                          }}
+                        >
+                          Audit Trail
                         </Button>
                       </div>
                     )}
                     {request.status === "processed" && (
                       <div className="flex items-center gap-2 text-[10px] font-medium text-slate-500">
                         <Clock className="h-3 w-3" />
-                        Purged on {new Date(request.processedAt).toLocaleString()}
+                        Processed on {new Date(request.processedAt).toLocaleString()}
                       </div>
                     )}
                   </div>

@@ -254,7 +254,9 @@ export class I18nManager {
   static detectUserLanguage(): string {
     if (typeof navigator === 'undefined') return 'en';
 
-    const browserLanguage = navigator.language.split('-')[0];
+    const browserLanguage = typeof navigator.language === 'string' && navigator.language.length > 0
+      ? navigator.language.split('-')[0]
+      : 'en';
     const supportedLanguages = Object.keys(I18N_CONFIG.supportedLanguages);
 
     if (supportedLanguages.includes(browserLanguage)) {
@@ -304,7 +306,13 @@ export class I18nManager {
     };
 
     const format = dateFormats[language] || dateFormats['en'];
-    return new Intl.DateTimeFormat(language, format).format(date);
+    const locale = typeof language === 'string' && language.length > 0 ? language : 'en';
+
+    try {
+      return new Intl.DateTimeFormat(locale, format).format(date);
+    } catch {
+      return new Intl.DateTimeFormat('en', dateFormats['en']).format(date);
+    }
   }
 
   /**
