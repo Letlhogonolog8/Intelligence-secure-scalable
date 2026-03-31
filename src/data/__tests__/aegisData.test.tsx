@@ -2,9 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, waitFor } from "@testing-library/react"
 import { vi } from "vitest"
 
-const channelHandlers: Array<() => void> = []
-const statusHandlers: Array<(status: string) => void> = []
-const removeChannelSpy = vi.fn()
+const { channelHandlers, statusHandlers, removeChannelSpy } = vi.hoisted(() => ({
+  channelHandlers: [] as Array<() => void>,
+  statusHandlers: [] as Array<(status: string) => void>,
+  removeChannelSpy: vi.fn(),
+}))
 
 vi.mock("@/lib/env", () => ({
   hasSupabase: true,

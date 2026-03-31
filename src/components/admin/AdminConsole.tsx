@@ -127,6 +127,7 @@ const AdminConsole: React.FC = () => {
   
   const [ussdSessionId, setUssdSessionId] = useState("");
   const [ussdPhoneNumber, setUssdPhoneNumber] = useState("");
+  const [ussdServiceCode, setUssdServiceCode] = useState("");
   const [ussdText, setUssdText] = useState("");
   const [ussdResponse, setUssdResponse] = useState<string | null>(null);
   const [ussdLoading, setUssdLoading] = useState(false);
@@ -805,41 +806,38 @@ const AdminConsole: React.FC = () => {
 
   const handleUssdSend = async () => {
     if (!isAdmin) return;
-    if (!ussdSessionId.trim() || !ussdPhoneNumber.trim()) {
-      setUssdResponse("Session ID and phone number are required.");
+    if (!ussdSessionId.trim() || !ussdPhoneNumber.trim() || !ussdServiceCode.trim()) {
+      setUssdResponse("Session ID, phone number, and service code are required.");
       return;
     }
+
     setUssdLoading(true);
     setUssdResponse(null);
-    try {
-      let data: { response?: string; message?: string } | null = null;
-      let error: unknown = null;
 
-      const handlerResult = await supabase.functions.invoke("ussd-handler", {
-        body: { sessionId: ussdSessionId.trim(), phoneNumber: ussdPhoneNumber.trim(), text: ussdText.trim() },
+    try {
+      const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/+$/, "");
+      const response = await fetch(`${apiBaseUrl}/ussd/process`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          sessionId: ussdSessionId.trim(),
+          phoneNumber: ussdPhoneNumber.trim(),
+          serviceCode: ussdServiceCode.trim(),
+          text: ussdText.trim(),
+        }).toString(),
       });
 
-      if (handlerResult.error) {
-        const gatewayResult = await supabase.functions.invoke("ussd-gateway", {
-          body: {
-            sessionId: ussdSessionId.trim(),
-            phoneNumber: ussdPhoneNumber.trim(),
-            text: ussdText.trim(),
-            serviceCode: "AEGIS",
-          },
-        });
-
-        data = gatewayResult.data as { response?: string; message?: string } | null;
-        error = gatewayResult.error;
-      } else {
-        data = handlerResult.data as { response?: string; message?: string } | null;
+      const responseBody = await response.text();
+      if (!response.ok) {
+        throw new Error(responseBody || `USSD request failed with status ${response.status}`);
       }
 
-      if (error) throw error;
-      setUssdResponse(data?.response ?? data?.message ?? "No response returned.");
+      setUssdResponse(responseBody || "No response returned.");
     } catch (err) {
       logError(err, { source: "admin.ussd" });
-      setUssdResponse("Failed to connect to USSD gateway.");
+      setUssdResponse(getErrorMessage(err) || "Failed to connect to USSD gateway.");
     } finally {
       setUssdLoading(false);
     }
@@ -1861,7 +1859,7 @@ const AdminConsole: React.FC = () => {
                 <Smartphone className="h-6 w-6 text-orange-400" />
                 <h2 className="text-xl font-black text-white">Rapid Support Gateway (USSD)</h2>
               </div>
-              <p className="text-sm text-slate-400 font-medium">Verify system response for offline rapid-response protocols.</p>
+              <p className="text-sm text-slate-400 font-medium">Simulate Africa&apos;s Talking requests against the live USSD processing route.</p>
             </div>
             <div className="p-8 space-y-6 flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1870,7 +1868,7 @@ const AdminConsole: React.FC = () => {
                   <Input
                     value={ussdSessionId}
                     onChange={(e) => setUssdSessionId(e.target.value)}
-                    placeholder="e.g. SES-921-X"
+                    placeholder="e.g. AT-SIM-921-X"
                     className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
                   />
                 </div>
@@ -1885,19 +1883,28 @@ const AdminConsole: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Input Command String</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Africa&apos;s Talking Service Code</label>
+                <Input
+                  value={ussdServiceCode}
+                  onChange={(e) => setUssdServiceCode(e.target.value)}
+                  placeholder="e.g. *384*35480#"
+                  className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Africa&apos;s Talking Text Field</label>
                 <Input
                   value={ussdText}
                   onChange={(e) => setUssdText(e.target.value)}
-                  placeholder="e.g. 1*Gauteng*JHB*SOS"
+                  placeholder="e.g. 1 or 1*Test incident details"
                   className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
                 />
               </div>
               <div className="flex gap-3">
                 <Button onClick={handleUssdSend} disabled={ussdLoading} className="flex-1 h-12 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest shadow-lg shadow-orange-900/20">
-                  {ussdLoading ? <RefreshCw className="h-5 w-5 animate-spin" /> : "Invoke Gateway"}
+                  {ussdLoading ? <RefreshCw className="h-5 w-5 animate-spin" /> : "Send AT Simulation"}
                 </Button>
-                <Button variant="outline" className="h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(""); setUssdPhoneNumber(""); setUssdText(""); setUssdResponse(null); }}>
+                <Button variant="outline" className="h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(""); setUssdPhoneNumber(""); setUssdServiceCode(""); setUssdText(""); setUssdResponse(null); }}>
                   Reset
                 </Button>
               </div>
@@ -1905,9 +1912,9 @@ const AdminConsole: React.FC = () => {
                 <div className="absolute top-0 right-0 p-3">
                   <Activity className="h-4 w-4 text-orange-500/30" />
                 </div>
-                <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-2">Gateway Response Payload</label>
-                <p className="text-sm font-mono text-orange-200/90 leading-relaxed italic">
-                  {ussdResponse || "Awaiting gateway invocation..."}
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-2">Africa&apos;s Talking Gateway Response</label>
+                <p className="text-sm font-mono text-orange-200/90 leading-relaxed italic whitespace-pre-wrap break-words">
+                  {ussdResponse || "Awaiting Africa's Talking simulator request..."}
                 </p>
               </div>
             </div>
