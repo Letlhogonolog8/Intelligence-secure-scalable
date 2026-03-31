@@ -1,6 +1,6 @@
 const url = process.env.USSD_CALLBACK_URL || process.env.USSD_BASE_URL || (process.env.BACKEND_PUBLIC_URL ? `${process.env.BACKEND_PUBLIC_URL.replace(/\/+$/, '')}/api/ussd/process` : 'http://127.0.0.1:3001/api/ussd/process');
 const phoneNumber = process.env.USSD_PHONE_NUMBER || '+27734801665';
-const serviceCode = process.env.USSD_SERVICE_CODE || '*384*83905#';
+const serviceCode = process.env.USSD_SERVICE_CODE || '*384*30933#';
 const language = process.env.USSD_LANGUAGE || 'en';
 const sessionId = process.env.USSD_SESSION_ID || `AT_SIM_${Date.now()}`;
 const steps = process.argv.slice(2).map((step) => step.replace(/^(['"])(.*)\1$/, '$2'));

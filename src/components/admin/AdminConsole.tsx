@@ -1887,7 +1887,7 @@ const AdminConsole: React.FC = () => {
                 <Input
                   value={ussdServiceCode}
                   onChange={(e) => setUssdServiceCode(e.target.value)}
-                  placeholder="e.g. *384*35480#"
+                  placeholder="e.g. *384*30933#"
                   className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
                 />
               </div>

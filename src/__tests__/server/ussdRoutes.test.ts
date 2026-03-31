@@ -3,51 +3,51 @@ import { isTrustedUssdRequestOrigin, isUssdServiceCodeAllowed, normalizeUssdServ
 
 describe('ussd route service code validation', () => {
   it('normalizes service codes before comparison', () => {
-    expect(normalizeUssdServiceCode(' *384*83905# ')).toBe('*384*83905#');
+    expect(normalizeUssdServiceCode(' *384*30933# ')).toBe('*384*30933#');
   });
 
   it('normalizes quoted and percent-encoded service codes', () => {
-    expect(normalizeUssdServiceCode('"*384*35480%23"')).toBe('*384*35480#');
+    expect(normalizeUssdServiceCode('"*384*30933%23"')).toBe('*384*30933#');
   });
 
   it('allows requests when no expected service code is configured', () => {
-    expect(isUssdServiceCodeAllowed('*384*83905#', '')).toBe(true);
+    expect(isUssdServiceCodeAllowed('*384*30933#', '')).toBe(true);
   });
 
   it('allows a matching service code', () => {
-    expect(isUssdServiceCodeAllowed('*384*83905#', '*384*83905#', true)).toBe(true);
+    expect(isUssdServiceCodeAllowed('*384*30933#', '*384*30933#', true)).toBe(true);
   });
 
   it('allows a matching service code from a comma-separated allow list', () => {
-    expect(isUssdServiceCodeAllowed('*721#', '*384*83905#,*721#', true)).toBe(true);
+    expect(isUssdServiceCodeAllowed('*721#', '*384*30933#,*721#', true)).toBe(true);
   });
 
   it('allows the current configured service code from an encoded request payload', () => {
-    expect(isUssdServiceCodeAllowed('"*384*35480%23"', '*384*35480#,*721#', true)).toBe(true);
+    expect(isUssdServiceCodeAllowed('"*384*30933%23"', '*384*30933#,*721#', true)).toBe(true);
   });
 
   it('treats service codes with and without a trailing hash as equivalent', () => {
-    expect(isUssdServiceCodeAllowed('*384*35480', '*384*35480#,*721#', true)).toBe(true);
+    expect(isUssdServiceCodeAllowed('*384*30933', '*384*30933#,*721#', true)).toBe(true);
   });
 
   it('rejects a mismatched service code', () => {
-    expect(isUssdServiceCodeAllowed('*384*00000#', '*384*83905#', true)).toBe(false);
+    expect(isUssdServiceCodeAllowed('*384*00000#', '*384*30933#', true)).toBe(false);
   });
 
   it('rejects a service code that is not present in the allow list', () => {
-    expect(isUssdServiceCodeAllowed('*123#', '*384*83905#,*721#', true)).toBe(false);
+    expect(isUssdServiceCodeAllowed('*123#', '*384*30933#,*721#', true)).toBe(false);
   });
 
   it('rejects a missing service code when one is required', () => {
-    expect(isUssdServiceCodeAllowed(undefined, '*384*83905#', true)).toBe(false);
+    expect(isUssdServiceCodeAllowed(undefined, '*384*30933#', true)).toBe(false);
   });
 
   it('allows a missing service code when one is not required', () => {
-    expect(isUssdServiceCodeAllowed(undefined, '*384*83905#', false)).toBe(true);
+    expect(isUssdServiceCodeAllowed(undefined, '*384*30933#', false)).toBe(true);
   });
 
   it('allows a missing service code for development-style simulator requests', () => {
-    expect(isUssdServiceCodeAllowed(undefined, '*384*35480#,*721#', false)).toBe(true);
+    expect(isUssdServiceCodeAllowed(undefined, '*384*30933#,*721#', false)).toBe(true);
   });
 });
 
