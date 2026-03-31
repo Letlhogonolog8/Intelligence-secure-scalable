@@ -37,6 +37,7 @@ import {
 } from './middleware/rateLimiting';
 import { ErrorTrackingService, setupGlobalErrorHandlers } from './observability/errorTracking';
 import { closeDatadog, initializeDatadog, trackTiming } from './utils/datadog';
+import { ADMIN_DASHBOARD_CONFIG } from './config/adminDashboardConfig';
 
 dotenv.config({ override: true });
 
@@ -544,6 +545,18 @@ async function requireAuth(req: Request, res: Response, next: NextFunction): Pro
   }
 }
 
+function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const requestId = (req as AppRequest).id;
+  const role = (req as AppRequest).user?.role?.toLowerCase();
+
+  if (role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required', requestId });
+    return;
+  }
+
+  next();
+}
+
 app.get('/health/live', (_req: Request, res: Response) => {
   res.json({ status: 'live', timestamp: new Date().toISOString() });
 });
@@ -703,6 +716,16 @@ app.get('/api/audit/verify', requireAuth, async (req: Request, res: Response) =>
     console.error(`[${requestId}] Audit chain verification failed:`, error instanceof Error ? error.message : String(error));
     res.status(500).json({ error: 'Verification failed', requestId });
   }
+});
+
+app.get('/api/admin/dashboard-config', requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const requestId = (req as AppRequest).id;
+
+  res.json({
+    ...ADMIN_DASHBOARD_CONFIG,
+    generatedAt: new Date().toISOString(),
+    requestId,
+  });
 });
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

@@ -3,6 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { supabase } from "@/lib/supabase"
 import { hasSupabase } from "@/lib/env"
 import { getErrorMessage } from "@/lib/logger"
+import { apiClient } from "@/lib/apiClient"
+import {
+  ADMIN_DASHBOARD_REFRESH_INTERVALS,
+  ADMIN_DASHBOARD_THRESHOLDS,
+  type AdminDashboardRefreshIntervals,
+  type AdminDashboardThresholds,
+} from "@/config/adminDashboardThresholds"
 
 export { getErrorMessage }
 
@@ -243,6 +250,13 @@ export interface OrganizationCoordination {
   createdAt: string
   updatedAt: string
   completedAt: string
+}
+
+export interface AdminDashboardConfigResponse {
+  thresholds: AdminDashboardThresholds
+  refresh: AdminDashboardRefreshIntervals
+  generatedAt?: string
+  requestId?: string
 }
 
 export interface RegionIncidentType {
@@ -1176,6 +1190,31 @@ const fetchDeletionRequests = async (options?: FetchOptions) => {
   return (data ?? []).map((row) => mapDeletionRequest(row as Record<string, unknown>))
 }
 
+const fetchAdminDashboardConfig = async (): Promise<AdminDashboardConfigResponse> => {
+  const fallbackConfig: AdminDashboardConfigResponse = {
+    thresholds: ADMIN_DASHBOARD_THRESHOLDS,
+    refresh: ADMIN_DASHBOARD_REFRESH_INTERVALS,
+  }
+
+  try {
+    const response = await apiClient.get<Partial<AdminDashboardConfigResponse>>("/admin/dashboard-config")
+    return {
+      thresholds: {
+        ...ADMIN_DASHBOARD_THRESHOLDS,
+        ...(response.data.thresholds ?? {}),
+      },
+      refresh: {
+        ...ADMIN_DASHBOARD_REFRESH_INTERVALS,
+        ...(response.data.refresh ?? {}),
+      },
+      generatedAt: response.data.generatedAt,
+      requestId: response.data.requestId,
+    }
+  } catch {
+    return fallbackConfig
+  }
+}
+
 const fetchUserProfile = async (userId: string) => {
   if (!hasSupabase) return null as UserProfile | null
   const { data, error } = await supabase
@@ -1694,6 +1733,17 @@ export const useDeletionRequests = (options?: ListQueryOptions) => useRealtimeQu
   () => fetchDeletionRequests(options),
   { ...options, queryKey: [options?.limit, options?.offset] }
 )
+
+export const useAdminDashboardConfig = (options?: RealtimeQueryOptions) => {
+  const enabled = options?.enabled ?? true
+  return useQuery({
+    queryKey: ["aegis", "adminDashboardConfig"],
+    queryFn: fetchAdminDashboardConfig,
+    enabled,
+    staleTime: options?.staleTime ?? ADMIN_DASHBOARD_REFRESH_INTERVALS.metricsMs,
+    refetchInterval: options?.refetchInterval ?? ADMIN_DASHBOARD_REFRESH_INTERVALS.metricsMs,
+  })
+}
 
 export const useUserProfile = (userId?: string | null) => {
   return useQuery({
