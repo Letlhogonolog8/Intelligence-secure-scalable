@@ -47,6 +47,27 @@ const AnalystDashboard: React.FC = () => {
     [alertsFeed]
   );
   const activeModels = useMemo(() => governanceModels.filter((entry) => entry.status === "active"), [governanceModels]);
+  const incidentChartData = useMemo(
+    () =>
+      incidentTimeSeries
+        .filter((entry) => entry.date && (typeof entry.value === "number" || typeof entry.predicted === "number"))
+        .map((entry) => ({
+          ...entry,
+          value: typeof entry.value === "number" ? entry.value : 0,
+          predicted: typeof entry.predicted === "number" ? entry.predicted : undefined,
+        })),
+    [incidentTimeSeries]
+  );
+  const fairnessChartData = useMemo(
+    () =>
+      fairnessMetrics
+        .filter((entry) => entry.metric)
+        .map((entry) => ({
+          ...entry,
+          score: typeof entry.score === "number" ? entry.score : 0,
+        })),
+    [fairnessMetrics]
+  );
   const averageFairness = useMemo(() => {
     if (activeModels.length === 0) return 0;
     return Math.round(activeModels.reduce((sum, entry) => sum + entry.fairness, 0) / activeModels.length);
@@ -94,7 +115,7 @@ const AnalystDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Incident trend" description="Actual versus forecasted incident movement from the shared intelligence timeseries.">
-          {incidentTimeSeries.length === 0 ? (
+          {incidentChartData.length === 0 ? (
             <EmptyState
               title="No incident telemetry yet"
               description="Incident timeseries will render automatically as live telemetry arrives from the analytics pipeline."
@@ -106,7 +127,7 @@ const AnalystDashboard: React.FC = () => {
           ) : (
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={incidentTimeSeries}>
+                <AreaChart data={incidentChartData}>
                   <defs>
                     <linearGradient id="analyst-actual" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.35} />
@@ -130,7 +151,7 @@ const AnalystDashboard: React.FC = () => {
         </SectionCard>
 
         <SectionCard title="Fairness breakdown" description="Current model-level fairness metric scores.">
-          {fairnessMetrics.length === 0 ? (
+          {fairnessChartData.length === 0 ? (
             <EmptyState
               title="No fairness metrics yet"
               description="Fairness indicators appear here once governance metrics are published to the live feed."
@@ -142,13 +163,13 @@ const AnalystDashboard: React.FC = () => {
           ) : (
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fairnessMetrics}>
+                <BarChart data={fairnessChartData}>
                   <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="metric" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} interval={0} />
                   <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} domain={[0, 100]} />
                   <Tooltip />
                   <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                    {fairnessMetrics.map((entry, index) => (
+                    {fairnessChartData.map((entry, index) => (
                       <Cell key={`${entry.metric}-${index}`} fill={entry.status === "fail" ? "#fb7185" : entry.status === "warning" ? "#f59e0b" : "#6366f1"} />
                     ))}
                   </Bar>

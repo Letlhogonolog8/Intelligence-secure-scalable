@@ -186,18 +186,29 @@ const CounselorDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard title="Session flow" description="Weekly opened versus resolved support sessions.">
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklySessionFlow}>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <Tooltip />
-                <Bar dataKey="opened" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="resolved" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {weeklySessionFlow.some((entry) => entry.opened > 0 || entry.resolved > 0) ? (
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklySessionFlow}>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <Tooltip />
+                  <Bar dataKey="opened" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="resolved" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState
+              title="No session flow yet"
+              description="Weekly session activity will render here once support conversations start moving through the queue."
+              guidance={[
+                "New support sessions will populate this chart automatically after they are created and updated.",
+                "If sessions were opened recently, wait for the next live refresh cycle and check again.",
+              ]}
+            />
+          )}
         </SectionCard>
 
         <SectionCard title="Documentation posture" description="Live visibility into support plans and escalation workflow.">

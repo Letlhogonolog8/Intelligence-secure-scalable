@@ -227,23 +227,34 @@ const AdminDashboard: React.FC = () => {
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard title="Governance telemetry" description="Latest system throughput and governance event activity.">
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="h-[280px] rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={incidentTimeSeries}>
-                  <defs>
-                    <linearGradient id="admin-incident" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="value" stroke="#38bdf8" fill="url(#admin-incident)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {incidentTimeSeries.length > 0 ? (
+              <div className="h-[280px] rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={incidentTimeSeries}>
+                    <defs>
+                      <linearGradient id="admin-incident" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                    <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                    <Tooltip />
+                    <Area type="monotone" dataKey="value" stroke="#38bdf8" fill="url(#admin-incident)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState
+                title="No governance telemetry yet"
+                description="Incident telemetry will render here once the monitoring and governance feeds start publishing data."
+                guidance={[
+                  "Confirm incident telemetry is reaching the connected environment and is being persisted successfully.",
+                  "After new points are ingested, this chart will populate automatically on the next refresh cycle.",
+                ]}
+              />
+            )}
             <div className="grid gap-3">
               <ListItemCard title="Security posture" subtitle="Composite of uptime, encryption, and alert pressure" meta={<StatusPill tone={securityPosture >= 85 ? "emerald" : securityPosture >= 65 ? "amber" : "rose"}>{securityPosture}%</StatusPill>} />
               <ListItemCard title="Incident trend" subtitle="Current delta compared with the previous interval" meta={incidentTrend.delta === 0 ? "Stable" : incidentTrend.delta > 0 ? `+${incidentTrend.delta}` : incidentTrend.delta} />

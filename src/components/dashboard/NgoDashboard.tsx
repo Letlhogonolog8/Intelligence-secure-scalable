@@ -159,18 +159,29 @@ const NgoDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard title="Referral flow trend" description="Weekly referral openings versus completed handoffs.">
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={coordinationTrend}>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                <Tooltip />
-                <Bar dataKey="opened" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="resolved" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {coordinationTrend.some((entry) => entry.opened > 0 || entry.resolved > 0) ? (
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={coordinationTrend}>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <Tooltip />
+                  <Bar dataKey="opened" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="resolved" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState
+              title="No referral flow yet"
+              description="This trend chart will render once partner handoffs start moving through the organization pipeline."
+              guidance={[
+                "New referrals and completions will appear here automatically when coordination records are created or updated.",
+                "If your team just routed a case, wait for the next workspace refresh and check again.",
+              ]}
+            />
+          )}
         </SectionCard>
 
         <SectionCard title="Program & resource network" description="Live program registry and support-resource footprint.">

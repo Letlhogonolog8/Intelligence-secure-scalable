@@ -20,6 +20,14 @@ interface ImpactDashboardChartsProps {
   activeTab: ImpactChartTab;
 }
 
+const CHART_PANEL_CLASSNAME = "rounded-2xl border border-white/10 bg-slate-950/60 p-6";
+const TOOLTIP_CONTENT_STYLE = {
+  background: "#0f172a",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: "12px",
+  color: "#f1f5f9",
+} as const;
+
 const MONTHLY_CASES = [
   { month: "Aug", cases: 847, resolved: 721, avgResponse: 28 },
   { month: "Sep", cases: 923, resolved: 804, avgResponse: 24 },
@@ -36,6 +44,8 @@ const CHANNEL_DATA = [
   { name: "WhatsApp Bot", value: 19, color: "#f97316" },
   { name: "Voice Report", value: 7, color: "#ec4899" },
 ];
+
+const formatPercentTooltip = (value: number | string) => [`${value}%`, ""];
 
 const CustomAreaTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
@@ -57,7 +67,7 @@ const ImpactDashboardCharts: React.FC<ImpactDashboardChartsProps> = ({ activeTab
   if (activeTab === "overview") {
     return (
       <div className="space-y-6">
-        <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
+        <div className={CHART_PANEL_CLASSNAME}>
           <h3 className="text-white font-bold mb-1">Monthly Cases & Resolutions</h3>
           <p className="text-xs text-slate-400 mb-5">Anonymised incident volume and resolution rate over 7 months</p>
           <ResponsiveContainer width="100%" height={280}>
@@ -82,7 +92,7 @@ const ImpactDashboardCharts: React.FC<ImpactDashboardChartsProps> = ({ activeTab
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
+        <div className={CHART_PANEL_CLASSNAME}>
           <h3 className="text-white font-bold mb-1">Average Response Time (Minutes)</h3>
           <p className="text-xs text-slate-400 mb-5">Time from incident report to first responder assignment</p>
           <ResponsiveContainer width="100%" height={180}>
@@ -101,7 +111,7 @@ const ImpactDashboardCharts: React.FC<ImpactDashboardChartsProps> = ({ activeTab
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
+      <div className={CHART_PANEL_CLASSNAME}>
         <h3 className="text-white font-bold mb-1">Reporting Channel Distribution</h3>
         <p className="text-xs text-slate-400 mb-5">How survivors are accessing AEGIS services</p>
         <ResponsiveContainer width="100%" height={240}>
@@ -112,8 +122,8 @@ const ImpactDashboardCharts: React.FC<ImpactDashboardChartsProps> = ({ activeTab
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number | string) => [`${value}%`, ""]}
-              contentStyle={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#f1f5f9" }}
+              formatter={formatPercentTooltip}
+              contentStyle={TOOLTIP_CONTENT_STYLE}
             />
           </PieChart>
         </ResponsiveContainer>
