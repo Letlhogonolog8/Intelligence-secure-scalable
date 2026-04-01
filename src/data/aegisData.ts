@@ -260,7 +260,7 @@ export interface AdminDashboardConfigResponse {
 }
 
 export interface PoliceAlertFeedResponse {
-  alerts: AlertItem[]
+  alerts: Array<Record<string, unknown>>
   generatedAt?: string
   requestId?: string
 }
