@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAlertsFeed, useOrganizationCoordination, useUserProfile } from "@/data/aegisData";
+import { acknowledgePoliceAlert, useOrganizationCoordination, usePoliceAlertsFeed, useUserProfile } from "@/data/aegisData";
 import { useLiveJusticeCases, useLiveOrganization, useLivePoliceDepartments, useLiveUserProfiles } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
@@ -8,76 +8,189 @@ import { DashboardHero, DashboardPage, EmptyState, HeroBadge, ListItemCard, Metr
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
-import { dedupeBy, sortByPriorityAndRecency, formatRelativeDateTime, percent } from "@/lib/dashboardMetrics";
-import { supabase } from "@/lib/supabase";
+import { dedupeBy, formatRelativeDateTime, percent, sortByPriorityAndRecency } from "@/lib/dashboardMetrics";
 import CaseDispatchDialog from "@/components/justice/CaseDispatchDialog";
 import FileIncidentDialog from "@/components/justice/FileIncidentDialog";
+import {
+  buildPoliceAvailabilitySummary,
+  buildPoliceRecommendedActions,
+  buildPoliceStageAging,
+  normalizePoliceAlerts,
+  normalizePoliceCases,
+  normalizePoliceReferrals,
+} from "@/lib/policeDashboard";
+import { buildWeeklyLifecycle } from "@/lib/dashboardMetrics";
+import { PoliceAvailabilityGrid, PoliceRecommendedActionsList, PoliceStageAgingList } from "@/components/dashboard/PoliceOperationalWidgets";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const PoliceDashboard: React.FC = () => {
   const { user, session } = useAuth();
   const queryClient = useQueryClient();
   const { setActiveModule } = useAppStore();
   const { data: profile } = useUserProfile(user?.id);
+  const isPolice = profile?.role === "police";
   const resolvedRole = (profile?.role ?? "police") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
-
-  const { data: organization } = useLiveOrganization(profile?.organizationId, { staleTime: 15000, refetchInterval: 30000 });
-  const { data: departments = [], isLoading: departmentsLoading } = useLivePoliceDepartments({ organizationId: profile?.organizationId, staleTime: 15000, refetchInterval: 30000, limit: 10 });
-  const activeDepartment = departments.find((entry) => entry.isActive) ?? departments[0] ?? null;
-
-  const { data: officers = [], isLoading: officersLoading } = useLiveUserProfiles({ role: "police", organizationId: profile?.organizationId, staleTime: 15000, refetchInterval: 30000, limit: 120 });
-  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ staleTime: 15000, refetchInterval: 30000, limit: 160, regionId: activeDepartment?.regionId ?? null });
-  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 12 });
-  const { data: referrals = [], isLoading: referralsLoading } = useOrganizationCoordination({ staleTime: 15000, refetchInterval: 30000, limit: 30 });
+  const organizationId = profile?.organizationId ?? null;
 
   const [dispatchCaseId, setDispatchCaseId] = useState<string | null>(null);
   const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
   const [isFileIncidentDialogOpen, setIsFileIncidentDialogOpen] = useState(false);
+  const [queueSearch, setQueueSearch] = useState("");
+  const [queuePriorityFilter, setQueuePriorityFilter] = useState("all");
+  const deferredQueueSearch = useDeferredValue(queueSearch);
+
+  const { data: organization } = useLiveOrganization(organizationId, {
+    enabled: isPolice && Boolean(organizationId),
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
+  const { data: departments = [], isLoading: departmentsLoading } = useLivePoliceDepartments({
+    enabled: isPolice && Boolean(organizationId),
+    organizationId,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    limit: 10,
+  });
+  const activeDepartment = departments.find((entry) => entry.isActive) ?? departments[0] ?? null;
+
+  const { data: officers = [], isLoading: officersLoading } = useLiveUserProfiles({
+    enabled: isPolice && Boolean(organizationId),
+    role: "police",
+    organizationId,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    limit: 120,
+  });
+  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({
+    enabled: isPolice && Boolean(activeDepartment?.regionId),
+    staleTime: 15000,
+    refetchInterval: 30000,
+    limit: 160,
+    regionId: activeDepartment?.regionId ?? null,
+  });
+  const { data: alertsFeed = [], isLoading: alertsLoading } = usePoliceAlertsFeed({
+    enabled: isPolice,
+    staleTime: 10000,
+    refetchInterval: 15000,
+    limit: 12,
+  });
+  const { data: referrals = [], isLoading: referralsLoading } = useOrganizationCoordination({
+    enabled: isPolice,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    limit: 30,
+  });
 
   const isLoadingData = departmentsLoading || officersLoading || casesLoading || alertsLoading || referralsLoading;
 
+  const sanitizedCases = useMemo(() => normalizePoliceCases(justiceCases), [justiceCases]);
+  const sanitizedAlerts = useMemo(() => normalizePoliceAlerts(alertsFeed), [alertsFeed]);
+  const sanitizedReferrals = useMemo(() => normalizePoliceReferrals(referrals), [referrals]);
+
   const activeOfficers = useMemo(() => officers.filter((entry) => entry.isActive), [officers]);
   const jurisdictionCases = useMemo(() => {
-    if (!activeDepartment) return justiceCases;
-    return justiceCases.filter((entry) => {
+    if (!activeDepartment) return sanitizedCases;
+
+    return sanitizedCases.filter((entry) => {
       const matchesDepartment = Boolean(entry.assignedPoliceDepartmentId) && entry.assignedPoliceDepartmentId === activeDepartment.id;
       const matchesRegion = Boolean(entry.regionId) && entry.regionId === activeDepartment.regionId;
-      return matchesDepartment || matchesRegion || (!entry.assignedPoliceDepartmentId && !entry.regionId);
+      return matchesDepartment || matchesRegion;
     });
-  }, [activeDepartment, justiceCases]);
-  const liveQueue = useMemo(() => sortByPriorityAndRecency(jurisdictionCases).slice(0, 6), [jurisdictionCases]);
+  }, [activeDepartment, sanitizedCases]);
+  const filteredQueue = useMemo(() => {
+    const term = deferredQueueSearch.trim().toLowerCase();
+    return jurisdictionCases.filter((entry) => {
+      const matchesPriority = queuePriorityFilter === "all" || entry.priority === queuePriorityFilter;
+      const matchesSearch = !term || [entry.caseNumber, entry.region, entry.stage, entry.assignedTo]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+      return matchesPriority && matchesSearch;
+    });
+  }, [deferredQueueSearch, jurisdictionCases, queuePriorityFilter]);
+  const liveQueue = useMemo(() => sortByPriorityAndRecency(filteredQueue).slice(0, 6), [filteredQueue]);
   const urgentCases = useMemo(() => jurisdictionCases.filter((entry) => entry.priority === "critical"), [jurisdictionCases]);
   const highPriorityCases = useMemo(() => jurisdictionCases.filter((entry) => entry.priority === "high"), [jurisdictionCases]);
-  const openCases = useMemo(() => jurisdictionCases.filter((entry) => !["closed", "resolved"].includes(entry.status.toLowerCase())), [jurisdictionCases]);
+  const openCases = useMemo(() => jurisdictionCases.filter((entry) => !["closed", "resolved"].includes(entry.status)), [jurisdictionCases]);
+  const unassignedOpenCases = useMemo(() => openCases.filter((entry) => !entry.assignedTo), [openCases]);
   const pendingAlerts = useMemo(
-    () => dedupeBy(alertsFeed.filter((entry) => entry.status !== "acknowledged"), (entry) => `${entry.module}|${entry.type}|${entry.message}`),
-    [alertsFeed]
+    () => dedupeBy(sanitizedAlerts.filter((entry) => entry.status !== "acknowledged"), (entry) => `${entry.module}|${entry.type}|${entry.message}`),
+    [sanitizedAlerts]
   );
-  const pendingReferrals = useMemo(() => referrals.filter((entry) => entry.status === "pending"), [referrals]);
-  const assignedCaseRatio = percent(openCases.filter((entry) => Boolean(entry.assignedTo)).length, Math.max(openCases.length, 1));
+  const pendingReferrals = useMemo(() => sanitizedReferrals.filter((entry) => entry.status === "pending"), [sanitizedReferrals]);
+  const completedCases = useMemo(() => jurisdictionCases.filter((entry) => ["closed", "resolved"].includes(entry.status)), [jurisdictionCases]);
+  const assignedCaseRatio = percent(openCases.length - unassignedOpenCases.length, Math.max(openCases.length, 1));
   const responseLoad = Math.min(100, Math.round(((urgentCases.length * 2 + highPriorityCases.length) / Math.max(activeOfficers.length, 1)) * 20));
+  const coordinationPressure = Math.min(100, Math.round(((pendingReferrals.length + pendingAlerts.length) / Math.max(activeOfficers.length, 1)) * 25));
+  const officerAvailability = useMemo(
+    () =>
+      buildPoliceAvailabilitySummary({
+        activeOfficerIds: activeOfficers.map((entry) => entry.id),
+        assignedOfficerIds: openCases.map((entry) => entry.assignedTo).filter(Boolean),
+      }),
+    [activeOfficers, openCases]
+  );
+  const responseTrend = useMemo(
+    () =>
+      buildWeeklyLifecycle(
+        jurisdictionCases,
+        (entry) => entry.createdAt,
+        (entry) => (["closed", "resolved"].includes(entry.status) ? entry.updatedAt : null),
+        4
+      ).map((bucket) => ({
+        label: bucket.label,
+        opened: bucket.opened,
+        active: bucket.active,
+      })),
+    [jurisdictionCases]
+  );
+  const stageAging = useMemo(() => buildPoliceStageAging(jurisdictionCases), [jurisdictionCases]);
+  const medianDaysOpen = useMemo(() => {
+    if (openCases.length === 0) return null;
+    const sortedDays = openCases.map((entry) => entry.daysOpen ?? 0).sort((left, right) => left - right);
+    const middle = Math.floor(sortedDays.length / 2);
+    return sortedDays.length % 2 === 0 ? Math.round((sortedDays[middle - 1] + sortedDays[middle]) / 2) : sortedDays[middle];
+  }, [openCases]);
   const sessionExpiry = session?.expires_at ? new Date(session.expires_at * 1000).toLocaleTimeString() : "Session inactive";
   const lastCaseUpdate = jurisdictionCases
     .map((entry) => entry.updatedAt)
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
   const selectedDispatchCase = liveQueue.find((entry) => entry.id === dispatchCaseId) ?? null;
+  const recommendedActions = useMemo(
+    () =>
+      buildPoliceRecommendedActions({
+        urgentCases: urgentCases.length,
+        unassignedOpenCases: unassignedOpenCases.length,
+        pendingAlerts: pendingAlerts.length,
+        pendingReferrals: pendingReferrals.length,
+        responseLoad,
+      }),
+    [pendingAlerts.length, pendingReferrals.length, responseLoad, unassignedOpenCases.length, urgentCases.length]
+  );
 
   const handleAcknowledgeAlert = async (alertId: string) => {
-    const { error } = await supabase
-      .from("alerts_feed")
-      .update({
-        status: "acknowledged",
-        acknowledged_at: new Date().toISOString(),
-        acknowledged_by: user?.id,
-      })
-      .eq("id", alertId);
-
-    if (!error) {
+    try {
+      await acknowledgePoliceAlert(alertId);
       await queryClient.invalidateQueries({ queryKey: ["aegis", "alertsFeed"] });
+      await queryClient.invalidateQueries({ queryKey: ["aegis", "policeAlertsFeed"] });
+    } catch {
+      // Keep failure silent in the dashboard shell; the queue will retry on refresh.
     }
   };
 
+  if (!isPolice) {
+    return (
+      <DashboardPage accent="rose">
+        <EmptyState
+          title="Police access required"
+          description="Your account does not have the required privileges to view the police operations dashboard."
+          actionLabel="Open command center"
+          onAction={() => setActiveModule("command_center")}
+        />
+      </DashboardPage>
+    );
+  }
 
   return (
     <DashboardPage accent="rose">
@@ -110,35 +223,66 @@ const PoliceDashboard: React.FC = () => {
           <CaseStatusLookup description="Use a case reference to verify the live report state before dispatch or escalation." />
         </SectionCard>
 
-        <SectionCard title="Operational posture" description="Live jurisdiction and workload summary.">
+        <SectionCard title="Operational posture" description="Live jurisdiction, workload, and sync summary.">
           <div className="grid gap-3 md:grid-cols-2">
             <ListItemCard title="Jurisdiction" subtitle={activeDepartment?.departmentName ?? organization?.name ?? "Regional response desk"} meta={<StatusPill tone="sky">{activeDepartment?.jurisdictionLevel ?? (organization?.region ? "regional" : "syncing")}</StatusPill>} />
             <ListItemCard title="Response load" subtitle="Priority pressure versus available officers" meta={<StatusPill tone={responseLoad > 70 ? "rose" : responseLoad > 40 ? "amber" : "emerald"}>{responseLoad}%</StatusPill>} />
+            <ListItemCard title="Coordination pressure" subtitle="Combined referral and alert backlog" meta={<StatusPill tone={coordinationPressure > 65 ? "rose" : coordinationPressure > 35 ? "amber" : "sky"}>{coordinationPressure}%</StatusPill>} />
+            <ListItemCard title="Median case age" subtitle="Typical age of active police work in the queue" meta={medianDaysOpen === null ? "--" : `${medianDaysOpen}d`} />
             <ListItemCard title="Session expiry" subtitle="Current secure access window" meta={sessionExpiry} />
             <ListItemCard title="Last case sync" subtitle="Most recent jurisdiction case refresh" meta={lastCaseUpdate ? formatRelativeDateTime(lastCaseUpdate) : "Awaiting first update"} />
-            <ListItemCard title="Coordination backlog" subtitle="Open inter-agency referrals" meta={pendingReferrals.length} />
+            <ListItemCard title="Unassigned cases" subtitle="Open work still waiting for an officer" meta={<StatusPill tone={unassignedOpenCases.length > 0 ? "amber" : "emerald"}>{unassignedOpenCases.length}</StatusPill>} />
           </div>
         </SectionCard>
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard title="Priority dispatch queue" description="Ranked by severity and last update.">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row">
+            <label className="flex-1">
+              <span className="sr-only">Search dispatch queue</span>
+              <input
+                aria-label="Search dispatch queue"
+                value={queueSearch}
+                onChange={(event) => setQueueSearch(event.target.value)}
+                placeholder="Search case, region, stage, or assignee"
+                className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
+              />
+            </label>
+            <label>
+              <span className="sr-only">Filter dispatch queue by priority</span>
+              <select
+                aria-label="Filter dispatch queue by priority"
+                value={queuePriorityFilter}
+                onChange={(event) => setQueuePriorityFilter(event.target.value)}
+                className="h-11 rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
+              >
+                <option value="all">All priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+          </div>
           <div className="space-y-3">
             {liveQueue.length === 0 ? (
-                <EmptyState
-                  title="Queue is clear"
-                  description="No active justice cases are currently available in your jurisdiction queue."
-                  guidance={[
-                    "New incidents appear here when they are routed into your response area and remain open for action.",
-                    "If dispatch was updated recently, wait for the next live sync before retrying.",
-                  ]}
-                />
-              ) : (
+              <EmptyState
+                title="Queue is clear"
+                description={filteredQueue.length === 0 && (queueSearch || queuePriorityFilter !== "all")
+                  ? "No queue items match the current search or priority filters."
+                  : "No active justice cases are currently available in your jurisdiction queue."}
+                guidance={[
+                  "New incidents appear here when they are routed into your response area and remain open for action.",
+                  "If dispatch was updated recently, wait for the next live sync before retrying.",
+                ]}
+              />
+            ) : (
               liveQueue.map((entry) => (
                 <ListItemCard
                   key={entry.id}
                   title={`Case ${entry.caseNumber}`}
-                  subtitle={`${entry.stage || "intake"} · ${entry.region || "region pending"} · updated ${formatRelativeDateTime(entry.updatedAt)}`}
+                  subtitle={`${entry.stage || "intake"} • ${entry.region || "region pending"} • updated ${formatRelativeDateTime(entry.updatedAt)}`}
                   meta={<StatusPill tone={entry.priority === "critical" ? "rose" : entry.priority === "high" ? "amber" : "sky"}>{entry.priority}</StatusPill>}
                   action={<Button size="sm" variant="outline" onClick={() => { setDispatchCaseId(entry.id); setIsDispatchDialogOpen(true); }} disabled={!permissions.canViewOrgData}>Dispatch</Button>}
                 />
@@ -150,20 +294,20 @@ const PoliceDashboard: React.FC = () => {
         <SectionCard title="Realtime alert queue" description="Alerts can be acknowledged directly from this board.">
           <div className="space-y-3">
             {pendingAlerts.length === 0 ? (
-                <EmptyState
-                  title="No unacknowledged alerts"
-                  description="The live alert queue is currently clear for your team."
-                  guidance={[
-                    "Field alerts will appear here when dispatch, intake, or partner systems flag something for police response.",
-                    "Acknowledged items drop out automatically after the live queue refreshes.",
-                  ]}
-                />
-              ) : (
+              <EmptyState
+                title="No unacknowledged alerts"
+                description="The live alert queue is currently clear for your team."
+                guidance={[
+                  "Field alerts will appear here when dispatch, intake, or partner systems flag something for police response.",
+                  "Acknowledged items drop out automatically after the live queue refreshes.",
+                ]}
+              />
+            ) : (
               pendingAlerts.slice(0, 5).map((entry) => (
                 <ListItemCard
                   key={entry.id}
                   title={entry.message}
-                  subtitle={`${entry.module || "core"} · ${entry.time}`}
+                  subtitle={`${entry.module || "core"} • ${entry.time}`}
                   meta={<StatusPill tone={entry.type === "critical" ? "rose" : "amber"}>{entry.type || "notice"}</StatusPill>}
                   action={<Button size="sm" variant="outline" onClick={() => void handleAcknowledgeAlert(entry.id)}>Acknowledge</Button>}
                 />
@@ -176,21 +320,21 @@ const PoliceDashboard: React.FC = () => {
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title="Partner coordination" description="Live outbound and inbound handoffs with NGOs and care teams.">
           <div className="space-y-3">
-            {referrals.length === 0 ? (
-                <EmptyState
-                  title="No coordination events"
-                  description="Inter-agency referrals will appear here in real time as cases are routed."
-                  guidance={[
-                    "Transfers to care teams and NGO partners will surface here as soon as a handoff is recorded.",
-                    "Use this section to confirm whether a case still needs partner follow-up.",
-                  ]}
-                />
-              ) : (
-              referrals.slice(0, 5).map((entry) => (
+            {sanitizedReferrals.length === 0 ? (
+              <EmptyState
+                title="No coordination events"
+                description="Inter-agency referrals will appear here in real time as cases are routed."
+                guidance={[
+                  "Transfers to care teams and NGO partners will surface here as soon as a handoff is recorded.",
+                  "Use this section to confirm whether a case still needs partner follow-up.",
+                ]}
+              />
+            ) : (
+              sanitizedReferrals.slice(0, 5).map((entry) => (
                 <ListItemCard
                   key={entry.id}
                   title={`Referral ${entry.caseId.slice(0, 8)}`}
-                  subtitle={`${entry.referralType} · ${formatRelativeDateTime(entry.createdAt)}`}
+                  subtitle={`${entry.referralType} • ${formatRelativeDateTime(entry.createdAt)}`}
                   meta={<StatusPill tone={entry.status === "completed" ? "emerald" : entry.status === "pending" ? "amber" : "sky"}>{entry.status}</StatusPill>}
                 />
               ))
@@ -198,12 +342,71 @@ const PoliceDashboard: React.FC = () => {
           </div>
         </SectionCard>
 
-        <SectionCard title="Jurisdiction health" description="Stage distribution across accessible police cases.">
-          <div className="grid gap-3 md:grid-cols-4">
-            <MetricCard label="Filed" value={jurisdictionCases.length} accent="slate" loading={isLoadingData} />
-            <MetricCard label="Investigation" value={jurisdictionCases.filter((entry) => entry.stage === "investigation").length} accent="sky" loading={isLoadingData} />
-            <MetricCard label="Prosecution" value={jurisdictionCases.filter((entry) => entry.stage === "prosecution").length} accent="indigo" loading={isLoadingData} />
-            <MetricCard label="Closed" value={jurisdictionCases.filter((entry) => ["closed", "resolved"].includes(entry.status.toLowerCase())).length} accent="emerald" loading={isLoadingData} />
+        <SectionCard title="Response trend" description="Recent queue movement across the jurisdiction.">
+          <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="h-[220px] rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={responseTrend}>
+                  <defs>
+                    <linearGradient id="police-opened" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="opened" stroke="#f43f5e" fill="url(#police-opened)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="active" stroke="#38bdf8" fillOpacity={0} strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid gap-3">
+              <ListItemCard title="Current queue" subtitle="Total jurisdiction cases in view" meta={jurisdictionCases.length} />
+              <ListItemCard title="Completed cases" subtitle="Cases closed or resolved" meta={<StatusPill tone="emerald">{completedCases.length}</StatusPill>} />
+              <ListItemCard title="Unassigned work" subtitle="Open cases without an officer" meta={<StatusPill tone={unassignedOpenCases.length > 0 ? "amber" : "emerald"}>{unassignedOpenCases.length}</StatusPill>} />
+              <ListItemCard title="Alert backlog" subtitle="Active police-facing alerts" meta={<StatusPill tone={pendingAlerts.length > 0 ? "rose" : "emerald"}>{pendingAlerts.length}</StatusPill>} />
+            </div>
+          </div>
+        </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Recommended actions" description="System-generated priorities for the current jurisdiction state.">
+          {recommendedActions.length === 0 ? (
+            <EmptyState
+              title="No urgent follow-up"
+              description="Critical queues are stable. Use this window to close residual admin work and verify recent incident updates."
+            />
+          ) : (
+            <PoliceRecommendedActionsList items={recommendedActions} onAction={setActiveModule} />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Officer availability" description="Estimated dispatch capacity based on active officers with current case assignments.">
+          <PoliceAvailabilityGrid items={officerAvailability} />
+        </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Stage aging" description="Spot stalled case stages before they become operational drag.">
+          {stageAging.length === 0 ? (
+            <EmptyState
+              title="No active stage aging"
+              description="Stage aging will appear here once jurisdiction cases remain open long enough to compare."
+            />
+          ) : (
+            <PoliceStageAgingList items={stageAging} />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Operator notes" description="Improvements already integrated into the police operations surface.">
+          <div className="space-y-3">
+            <ListItemCard title="Access is now enforced" subtitle="Non-police users are blocked from this dashboard instead of inheriting a partially functional view." />
+            <ListItemCard title="Queries are jurisdiction-gated" subtitle="Organization, department, officer, and case queries now wait for the right identity context before fetching." />
+            <ListItemCard title="Police alerts are backend-scoped" subtitle="The alert board now uses a police-access API endpoint and acknowledgements are written through an auditable backend route." />
+            <ListItemCard title="Queue controls are live" subtitle="Dispatch search, priority filters, stage aging, and response trend analytics are now integrated into the dashboard." />
           </div>
         </SectionCard>
       </section>

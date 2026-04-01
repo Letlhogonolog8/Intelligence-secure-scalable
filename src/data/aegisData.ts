@@ -259,6 +259,12 @@ export interface AdminDashboardConfigResponse {
   requestId?: string
 }
 
+export interface PoliceAlertFeedResponse {
+  alerts: AlertItem[]
+  generatedAt?: string
+  requestId?: string
+}
+
 export interface RegionIncidentType {
   type: string
   pct: number
@@ -1215,6 +1221,24 @@ const fetchAdminDashboardConfig = async (): Promise<AdminDashboardConfigResponse
   }
 }
 
+const fetchPoliceAlertsFeed = async (options?: FetchOptions): Promise<AlertItem[]> => {
+  const fallbackAlerts = await fetchAlertsFeed(options)
+
+  try {
+    const response = await apiClient.get<PoliceAlertFeedResponse>("/police/alerts", {
+      params: { limit: options?.limit },
+    })
+
+    return (response.data.alerts ?? []).map((row) => mapAlert(row as Record<string, unknown>))
+  } catch {
+    return fallbackAlerts
+  }
+}
+
+export const acknowledgePoliceAlert = async (alertId: string) => {
+  await apiClient.post(`/police/alerts/${alertId}/acknowledge`)
+}
+
 const fetchUserProfile = async (userId: string) => {
   if (!hasSupabase) return null as UserProfile | null
   const { data, error } = await supabase
@@ -1663,6 +1687,15 @@ export const useAlertsFeed = (options?: ListQueryOptions) => useRealtimeQuery(
   () => fetchAlertsFeed(options),
   { ...options, queryKey: [options?.limit, options?.offset] }
 )
+
+export const usePoliceAlertsFeed = (options?: ListQueryOptions) =>
+  useQuery({
+    queryKey: ["aegis", "policeAlertsFeed", options?.limit ?? "all", options?.offset ?? 0],
+    queryFn: () => fetchPoliceAlertsFeed(options),
+    enabled: options?.enabled ?? true,
+    staleTime: options?.staleTime,
+    refetchInterval: options?.refetchInterval,
+  })
 
 export const useContinentalStats = (options?: RealtimeQueryOptions) => useRealtimeQuery(
   "continentalStats",

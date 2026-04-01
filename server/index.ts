@@ -557,6 +557,18 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+function requirePoliceAccess(req: Request, res: Response, next: NextFunction): void {
+  const requestId = (req as AppRequest).id;
+  const role = (req as AppRequest).user?.role?.toLowerCase();
+
+  if (!role || !['police', 'admin'].includes(role)) {
+    res.status(403).json({ error: 'Police access required', requestId });
+    return;
+  }
+
+  next();
+}
+
 app.get('/health/live', (_req: Request, res: Response) => {
   res.json({ status: 'live', timestamp: new Date().toISOString() });
 });
@@ -726,6 +738,86 @@ app.get('/api/admin/dashboard-config', requireAuth, requireAdmin, (req: Request,
     generatedAt: new Date().toISOString(),
     requestId,
   });
+});
+
+app.get('/api/police/alerts', requireAuth, requirePoliceAccess, async (req: Request, res: Response) => {
+  try {
+    const requestId = (req as AppRequest).id;
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '12'), 10) || 12, 1), 50);
+
+    const { data, error } = await supabase
+      .from('alerts_feed')
+      .select('id,time,type,message,module,status,created_at,acknowledged_at,acknowledged_by')
+      .neq('status', 'acknowledged')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      alerts: data ?? [],
+      requestId,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    const requestId = (req as AppRequest).id;
+    logger.error('Failed to retrieve police alerts', error, {}, requestId);
+    res.status(500).json({ error: 'Failed to retrieve police alerts', requestId });
+  }
+});
+
+app.post('/api/police/alerts/:alertId/acknowledge', requireAuth, requirePoliceAccess, async (req: Request, res: Response) => {
+  try {
+    const requestId = (req as AppRequest).id;
+    const userId = (req as AppRequest).user!.id;
+    const { alertId } = req.params;
+
+    const { data, error } = await supabase
+      .from('alerts_feed')
+      .update({
+        status: 'acknowledged',
+        acknowledged_at: new Date().toISOString(),
+        acknowledged_by: userId,
+      })
+      .eq('id', alertId)
+      .select('id,message,module,type,status')
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      res.status(404).json({ error: 'Alert not found', requestId });
+      return;
+    }
+
+    await auditLogService.log({
+      userId,
+      action: 'police_alert_acknowledged',
+      module: 'police_operations',
+      resourceId: alertId,
+      resourceType: 'alert',
+      status: 'success',
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || '',
+      metadata: {
+        alertType: data.type,
+        alertModule: data.module,
+        alertMessage: data.message,
+        requestId,
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({ alert: data, requestId });
+  } catch (error) {
+    const requestId = (req as AppRequest).id;
+    logger.error('Failed to acknowledge police alert', error, {}, requestId);
+    res.status(500).json({ error: 'Failed to acknowledge police alert', requestId });
+  }
 });
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
