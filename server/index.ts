@@ -33,13 +33,16 @@ import {
   escalationLimiter, 
   mfaLimiter,
   closeRedisClient,
+  getRateLimitStoreStatus,
+  initializeRateLimiting,
   getRedisClient
 } from './middleware/rateLimiting';
 import { ErrorTrackingService, setupGlobalErrorHandlers } from './observability/errorTracking';
 import { closeDatadog, initializeDatadog, trackTiming } from './utils/datadog';
 import { ADMIN_DASHBOARD_CONFIG } from './config/adminDashboardConfig';
 
-dotenv.config({ override: true });
+dotenv.config();
+const rateLimitingInitialization = initializeRateLimiting();
 
 const logger = createLogger('aegis-api');
 const errorTracking = new ErrorTrackingService();
@@ -333,31 +336,24 @@ async function getReadinessStatus(): Promise<{
     }
   }
 
-  if (isRedisConfigured()) {
-    const redisClient = getRedisClient();
-
-    try {
-      if (!redisClient?.isOpen) {
-        throw new Error('Redis client is not connected');
-      }
-
-      await withTimeout(redisClient.ping(), 2000, 'Redis readiness check timed out');
-      services.redis = 'ready';
-    } catch (error) {
-      ready = false;
-      services.redis = {
-        status: 'unavailable',
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  } else {
-    services.redis = 'not_configured';
-  }
-
   const websocketStatus = wsManager.getHealthStatus();
+  const rateLimitStatus = getRateLimitStoreStatus();
+
+  services.redis = {
+    configured: isRedisConfigured(),
+    websocket: websocketStatus.redisConfigured
+      ? (websocketStatus.adapterReady ? 'ready' : 'unavailable')
+      : 'not_configured',
+    rateLimiting: rateLimitStatus,
+  };
   services.websocket = websocketStatus;
+  services.rateLimiting = rateLimitStatus;
 
   if (websocketStatus.redisConfigured && !websocketStatus.adapterReady) {
+    ready = false;
+  }
+
+  if (rateLimitStatus.enabled && !rateLimitStatus.connected) {
     ready = false;
   }
 
@@ -568,6 +564,10 @@ function requirePoliceAccess(req: Request, res: Response, next: NextFunction): v
 
   next();
 }
+
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 app.get('/health/live', (_req: Request, res: Response) => {
   res.json({ status: 'live', timestamp: new Date().toISOString() });
@@ -1133,6 +1133,7 @@ if (process.env.NODE_ENV === 'production' && process.env.SSL_CERT_PATH && proces
 }
 
 async function startServer(): Promise<void> {
+  await rateLimitingInitialization;
   await wsManager.initializeScaling();
   startNotificationWorker();
 
@@ -1146,6 +1147,8 @@ async function startServer(): Promise<void> {
     server.listen(PORT, () => {
       server.off('error', handleError);
       const protocol = server instanceof https.Server ? 'HTTPS' : 'HTTP';
+      const websocketStatus = wsManager.getHealthStatus();
+      const rateLimitStatus = getRateLimitStoreStatus();
       logger.info('AEGIS-AI server startup', {
         port: PORT,
         protocol,
@@ -1155,8 +1158,9 @@ async function startServer(): Promise<void> {
           mfa: 'TOTP + Backup codes',
           auditLogging: 'Immutable blockchain-style',
           eventBus: 'Active',
-          webSocket: wsManager.getHealthStatus().adapter === 'redis' ? 'Redis adapter enabled' : 'Local adapter enabled',
-          rateLimiting: 'Redis-backed',
+          webSocket: websocketStatus.adapter === 'redis' ? 'Redis adapter enabled' : 'Local adapter enabled',
+          rateLimiting: rateLimitStatus.store === 'redis' ? 'Redis-backed' : 'In-memory',
+          rateLimitingReason: rateLimitStatus.reason,
           sessionManagement: 'JWT with refresh tokens',
           notificationWorker: 'Active',
         },
