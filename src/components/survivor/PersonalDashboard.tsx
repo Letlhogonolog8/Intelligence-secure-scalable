@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useAlertsFeed, useUserProfile } from "@/data/aegisData";
 import { Card } from "@/components/ui/card";
@@ -18,26 +18,89 @@ const PersonalDashboard: React.FC = () => {
   });
   const [refreshing, setRefreshing] = useState(false);
 
-  const displayName = profile?.full_name || profile?.fullName || profile?.name || "Survivor";
-  const recentUpdates = dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4);
+  const displayName = useMemo(
+    () => profile?.full_name || profile?.fullName || profile?.name || "Survivor",
+    [profile?.full_name, profile?.fullName, profile?.name]
+  );
 
-  const handleOpenSupport = () => {
+  const recentUpdates = useMemo(
+    () => dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
+    [alertsFeed]
+  );
+
+  const handleOpenSupport = useCallback(() => {
     setActiveModule("survivor_support");
-  };
+  }, [setActiveModule]);
 
-  const handleCallHotline = () => {
+  const handleCallHotline = useCallback(() => {
     window.location.href = "tel:+2710111";
-  };
+  }, []);
 
-  const handleMessageContact = () => {
+  const handleMessageContact = useCallback(() => {
     setActiveModule("survivor_support");
-  };
+  }, [setActiveModule]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetchAlerts();
-    setRefreshing(false);
-  };
+    try {
+      await refetchAlerts();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchAlerts]);
+
+  const overviewCards = useMemo(
+    () => [
+      {
+        title: "Safety Plan",
+        loadingContent: (
+          <>
+            <Skeleton className="h-7 w-32 bg-slate-800/60" />
+            <Skeleton className="mt-4 h-9 w-28 bg-slate-800/60" />
+          </>
+        ),
+        content: (
+          <>
+            <p className="text-xl font-bold text-emerald-400">Active</p>
+            <Button size="sm" className="mt-4 border-white/10 text-white" variant="outline" onClick={handleOpenSupport}>
+              Review Plan
+            </Button>
+          </>
+        ),
+      },
+      {
+        title: "Next Appointment",
+        loadingContent: (
+          <>
+            <Skeleton className="h-7 w-24 bg-slate-800/60" />
+            <Skeleton className="mt-2 h-3 w-32 bg-slate-800/60" />
+          </>
+        ),
+        content: (
+          <>
+            <p className="text-xl font-bold text-slate-500 italic">None Scheduled</p>
+            <p className="text-sm text-slate-400 mt-2">Check back later</p>
+          </>
+        ),
+      },
+      {
+        title: "Documents",
+        loadingContent: (
+          <>
+            <Skeleton className="h-7 w-28 bg-slate-800/60" />
+            <Skeleton className="mt-2 h-3 w-32 bg-slate-800/60" />
+          </>
+        ),
+        content: (
+          <>
+            <p className="text-xl font-bold text-white">0 Files</p>
+            <p className="text-sm text-slate-300 mt-2">Encrypted Vault</p>
+          </>
+        ),
+      },
+    ],
+    [handleOpenSupport]
+  );
 
   return (
     <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
@@ -66,58 +129,14 @@ const PersonalDashboard: React.FC = () => {
         </section>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
-            <div className="p-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Safety Plan</p>
-              {isLoading ? (
-                <>
-                  <Skeleton className="h-7 w-32 bg-slate-800/60" />
-                  <Skeleton className="mt-4 h-9 w-28 bg-slate-800/60" />
-                </>
-              ) : (
-                <>
-                  <p className="text-xl font-bold text-emerald-400">Active</p>
-                  <Button size="sm" className="mt-4 border-white/10 text-white" variant="outline" onClick={handleOpenSupport}>
-                    Review Plan
-                  </Button>
-                </>
-              )}
-            </div>
-          </Card>
-
-          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
-            <div className="p-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Next Appointment</p>
-              {isLoading ? (
-                <>
-                  <Skeleton className="h-7 w-24 bg-slate-800/60" />
-                  <Skeleton className="mt-2 h-3 w-32 bg-slate-800/60" />
-                </>
-              ) : (
-                <>
-                  <p className="text-xl font-bold text-slate-500 italic">None Scheduled</p>
-                  <p className="text-sm text-slate-400 mt-2">Check back later</p>
-                </>
-              )}
-            </div>
-          </Card>
-
-          <Card className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
-            <div className="p-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Documents</p>
-              {isLoading ? (
-                <>
-                  <Skeleton className="h-7 w-28 bg-slate-800/60" />
-                  <Skeleton className="mt-2 h-3 w-32 bg-slate-800/60" />
-                </>
-              ) : (
-                <>
-                  <p className="text-xl font-bold text-white">0 Files</p>
-                  <p className="text-sm text-slate-300 mt-2">Encrypted Vault</p>
-                </>
-              )}
-            </div>
-          </Card>
+          {overviewCards.map((card) => (
+            <Card key={card.title} className="border-white/15 bg-slate-950/70 shadow-xl backdrop-blur-sm">
+              <div className="p-5">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">{card.title}</p>
+                {isLoading ? card.loadingContent : card.content}
+              </div>
+            </Card>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
