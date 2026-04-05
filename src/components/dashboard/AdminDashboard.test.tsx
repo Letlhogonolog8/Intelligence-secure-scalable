@@ -13,6 +13,15 @@ const mockUseAuditLogs = vi.fn();
 const mockUseAdminDashboardConfig = vi.fn();
 const mockUseEscalationReviews = vi.fn();
 const mockUseDeletionRequests = vi.fn();
+const mockUseQueryClient = vi.fn();
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-query")>("@tanstack/react-query");
+  return {
+    ...actual,
+    useQueryClient: () => mockUseQueryClient(),
+  };
+});
 
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => mockUseAuth(),
@@ -20,6 +29,10 @@ vi.mock("@/hooks/use-auth", () => ({
 
 vi.mock("@/store/appStore", () => ({
   useAppStore: () => mockUseAppStore(),
+}));
+
+vi.mock("@/hooks/useDocumentVisibility", () => ({
+  useDocumentVisibility: () => true,
 }));
 
 vi.mock("@/data/liveDashboardData", () => ({
@@ -53,24 +66,53 @@ vi.mock("recharts", () => ({
 
 describe("AdminDashboard", () => {
   beforeEach(() => {
+    mockUseQueryClient.mockReturnValue({
+      invalidateQueries: vi.fn().mockResolvedValue(undefined),
+    });
     mockUseAuth.mockReturnValue({ user: { id: "admin-1" } });
     mockUseAppStore.mockReturnValue({ setActiveModule: vi.fn() });
-    mockUseUserProfile.mockReturnValue({ data: { role: "admin" } });
-    mockUseLiveUserProfiles.mockReturnValue({ data: [], isLoading: false });
+    mockUseUserProfile.mockReturnValue({ data: { role: "admin" }, isLoading: false, error: null, refetch: vi.fn() });
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
+    mockUseLiveUserProfiles.mockReturnValue({ ...idle, data: [] });
     mockUseSystemMetrics.mockReturnValue({
+      ...idle,
       data: { systemUptime: 99, encryptionStatus: "active", apiRequestsToday: 1234, dataPointsProcessed: "50k", activeAlerts: 0 },
-      isLoading: false,
     });
-    mockUseIncidentTimeSeries.mockReturnValue({ data: [{ date: "2026-03-20", value: 4 }, { date: "2026-03-21", value: 5 }], isLoading: false });
-    mockUseAlertsFeed.mockReturnValue({ data: [], isLoading: false });
-    mockUseAuditLogs.mockReturnValue({ data: [], isLoading: false });
-    mockUseAdminDashboardConfig.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseEscalationReviews.mockReturnValue({ data: [], isLoading: false });
-    mockUseDeletionRequests.mockReturnValue({ data: [], isLoading: false });
+    mockUseIncidentTimeSeries.mockReturnValue({
+      ...idle,
+      data: [{ date: "2026-03-20", value: 4 }, { date: "2026-03-21", value: 5 }],
+    });
+    mockUseAlertsFeed.mockReturnValue({ ...idle, data: [] });
+    mockUseAuditLogs.mockReturnValue({ ...idle, data: [] });
+    mockUseAdminDashboardConfig.mockReturnValue({ ...idle, data: undefined });
+    mockUseEscalationReviews.mockReturnValue({ ...idle, data: [] });
+    mockUseDeletionRequests.mockReturnValue({ ...idle, data: [] });
+  });
+
+  it("shows a loading skeleton while the administrator profile is loading", () => {
+    mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: true, error: null, refetch: vi.fn() });
+
+    const { container } = render(<AdminDashboard />);
+
+    expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(screen.getByLabelText("Loading admin dashboard")).toBeInTheDocument();
+  });
+
+  it("shows profile error state when the administrator profile fails to load", () => {
+    mockUseUserProfile.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("network"),
+      refetch: vi.fn(),
+    });
+
+    render(<AdminDashboard />);
+
+    expect(screen.getByText("Unable to load administrator profile")).toBeInTheDocument();
   });
 
   it("blocks non-admin users from the oversight console", () => {
-    mockUseUserProfile.mockReturnValue({ data: { role: "survivor" } });
+    mockUseUserProfile.mockReturnValue({ data: { role: "survivor" }, isLoading: false, error: null, refetch: vi.fn() });
 
     render(<AdminDashboard />);
 
@@ -79,7 +121,13 @@ describe("AdminDashboard", () => {
   });
 
   it("shows live-data guidance when admin sources are empty", () => {
-    mockUseIncidentTimeSeries.mockReturnValue({ data: [], isLoading: false });
+    mockUseIncidentTimeSeries.mockReturnValue({
+      data: [],
+      isPending: false,
+      isFetching: false,
+      error: null,
+      refetch: vi.fn(),
+    });
 
     render(<AdminDashboard />);
 
@@ -92,21 +140,22 @@ describe("AdminDashboard", () => {
   });
 
   it("renders admin metrics from live user and alert data", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
     mockUseLiveUserProfiles.mockReturnValue({
+      ...idle,
       data: [
         { id: "1", role: "admin", isActive: true, approvalStatus: "approved" },
         { id: "2", role: "analyst", isActive: true, approvalStatus: "pending" },
         { id: "3", role: "police", isActive: false, approvalStatus: "approved" },
       ],
-      isLoading: false,
     });
     mockUseAlertsFeed.mockReturnValue({
+      ...idle,
       data: [{ id: "a1", type: "critical", message: "Data drift detected", module: "governance", time: "now" }],
-      isLoading: false,
     });
     mockUseAuditLogs.mockReturnValue({
+      ...idle,
       data: [{ time: "2026-03-20T10:00:00Z", action: "Role updated", module: "identity", user: "Admin", severity: "warning" }],
-      isLoading: false,
     });
 
     render(<AdminDashboard />);
@@ -122,13 +171,14 @@ describe("AdminDashboard", () => {
   });
 
   it("normalizes audit and alert inputs before rendering admin operational widgets", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
     mockUseAlertsFeed.mockReturnValue({
+      ...idle,
       data: [{ id: "a1", type: "CRITICAL", message: "Policy drift", module: null, time: null }],
-      isLoading: false,
     });
     mockUseAuditLogs.mockReturnValue({
+      ...idle,
       data: [{ time: "2026-03-20T10:00:00Z", action: "Permission reviewed", module: null, user: null, severity: "ERROR" }],
-      isLoading: false,
     });
 
     render(<AdminDashboard />);
@@ -139,7 +189,9 @@ describe("AdminDashboard", () => {
   });
 
   it("applies backend-provided thresholds and refresh intervals", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
     mockUseAdminDashboardConfig.mockReturnValue({
+      ...idle,
       data: {
         thresholds: {
           pendingApprovalsWarning: 1,
@@ -153,23 +205,22 @@ describe("AdminDashboard", () => {
           auditMs: 60000,
         },
       },
-      isLoading: false,
     });
     mockUseLiveUserProfiles.mockReturnValue({
+      ...idle,
       data: [{ id: "1", role: "analyst", isActive: true, approvalStatus: "pending" }],
-      isLoading: false,
     });
     mockUseSystemMetrics.mockReturnValue({
+      ...idle,
       data: { systemUptime: 70, encryptionStatus: "inactive", apiRequestsToday: 1234, dataPointsProcessed: "50k", activeAlerts: 1 },
-      isLoading: false,
     });
     mockUseAlertsFeed.mockReturnValue({
+      ...idle,
       data: [{ id: "a1", type: "critical", message: "Backlog pressure", module: "governance", time: "now" }],
-      isLoading: false,
     });
     mockUseDeletionRequests.mockReturnValue({
+      ...idle,
       data: [{ id: "d1", status: "pending" }],
-      isLoading: false,
     });
 
     render(<AdminDashboard />);

@@ -1,4 +1,5 @@
-﻿import { useDeferredValue, useMemo, useState } from "react";
+﻿import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useAlertsFeed,
   useAuditLogs,
@@ -11,6 +12,8 @@ import {
 } from "@/data/aegisData";
 import { useLiveUserProfiles } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import {
   DashboardHero,
   DashboardPage,
@@ -30,6 +33,8 @@ import {
 } from "@/components/dashboard/AdminOperationalWidgets";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
+import { useDocumentVisibility } from "@/hooks/useDocumentVisibility";
+import { AdminQueryErrorBanner } from "@/components/dashboard/AdminQueryErrorBanner";
 import { buildWeeklyLifecycle, dedupeBy, formatRelativeDateTime, percent } from "@/lib/dashboardMetrics";
 import {
   buildAdminFeedHealth,
@@ -50,29 +55,134 @@ const severityTone = {
   info: "slate",
 } as const;
 
+const AUDIT_PAGE_SIZE = 6;
+
+const formatQueryError = (error: unknown) => (error instanceof Error ? error.message : "Request failed");
+
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const { setActiveModule } = useAppStore();
-  const { data: profile } = useUserProfile(user?.id);
+  const queryClient = useQueryClient();
+  const chartGradientId = useId();
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useUserProfile(user?.id);
   const isAdmin = profile?.role === "admin";
-  const { data: adminDashboardConfig } = useAdminDashboardConfig({ enabled: isAdmin });
+  const documentVisible = useDocumentVisibility();
+  const { data: adminDashboardConfig, error: adminConfigError, refetch: refetchAdminConfig } = useAdminDashboardConfig({ enabled: isAdmin });
   const refreshIntervals = adminDashboardConfig?.refresh ?? ADMIN_DASHBOARD_REFRESH_INTERVALS;
   const adminThresholds = adminDashboardConfig?.thresholds ?? ADMIN_DASHBOARD_THRESHOLDS;
 
-  const { data: users = [], isLoading: usersLoading } = useLiveUserProfiles({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: refreshIntervals.metricsMs, limit: 250 });
-  const { data: systemMetrics, isLoading: metricsLoading } = useSystemMetrics({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: refreshIntervals.metricsMs });
-  const { data: incidentTimeSeries = [], isLoading: incidentsLoading } = useIncidentTimeSeries({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: refreshIntervals.metricsMs });
-  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ enabled: isAdmin, staleTime: refreshIntervals.alertsMs, refetchInterval: refreshIntervals.alertsMs, limit: 12 });
-  const { data: auditLogs = [], isLoading: auditLoading } = useAuditLogs({ enabled: isAdmin, staleTime: refreshIntervals.auditMs, refetchInterval: refreshIntervals.auditMs, limit: 24 });
-  const { data: escalationReviews = [], isLoading: escalationsLoading } = useEscalationReviews({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: refreshIntervals.metricsMs, limit: 20 });
-  const { data: deletionRequests = [], isLoading: deletionsLoading } = useDeletionRequests({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: refreshIntervals.metricsMs, limit: 20 });
+  const metricsInterval = useMemo(
+    () => (documentVisible ? refreshIntervals.metricsMs : false),
+    [documentVisible, refreshIntervals.metricsMs]
+  );
+  const alertsInterval = useMemo(
+    () => (documentVisible ? refreshIntervals.alertsMs : false),
+    [documentVisible, refreshIntervals.alertsMs]
+  );
+  const auditInterval = useMemo(
+    () => (documentVisible ? refreshIntervals.auditMs : false),
+    [documentVisible, refreshIntervals.auditMs]
+  );
+
+  const {
+    data: users = [],
+    isPending: usersPending,
+    isFetching: usersFetching,
+    error: usersError,
+    refetch: refetchUsers,
+  } = useLiveUserProfiles({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.metricsMs,
+    refetchInterval: metricsInterval,
+    limit: 250,
+  });
+  const {
+    data: systemMetrics,
+    isPending: metricsPending,
+    isFetching: metricsFetching,
+    error: metricsError,
+    refetch: refetchMetrics,
+  } = useSystemMetrics({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval });
+  const {
+    data: incidentTimeSeries = [],
+    isPending: incidentsPending,
+    isFetching: incidentsFetching,
+    error: incidentsError,
+    refetch: refetchIncidents,
+  } = useIncidentTimeSeries({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval });
+  const {
+    data: alertsFeed = [],
+    isPending: alertsPending,
+    isFetching: alertsFetching,
+    error: alertsError,
+    refetch: refetchAlerts,
+  } = useAlertsFeed({ enabled: isAdmin, staleTime: refreshIntervals.alertsMs, refetchInterval: alertsInterval, limit: 12 });
+  const {
+    data: auditLogs = [],
+    isPending: auditPending,
+    isFetching: auditFetching,
+    error: auditError,
+    refetch: refetchAuditLogs,
+  } = useAuditLogs({ enabled: isAdmin, staleTime: refreshIntervals.auditMs, refetchInterval: auditInterval, limit: 24 });
+  const {
+    data: escalationReviews = [],
+    isPending: escalationsPending,
+    isFetching: escalationsFetching,
+    error: escalationsError,
+    refetch: refetchEscalations,
+  } = useEscalationReviews({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval, limit: 20 });
+  const {
+    data: deletionRequests = [],
+    isPending: deletionsPending,
+    isFetching: deletionsFetching,
+    error: deletionsError,
+    refetch: refetchDeletions,
+  } = useDeletionRequests({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval, limit: 20 });
 
   const [auditSearch, setAuditSearch] = useState("");
   const [auditSeverity, setAuditSeverity] = useState<string>("all");
-  const [auditExpanded, setAuditExpanded] = useState(false);
+  const [auditDisplayLimit, setAuditDisplayLimit] = useState(AUDIT_PAGE_SIZE);
+  const [refreshingData, setRefreshingData] = useState(false);
   const deferredAuditSearch = useDeferredValue(auditSearch);
 
-  const isLoadingData = usersLoading || metricsLoading || incidentsLoading || alertsLoading || auditLoading || escalationsLoading || deletionsLoading;
+  useEffect(() => {
+    setAuditDisplayLimit(AUDIT_PAGE_SIZE);
+  }, [deferredAuditSearch, auditSeverity]);
+
+  const handleRefreshDashboardData = useCallback(async () => {
+    setRefreshingData(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["aegis"] }),
+        queryClient.invalidateQueries({ queryKey: ["live-dashboard", "userProfiles"] }),
+      ]);
+    } finally {
+      setRefreshingData(false);
+    }
+  }, [queryClient]);
+
+  const isInitialDashboardPending =
+    usersPending ||
+    metricsPending ||
+    incidentsPending ||
+    alertsPending ||
+    auditPending ||
+    escalationsPending ||
+    deletionsPending;
+
+  const isFetchingAdminData =
+    usersFetching ||
+    metricsFetching ||
+    incidentsFetching ||
+    alertsFetching ||
+    auditFetching ||
+    escalationsFetching ||
+    deletionsFetching;
   const sanitizedIncidentSeries = useMemo(() => normalizeAdminIncidentSeries(incidentTimeSeries), [incidentTimeSeries]);
   const sanitizedAuditLogs = useMemo(() => normalizeAdminAuditLogs(auditLogs), [auditLogs]);
   const sanitizedAlerts = useMemo(() => normalizeAdminAlerts(alertsFeed), [alertsFeed]);
@@ -106,7 +216,7 @@ const AdminDashboard: React.FC = () => {
     });
   }, [sanitizedAuditLogs, deferredAuditSearch, auditSeverity]);
 
-  const visibleAuditFeed = useMemo(() => auditFeed.slice(0, auditExpanded ? 12 : 6), [auditExpanded, auditFeed]);
+  const visibleAuditFeed = useMemo(() => auditFeed.slice(0, auditDisplayLimit), [auditDisplayLimit, auditFeed]);
 
   const incidentTrend = useMemo(() => {
     const latest = sanitizedIncidentSeries[sanitizedIncidentSeries.length - 1]?.value ?? 0;
@@ -218,6 +328,44 @@ const AdminDashboard: React.FC = () => {
     [criticalAlerts.length, pendingApprovals.length, pendingDeletionRequests.length, setActiveModule, unresolvedEscalations.length]
   );
 
+  if (profileLoading) {
+    return (
+      <DashboardPage accent="sky">
+        <section className="rounded-3xl border border-white/15 bg-slate-950/75 p-6 shadow-xl backdrop-blur-xl sm:p-8" aria-busy="true" aria-label="Loading admin dashboard">
+          <Skeleton className="mb-4 h-4 w-40 rounded-full bg-slate-800/80" />
+          <Skeleton className="mb-3 h-9 w-full max-w-lg bg-slate-800/80" />
+          <Skeleton className="h-5 w-full max-w-2xl bg-slate-800/70" />
+          <div className="mt-8 flex flex-wrap gap-2">
+            <Skeleton className="h-7 w-36 rounded-full bg-slate-800/70" />
+            <Skeleton className="h-7 w-44 rounded-full bg-slate-800/70" />
+          </div>
+        </section>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((key) => (
+            <div key={key} className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
+              <Skeleton className="h-3 w-24 bg-slate-800/70" />
+              <Skeleton className="mt-4 h-8 w-16 bg-slate-800/80" />
+              <Skeleton className="mt-2 h-3 w-full max-w-[180px] bg-slate-800/60" />
+            </div>
+          ))}
+        </div>
+      </DashboardPage>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <DashboardPage accent="sky">
+        <ErrorState
+          variant="card"
+          title="Unable to load administrator profile"
+          message="Your session profile could not be loaded. Check connectivity and try again."
+          onRetry={() => void refetchProfile()}
+        />
+      </DashboardPage>
+    );
+  }
+
   if (!isAdmin) {
     return (
       <DashboardPage accent="sky">
@@ -241,27 +389,54 @@ const AdminDashboard: React.FC = () => {
           <HeroBadge key="posture" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200">{securityPosture}% security posture</HeroBadge>,
           <HeroBadge key="approvals" className="border-amber-500/20 bg-amber-500/10 text-amber-200">{pendingApprovals.length} pending approvals</HeroBadge>,
           <HeroBadge key="alerts" className="border-rose-500/20 bg-rose-500/10 text-rose-200">{criticalAlerts.length} critical alerts</HeroBadge>,
+          ...(isFetchingAdminData && !isInitialDashboardPending && documentVisible
+            ? [<HeroBadge key="sync" className="border-cyan-500/20 bg-cyan-500/10 text-cyan-200">Syncing live data…</HeroBadge>]
+            : []),
         ]}
         actions={
           <>
-            <Button variant="outline" onClick={() => setActiveModule("reporting")}>Export reporting</Button>
+            <Button
+              variant="outline"
+              onClick={handleRefreshDashboardData}
+              disabled={refreshingData}
+              aria-busy={refreshingData}
+            >
+              {refreshingData ? "Refreshing…" : "Refresh data"}
+            </Button>
+            <Button variant="outline" onClick={() => setActiveModule("reporting")}>
+              Export reporting
+            </Button>
             <Button onClick={() => setActiveModule("admin_console")}>Open admin console</Button>
           </>
         }
       />
 
+      {adminConfigError ? (
+        <AdminQueryErrorBanner
+          title="Dashboard configuration unavailable"
+          message={formatQueryError(adminConfigError)}
+          onRetry={() => void refetchAdminConfig()}
+        />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active users" value={activeUsers.length} helper={`${users.length} profiles tracked`} accent="sky" loading={isLoadingData} />
-        <MetricCard label="Privileged queue" value={pendingApprovals.length} helper="Awaiting access approval" accent="amber" loading={isLoadingData} />
-        <MetricCard label="Critical alerts" value={criticalAlerts.length} helper={incidentTrendLabel} accent="rose" loading={isLoadingData} />
-        <MetricCard label="Deletion requests" value={pendingDeletionRequests.length} helper={`${unresolvedEscalations.length} unresolved escalations`} accent="indigo" loading={isLoadingData} />
+        <MetricCard label="Active users" value={activeUsers.length} helper={`${users.length} profiles tracked`} accent="sky" loading={isInitialDashboardPending} />
+        <MetricCard label="Privileged queue" value={pendingApprovals.length} helper="Awaiting access approval" accent="amber" loading={isInitialDashboardPending} />
+        <MetricCard label="Critical alerts" value={criticalAlerts.length} helper={incidentTrendLabel} accent="rose" loading={isInitialDashboardPending} />
+        <MetricCard label="Deletion requests" value={pendingDeletionRequests.length} helper={`${unresolvedEscalations.length} unresolved escalations`} accent="indigo" loading={isInitialDashboardPending} />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <SectionCard
           title="Priority board"
           description="Triage the most urgent admin queues before moving into deeper analysis."
-          action={<StatusPill tone="sky">Alerts {Math.round(refreshIntervals.alertsMs / 1000)}s • Metrics {Math.round(refreshIntervals.metricsMs / 1000)}s</StatusPill>}
+          action={
+            <StatusPill tone="sky">
+              {documentVisible
+                ? `Alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s • Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s`
+                : "Polling paused (tab hidden)"}
+            </StatusPill>
+          }
         >
           <div className="grid gap-3 md:grid-cols-2">
             {priorityBoard.map((item) => (
@@ -277,6 +452,13 @@ const AdminDashboard: React.FC = () => {
         </SectionCard>
 
         <SectionCard title="Operator snapshot" description="A compact read on posture, throughput, and current workload.">
+          {metricsError ? (
+            <AdminQueryErrorBanner
+              title="System metrics unavailable"
+              message={formatQueryError(metricsError)}
+              onRetry={() => void refetchMetrics()}
+            />
+          ) : null}
           <div className="grid gap-3">
             <ListItemCard title="System uptime" subtitle="Latest recorded service posture" meta={<StatusPill tone="emerald">{systemMetrics?.systemUptime ?? 0}%</StatusPill>} />
             <ListItemCard title="API requests today" subtitle="Live platform usage" meta={systemMetrics?.apiRequestsToday ?? 0} />
@@ -289,13 +471,24 @@ const AdminDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard title="Governance telemetry" description="Latest system throughput and governance event activity.">
+          {incidentsError ? (
+            <AdminQueryErrorBanner
+              title="Incident telemetry unavailable"
+              message={formatQueryError(incidentsError)}
+              onRetry={() => void refetchIncidents()}
+            />
+          ) : null}
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             {sanitizedIncidentSeries.length > 0 ? (
-              <div className="h-[280px] rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+              <div
+                className="h-[280px] rounded-2xl border border-white/10 bg-slate-900/70 p-4"
+                role="img"
+                aria-label="Governance incident signal over time"
+              >
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sanitizedIncidentSeries}>
+                  <AreaChart data={sanitizedIncidentSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="admin-incident" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id={chartGradientId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
                         <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
                       </linearGradient>
@@ -303,8 +496,12 @@ const AdminDashboard: React.FC = () => {
                     <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
                     <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="value" stroke="#38bdf8" fill="url(#admin-incident)" strokeWidth={2} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "12px" }}
+                      labelStyle={{ color: "#e2e8f0" }}
+                      itemStyle={{ color: "#38bdf8" }}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="#38bdf8" fill={`url(#${chartGradientId})`} strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -328,6 +525,13 @@ const AdminDashboard: React.FC = () => {
         </SectionCard>
 
         <SectionCard title="Identity & role mix" description="Real-time role distribution and access posture.">
+          {usersError ? (
+            <AdminQueryErrorBanner
+              title="User directory unavailable"
+              message={formatQueryError(usersError)}
+              onRetry={() => void refetchUsers()}
+            />
+          ) : null}
           <div className="space-y-3">
             {roleDistribution.length === 0 ? (
               <EmptyState
@@ -370,6 +574,22 @@ const AdminDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionCard title="Attention matrix" description="At-a-glance view of where intervention is most likely needed next.">
+          {escalationsError || deletionsError ? (
+            <AdminQueryErrorBanner
+              title="Queue data partially unavailable"
+              message={
+                escalationsError && deletionsError
+                  ? `Escalations: ${formatQueryError(escalationsError)} · Deletion requests: ${formatQueryError(deletionsError)}`
+                  : escalationsError
+                    ? formatQueryError(escalationsError)
+                    : formatQueryError(deletionsError!)
+              }
+              onRetry={() => {
+                void refetchEscalations();
+                void refetchDeletions();
+              }}
+            />
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <ListItemCard title="Approvals" subtitle="Privileged identities waiting for enablement" meta={<StatusPill tone="amber">{pendingApprovals.length}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("admin_console")}>Review</Button>} />
             <ListItemCard title="Escalations" subtitle="Risk cases still open in oversight" meta={<StatusPill tone="rose">{unresolvedEscalations.length}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("justice")}>Open queue</Button>} />
@@ -387,8 +607,15 @@ const AdminDashboard: React.FC = () => {
         <SectionCard
           title="Audit trail"
           description="Realtime log stream filtered by severity and search."
-          action={auditFeed.length > 6 ? <StatusPill tone="sky">{auditFeed.length} matches</StatusPill> : undefined}
+          action={auditFeed.length > 0 ? <StatusPill tone="sky">{auditFeed.length} matches</StatusPill> : undefined}
         >
+          {auditError ? (
+            <AdminQueryErrorBanner
+              title="Audit log unavailable"
+              message={formatQueryError(auditError)}
+              onRetry={() => void refetchAuditLogs()}
+            />
+          ) : null}
           <div className="mb-4 flex flex-col gap-3 md:flex-row">
             <label className="flex-1">
               <span className="sr-only">Search audit trail</span>
@@ -397,7 +624,7 @@ const AdminDashboard: React.FC = () => {
                 value={auditSearch}
                 onChange={(event) => {
                   setAuditSearch(event.target.value);
-                  setAuditExpanded(false);
+                  setAuditDisplayLimit(AUDIT_PAGE_SIZE);
                 }}
                 placeholder="Search actions, modules, or users"
                 className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
@@ -410,7 +637,7 @@ const AdminDashboard: React.FC = () => {
                 value={auditSeverity}
                 onChange={(event) => {
                   setAuditSeverity(event.target.value);
-                  setAuditExpanded(false);
+                  setAuditDisplayLimit(AUDIT_PAGE_SIZE);
                 }}
                 className="h-11 rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
               >
@@ -427,9 +654,9 @@ const AdminDashboard: React.FC = () => {
             {visibleAuditFeed.length === 0 ? (
               <EmptyState title="No matching audit events" description="Adjust your search or severity filters to inspect the governance ledger." />
             ) : (
-              visibleAuditFeed.map((entry) => (
+              visibleAuditFeed.map((entry, index) => (
                 <ListItemCard
-                  key={`${entry.time}-${entry.action}-${entry.user}`}
+                  key={`${entry.time}-${entry.action}-${entry.user}-${entry.module}-${index}`}
                   title={entry.action}
                   subtitle={`${entry.user} • ${entry.module} • ${formatRelativeDateTime(entry.time)}`}
                   meta={<StatusPill tone={severityTone[entry.severity as keyof typeof severityTone] ?? "slate"}>{entry.severity}</StatusPill>}
@@ -437,16 +664,36 @@ const AdminDashboard: React.FC = () => {
               ))
             )}
           </div>
-          {auditFeed.length > 6 ? (
-            <div className="mt-4 flex justify-end">
-              <Button variant="outline" size="sm" onClick={() => setAuditExpanded((current) => !current)}>
-                {auditExpanded ? "Show less" : `Show ${Math.min(12, auditFeed.length)} entries`}
-              </Button>
+          {auditFeed.length > AUDIT_PAGE_SIZE ? (
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {auditDisplayLimit < auditFeed.length ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setAuditDisplayLimit((n) => Math.min(n + AUDIT_PAGE_SIZE, auditFeed.length))
+                  }
+                >
+                  Load more ({auditFeed.length - auditDisplayLimit} remaining)
+                </Button>
+              ) : null}
+              {auditDisplayLimit > AUDIT_PAGE_SIZE ? (
+                <Button variant="outline" size="sm" onClick={() => setAuditDisplayLimit(AUDIT_PAGE_SIZE)}>
+                  Show less
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </SectionCard>
 
         <SectionCard title="Alert & activity watch" description="Live alert feed and governance activity volume.">
+          {alertsError ? (
+            <AdminQueryErrorBanner
+              title="Alert feed unavailable"
+              message={formatQueryError(alertsError)}
+              onRetry={() => void refetchAlerts()}
+            />
+          ) : null}
           <div className="grid gap-3">
             {uniqueAlerts.slice(0, 4).map((entry) => (
               <ListItemCard
