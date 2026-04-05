@@ -31,7 +31,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
         <>
           <p className="text-xl font-bold text-slate-500 italic">{headline}</p>
           <p className="text-sm text-slate-400 mt-2">{meta}</p>
-          <Button size="sm" className="mt-4 border-white/10 text-white" variant="outline" onClick={onAction}>
+          <Button size="sm" className="mt-4 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white" variant="outline" onClick={onAction}>
             {actionLabel}
           </Button>
         </>

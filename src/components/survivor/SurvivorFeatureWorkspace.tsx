@@ -97,7 +97,7 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
               <h1 className="text-3xl font-bold tracking-tight text-white">{metadata.title}</h1>
               <p className="text-base text-slate-300 font-medium">{metadata.description}</p>
             </div>
-            <Button variant="outline" className="border-white/20 text-white" onClick={() => setActiveModule("personal_dashboard")}>
+            <Button variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={() => setActiveModule("personal_dashboard")}>
               Back to Personal Dashboard
             </Button>
           </div>

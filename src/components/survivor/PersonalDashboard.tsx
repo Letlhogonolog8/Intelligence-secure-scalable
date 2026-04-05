@@ -129,7 +129,7 @@ const PersonalDashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button size="sm" variant="outline" className="border-white/20 hover:bg-white/10 text-white" onClick={handleOpenSafetyPlan} aria-label="Open safety plan workspace">
+              <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleOpenSafetyPlan} aria-label="Open safety plan workspace">
                 Update Plan
               </Button>
               <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20" onClick={handleOpenSupportRequests} aria-label="Open support requests workspace">
@@ -196,7 +196,7 @@ const PersonalDashboard: React.FC = () => {
                   <h2 className="text-xl font-bold text-white">Emergency Support</h2>
                   <p className="text-sm text-slate-300">Immediate outreach options.</p>
                 </div>
-                <Button size="sm" variant="outline" className="border-white/20 text-white" onClick={handleOpenTrustedContacts} aria-label="Open trusted contacts workspace">
+                <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleOpenTrustedContacts} aria-label="Open trusted contacts workspace">
                   View Contacts
                 </Button>
               </div>
@@ -260,14 +260,14 @@ const PersonalDashboard: React.FC = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-white/20 text-white"
+                    className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
                     onClick={activityPresenceSummary.markAllSeen}
                     disabled={!activityPresenceSummary.hasNew}
                     aria-label="Mark recent updates as seen"
                   >
                     Mark seen
                   </Button>
-                  <Button size="sm" variant="outline" className="border-white/20 text-white" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh recent updates">
+                  <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh recent updates">
                     {refreshing ? "Refreshing..." : "Refresh"}
                   </Button>
                 </div>

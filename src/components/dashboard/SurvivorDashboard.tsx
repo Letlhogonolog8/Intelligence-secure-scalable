@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageSquare, Mic, ShieldCheck } from "lucide-react";
 import { useAlertsFeed, useUserProfile } from "@/data/aegisData";
@@ -62,6 +62,15 @@ const SurvivorDashboard: React.FC = () => {
   const wellbeingPulse = latestCase?.riskScore ? Math.max(0, 100 - Math.round(latestCase.riskScore)) : riskWeight(survivorProfile?.currentRiskLevel);
   const riskDirection = wellbeingPulse >= 70 ? t("survivor.stable", "Stable") : wellbeingPulse >= 45 ? t("survivor.watchful", "Watchful") : t("survivor.urgent", "Needs support");
   const supportStatus = survivorProfile?.supportStatus || t("common.pending", "Pending");
+  const safetyInventoryItems = useMemo(
+    () => [
+      [t("survivor.trustedContacts", "Trusted contacts"), trustedContactsCount, trustedContactsCount > 0 ? "emerald" : "amber"],
+      [t("survivor.safeLocations", "Safe locations"), safeLocationsCount, safeLocationsCount > 0 ? "sky" : "amber"],
+      [t("survivor.emergencyResources", "Emergency resources"), emergencyResourcesCount, emergencyResourcesCount > 0 ? "rose" : "amber"],
+      [t("survivor.copingStrategies", "Coping strategies"), copingStrategiesCount, copingStrategiesCount > 0 ? "indigo" : "amber"],
+    ],
+    [copingStrategiesCount, emergencyResourcesCount, safeLocationsCount, t, trustedContactsCount]
+  );
 
   useEffect(() => {
     const updateQueue = () => setOfflineQueue(getOfflineQueueCount());
@@ -79,7 +88,19 @@ const SurvivorDashboard: React.FC = () => {
     if (panicIntervalRef.current) window.clearInterval(panicIntervalRef.current);
   }, []);
 
-  const startPanicHold = () => {
+  const clearPanicHold = useCallback(() => {
+    if (panicTimeoutRef.current) {
+      window.clearTimeout(panicTimeoutRef.current);
+      panicTimeoutRef.current = null;
+    }
+    if (panicIntervalRef.current) {
+      window.clearInterval(panicIntervalRef.current);
+      panicIntervalRef.current = null;
+    }
+  }, []);
+
+  const startPanicHold = useCallback(() => {
+    clearPanicHold();
     setHoldProgress(8);
     panicIntervalRef.current = window.setInterval(() => {
       setHoldProgress((current) => Math.min(100, current + 7));
@@ -87,15 +108,35 @@ const SurvivorDashboard: React.FC = () => {
     panicTimeoutRef.current = window.setTimeout(() => {
       setPanicMode(true);
       setHoldProgress(100);
-      if (panicIntervalRef.current) window.clearInterval(panicIntervalRef.current);
+      if (panicIntervalRef.current) {
+        window.clearInterval(panicIntervalRef.current);
+        panicIntervalRef.current = null;
+      }
     }, 1800);
-  };
+  }, [clearPanicHold]);
 
-  const cancelPanicHold = () => {
-    if (panicTimeoutRef.current) window.clearTimeout(panicTimeoutRef.current);
-    if (panicIntervalRef.current) window.clearInterval(panicIntervalRef.current);
+  const cancelPanicHold = useCallback(() => {
+    clearPanicHold();
     setHoldProgress(0);
-  };
+  }, [clearPanicHold]);
+
+  const handlePanicKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if ((event.key === " " || event.key === "Enter") && holdProgress === 0) {
+      event.preventDefault();
+      startPanicHold();
+    }
+  }, [holdProgress, startPanicHold]);
+
+  const handlePanicKeyUp = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      cancelPanicHold();
+    }
+  }, [cancelPanicHold]);
+
+  const handleToggleVoiceReporter = useCallback(() => {
+    setShowVoiceReporter((current) => !current);
+  }, []);
 
   if (panicMode) {
     return (
@@ -140,11 +181,11 @@ const SurvivorDashboard: React.FC = () => {
         ]}
         actions={
           <>
-            <Button onClick={() => setActiveModule("survivor_support")} className="bg-rose-600 hover:bg-rose-500">
+            <Button onClick={() => setActiveModule("survivor_support")} className="bg-rose-600 text-white shadow-lg shadow-rose-950/30 hover:bg-rose-500 focus-visible:ring-2 focus-visible:ring-rose-300/70">
               <MessageSquare className="mr-2 h-4 w-4" />
               {t("survivor.startChat", "Start chat")}
             </Button>
-            <Button variant="outline" onClick={() => setActiveModule("personal_dashboard")}>
+            <Button variant="outline" className="border-white/20 bg-white/5 text-slate-50 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-sky-300/70" onClick={() => setActiveModule("personal_dashboard")}>
               <ShieldCheck className="mr-2 h-4 w-4" />
               {t("survivor.updatePlan", "Update safety plan")}
             </Button>
@@ -182,7 +223,7 @@ const SurvivorDashboard: React.FC = () => {
 
         <SectionCard title={t("survivor.quickSafety", "Quick safety actions")} description={t("survivor.quickSafetyDescription", "Fast controls for privacy, offline reporting, and voice-based escalation.")}>
           <div className="space-y-4">
-            <div className="rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4">
+            <div className="rounded-2xl border border-amber-400/45 bg-amber-500/15 p-4 shadow-[0_16px_32px_rgba(120,53,15,0.25)]">
               <button
                 type="button"
                 onMouseDown={startPanicHold}
@@ -190,18 +231,27 @@ const SurvivorDashboard: React.FC = () => {
                 onMouseLeave={cancelPanicHold}
                 onTouchStart={startPanicHold}
                 onTouchEnd={cancelPanicHold}
-                className="w-full text-left"
+                onKeyDown={handlePanicKeyDown}
+                onKeyUp={handlePanicKeyUp}
+                aria-label={t("survivor.quickExit", "Quick exit")}
+                className="w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-200">{t("survivor.quickExit", "Quick exit")}</p>
-                <p className="mt-1 text-xs text-amber-100/90">{t("survivor.holdToExit", "Hold for 2 seconds")}</p>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-amber-100/20">
-                  <div className="h-full bg-amber-400 transition-all" style={{ width: `${holdProgress}%` }} />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-50">{t("survivor.quickExit", "Quick exit")}</p>
+                <p className="mt-1 text-xs text-amber-100">{t("survivor.holdToExit", "Hold for 2 seconds")}</p>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-amber-50/20">
+                  <div className="h-full bg-amber-300 transition-all" style={{ width: `${holdProgress}%` }} />
                 </div>
               </button>
             </div>
             <ListItemCard title={t("survivor.offlineQueue", "Offline queue")} subtitle={offlineQueue > 0 ? t("survivor.offlinePending", "{{count}} reports awaiting sync", { count: offlineQueue }) : t("survivor.offlineClear", "No pending offline reports")} meta={<StatusPill tone="sky">{offlineQueue}</StatusPill>} />
             <ListItemCard title={t("survivor.voiceReporting", "Voice reporting")} subtitle={showVoiceReporter ? t("survivor.voiceOpen", "Voice panel is open.") : t("survivor.voiceReady", "Voice incident reporting is ready.")} meta={<StatusPill tone="rose">live</StatusPill>} />
-            <Button variant="ghost" className="w-full justify-start border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10" onClick={() => setShowVoiceReporter((current) => !current)}>
+            <Button
+              variant="ghost"
+              className="w-full justify-start border border-white/15 bg-white/10 text-slate-50 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-rose-300/70"
+              onClick={handleToggleVoiceReporter}
+              aria-expanded={showVoiceReporter}
+              aria-controls="voice-incident-reporter"
+            >
               <Mic className="mr-2 h-4 w-4 text-rose-300" />
               {showVoiceReporter ? t("survivor.closeVoiceReport", "Close voice incident report") : t("survivor.openVoiceReport", "Open voice incident report")}
             </Button>
@@ -210,7 +260,7 @@ const SurvivorDashboard: React.FC = () => {
       </section>
 
       {showVoiceReporter ? (
-        <section className="animate-in fade-in slide-in-from-top-1 duration-300">
+        <section id="voice-incident-reporter" className="animate-in fade-in slide-in-from-top-1 duration-300">
           <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl bg-slate-800/40" />}>
             <VoiceIncidentReporter onReportSubmitted={() => setShowVoiceReporter(false)} />
           </Suspense>
@@ -256,18 +306,13 @@ const SurvivorDashboard: React.FC = () => {
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {[
-                [t("survivor.trustedContacts", "Trusted contacts"), trustedContactsCount, trustedContactsCount > 0 ? "emerald" : "amber"],
-                [t("survivor.safeLocations", "Safe locations"), safeLocationsCount, safeLocationsCount > 0 ? "sky" : "amber"],
-                [t("survivor.emergencyResources", "Emergency resources"), emergencyResourcesCount, emergencyResourcesCount > 0 ? "rose" : "amber"],
-                [t("survivor.copingStrategies", "Coping strategies"), copingStrategiesCount, copingStrategiesCount > 0 ? "indigo" : "amber"],
-              ].map(([label, value, tone]) => (
+              {safetyInventoryItems.map(([label, value, tone]) => (
                 <ListItemCard key={String(label)} title={label as string} subtitle={t("survivor.livePlanSignal", "Live safety-plan signal")} meta={<StatusPill tone={tone as "emerald" | "sky" | "rose" | "indigo" | "amber"}>{value as number}</StatusPill>} />
               ))}
             </div>
           )}
           <div className="mt-4">
-            <Button variant="outline" onClick={() => setActiveModule("personal_dashboard")}>{t("survivor.reviewPlan", "Review plan")}</Button>
+            <Button variant="outline" className="border-white/20 bg-white/5 text-slate-50 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-sky-300/70" onClick={() => setActiveModule("personal_dashboard")}>{t("survivor.reviewPlan", "Review plan")}</Button>
           </div>
         </SectionCard>
       </section>

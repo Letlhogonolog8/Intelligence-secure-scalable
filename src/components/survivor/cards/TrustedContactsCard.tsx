@@ -31,7 +31,7 @@ export const TrustedContactsCard: React.FC<TrustedContactsCardProps> = ({
         <>
           <p className="text-xl font-bold text-white">{headline}</p>
           <p className="text-sm text-slate-300 mt-2">{meta}</p>
-          <Button size="sm" className="mt-4 border-white/10 text-white" variant="outline" onClick={onAction}>
+          <Button size="sm" className="mt-4 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white" variant="outline" onClick={onAction}>
             {actionLabel}
           </Button>
         </>

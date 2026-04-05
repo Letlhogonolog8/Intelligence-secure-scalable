@@ -36,15 +36,15 @@ export const DashboardHero = ({
   badges?: ReactNode[];
   actions?: ReactNode;
 }) => (
-  <section className="rounded-3xl border border-white/15 bg-slate-950/65 p-6 shadow-[0_30px_80px_rgba(2,8,23,0.55)] backdrop-blur-xl sm:p-8">
+  <section className="rounded-3xl border border-white/20 bg-slate-950/75 p-6 shadow-[0_30px_80px_rgba(2,8,23,0.55)] backdrop-blur-xl sm:p-8">
     <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
       <div className="space-y-4">
-        <div className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-slate-200">
+        <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-slate-100">
           {eyebrow}
         </div>
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">{title}</h1>
-          <p className="max-w-3xl text-sm text-slate-300 sm:text-base">{description}</p>
+          <p className="max-w-3xl text-sm text-slate-200 sm:text-base">{description}</p>
         </div>
         {badges.length > 0 && <div className="flex flex-wrap gap-2">{badges}</div>}
       </div>
@@ -76,12 +76,12 @@ export const MetricCard = ({
     emerald: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
     indigo: "border-indigo-500/20 bg-indigo-500/10 text-indigo-200",
     amber: "border-amber-500/20 bg-amber-500/10 text-amber-200",
-    slate: "border-white/10 bg-white/[0.03] text-slate-200",
+    slate: "border-white/15 bg-white/[0.08] text-slate-100",
   } as const;
 
   return (
-    <Card className="border-white/15 bg-slate-950/65 p-5 backdrop-blur-xl">
-      <div className={cn("inline-flex rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.18em]", accents[accent ?? "slate"])}>
+    <Card className="border-white/20 bg-slate-950/75 p-5 backdrop-blur-xl">
+      <div className={cn("inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]", accents[accent ?? "slate"])}>
         {label}
       </div>
       {loading ? (
@@ -92,7 +92,7 @@ export const MetricCard = ({
       ) : (
         <>
           <div className="mt-4 text-3xl font-semibold text-white">{value}</div>
-          {helper ? <div className="mt-2 text-sm text-slate-300">{helper}</div> : null}
+          {helper ? <div className="mt-2 text-sm text-slate-200">{helper}</div> : null}
         </>
       )}
     </Card>
@@ -112,11 +112,11 @@ export const SectionCard = ({
   children: ReactNode;
   className?: string;
 }) => (
-  <Card className={cn("border-white/15 bg-slate-950/65 shadow-xl backdrop-blur-xl", className)}>
-    <div className="flex items-start justify-between gap-4 border-b border-white/5 p-6">
+  <Card className={cn("border-white/20 bg-slate-950/75 shadow-xl backdrop-blur-xl", className)}>
+    <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
       <div>
         <h2 className="text-lg font-semibold text-white">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
+        {description ? <p className="mt-1 text-sm text-slate-300">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -125,13 +125,13 @@ export const SectionCard = ({
 );
 
 export const ListItemCard = ({ title, subtitle, meta, action }: { title: ReactNode; subtitle?: ReactNode; meta?: ReactNode; action?: ReactNode }) => (
-  <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+  <div className="rounded-2xl border border-white/15 bg-slate-900/80 p-4 shadow-[0_18px_36px_rgba(2,8,23,0.24)]">
     <div className="flex items-start justify-between gap-4">
       <div className="space-y-1">
         <div className="text-sm font-medium text-white">{title}</div>
-        {subtitle ? <div className="text-xs text-slate-400">{subtitle}</div> : null}
+        {subtitle ? <div className="text-xs text-slate-300">{subtitle}</div> : null}
       </div>
-      {meta ? <div className="text-xs text-slate-300">{meta}</div> : null}
+      {meta ? <div className="text-xs text-slate-200">{meta}</div> : null}
     </div>
     {action ? <div className="mt-3 flex justify-end">{action}</div> : null}
   </div>
@@ -150,15 +150,15 @@ export const EmptyState = ({
   onAction?: () => void;
   guidance?: string[];
 }) => (
-  <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center">
+  <div className="rounded-2xl border border-dashed border-white/20 bg-white/[0.05] p-6 text-center">
     <div className="space-y-2">
       <p className="text-sm font-medium text-white">{title}</p>
-      <p className="text-sm text-slate-400">{description}</p>
+      <p className="text-sm text-slate-200">{description}</p>
     </div>
     {guidance.length > 0 ? (
-      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/55 p-4 text-left">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">How to unblock live data</p>
-        <ul className="mt-3 space-y-2 text-xs text-slate-300">
+      <div className="mt-4 rounded-2xl border border-white/15 bg-slate-950/65 p-4 text-left">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">How to unblock live data</p>
+        <ul className="mt-3 space-y-2 text-xs text-slate-200">
           {guidance.map((entry) => (
             <li key={entry} className="flex gap-2">
               <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-400" />
@@ -169,7 +169,12 @@ export const EmptyState = ({
       </div>
     ) : null}
     {actionLabel && onAction ? (
-      <Button className="mt-4" variant="outline" size="sm" onClick={onAction}>
+      <Button
+        className="mt-4 border-white/20 bg-white/5 text-slate-50 hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-sky-300/70"
+        variant="outline"
+        size="sm"
+        onClick={onAction}
+      >
         {actionLabel}
       </Button>
     ) : null}
@@ -178,13 +183,13 @@ export const EmptyState = ({
 
 export const StatusPill = ({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" | "indigo" }) => {
   const tones = {
-    slate: "border-white/10 bg-white/[0.03] text-slate-200",
-    emerald: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
-    amber: "border-amber-500/20 bg-amber-500/10 text-amber-200",
-    rose: "border-rose-500/20 bg-rose-500/10 text-rose-200",
-    sky: "border-sky-500/20 bg-sky-500/10 text-sky-200",
-    indigo: "border-indigo-500/20 bg-indigo-500/10 text-indigo-200",
+    slate: "border-white/15 bg-white/[0.08] text-slate-100",
+    emerald: "border-emerald-400/30 bg-emerald-500/15 text-emerald-100",
+    amber: "border-amber-400/30 bg-amber-500/15 text-amber-100",
+    rose: "border-rose-400/30 bg-rose-500/15 text-rose-100",
+    sky: "border-sky-400/30 bg-sky-500/15 text-sky-100",
+    indigo: "border-indigo-400/30 bg-indigo-500/15 text-indigo-100",
   } as const;
 
-  return <span className={cn("rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em]", tones[tone])}>{children}</span>;
+  return <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]", tones[tone])}>{children}</span>;
 };

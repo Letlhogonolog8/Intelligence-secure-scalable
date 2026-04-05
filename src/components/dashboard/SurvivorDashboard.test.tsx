@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import SurvivorDashboard from "@/components/dashboard/SurvivorDashboard";
 
 const mockUseAuth = vi.fn();
@@ -52,12 +53,22 @@ vi.mock("@/components/survivor/LegalRightsAssistant", () => ({
   default: () => <div>legal-rights-assistant</div>,
 }));
 
+vi.mock("@/components/survivor/VoiceIncidentReporter", () => ({
+  default: ({ onReportSubmitted }: { onReportSubmitted: () => void }) => (
+    <div>
+      <div>voice-incident-reporter</div>
+      <button type="button" onClick={onReportSubmitted}>submit-voice-report</button>
+    </div>
+  ),
+}));
+
 vi.mock("@/lib/offlineCaseQueue", () => ({
   getOfflineQueueCount: () => mockGetOfflineQueueCount(),
 }));
 
 describe("SurvivorDashboard", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mockUseAuth.mockReturnValue({ user: { id: "survivor-user-1" } });
     mockUseAppStore.mockReturnValue({ setActiveModule: vi.fn() });
     mockUseTranslation.mockReturnValue({
@@ -130,5 +141,37 @@ describe("SurvivorDashboard", () => {
     expect(screen.getByText("Safe corridor updated")).toBeInTheDocument();
     expect(screen.queryByText("Profile setup is incomplete")).not.toBeInTheDocument();
     expect(screen.queryByText("No safety plan on file")).not.toBeInTheDocument();
+  });
+
+  it("toggles the voice incident reporter", async () => {
+    const user = userEvent.setup();
+
+    render(<SurvivorDashboard />);
+
+    const toggleButton = screen.getByRole("button", { name: "Open voice incident report" });
+    expect(toggleButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggleButton);
+
+    expect(screen.getByText("voice-incident-reporter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close voice incident report" })).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByRole("button", { name: "submit-voice-report" }));
+
+    expect(screen.queryByText("voice-incident-reporter")).not.toBeInTheDocument();
+  });
+
+  it("activates quick exit after the hold threshold", () => {
+    vi.useFakeTimers();
+
+    render(<SurvivorDashboard />);
+
+    const quickExitButton = screen.getByRole("button", { name: "Quick exit" });
+    act(() => {
+      fireEvent.mouseDown(quickExitButton);
+      vi.advanceTimersByTime(1900);
+    });
+
+    expect(screen.getByRole("heading", { name: "Daily planner" })).toBeInTheDocument();
   });
 });
