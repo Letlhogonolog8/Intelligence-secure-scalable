@@ -1,50 +1,41 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useAlertsFeed, useUserProfile } from "@/data/aegisData";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import { useAppStore } from "@/store/appStore";
 import { dedupeBy } from "@/lib/dashboardMetrics";
+import { GBV_CRISIS_LINE_DISPLAY, GBV_CRISIS_LINE_TEL } from "@/lib/crisisContacts";
 import { SafetyPlanCard } from "@/components/survivor/cards/SafetyPlanCard";
 import { AppointmentCard } from "@/components/survivor/cards/AppointmentCard";
 import { TrustedContactsCard } from "@/components/survivor/cards/TrustedContactsCard";
 import { DocumentVaultCard } from "@/components/survivor/cards/DocumentVaultCard";
-import {
-  useActivityPresenceSummary,
-  useDocumentVaultSummary,
-  useLiveActivitySummary,
-  useSafetyPlanSummary,
-  useSecureMessagesSummary,
-  useSupportRequestsSummary,
-  useTrustedContactsSummary,
-  useUpcomingAppointmentSummary,
-} from "@/hooks/survivor/usePersonalDashboardSummaries";
+import { usePersonalDashboardBundle } from "@/hooks/survivor/usePersonalDashboardSummaries";
+import { usePrefetchSurvivorPersonalData } from "@/hooks/survivor/usePrefetchSurvivorNavigation";
 
 const PersonalDashboard: React.FC = () => {
   const { user } = useAuth();
   const { setActiveModule } = useAppStore();
-  const { data: profile, isLoading, error: profileError } = useUserProfile(user?.id);
-  const { data: alertsFeed = [], isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useAlertsFeed({
-    staleTime: 15000,
-    refetchInterval: 30000,
-    limit: 6,
-  });
-  const { data: safetyPlanSummary, isLoading: safetyPlanLoading } = useSafetyPlanSummary(user?.id);
-  const { data: appointmentSummary, isLoading: appointmentLoading } = useUpcomingAppointmentSummary(user?.id);
-  const { data: trustedContactsSummary, isLoading: trustedContactsLoading } = useTrustedContactsSummary(user?.id);
-  const { data: documentVaultSummary, isLoading: documentVaultLoading } = useDocumentVaultSummary(user?.id);
-  const { data: supportRequestsSummary } = useSupportRequestsSummary(user?.id);
-  const { data: secureMessagesSummary } = useSecureMessagesSummary(user?.id);
-  const { data: liveActivitySummary } = useLiveActivitySummary(user?.id);
-  const { data: activityPresenceSummary } = useActivityPresenceSummary(user?.id);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const displayName = useMemo(
-    () => profile?.full_name || profile?.fullName || profile?.name || "Survivor",
-    [profile?.full_name, profile?.fullName, profile?.name]
-  );
+  const prefetchSurvivorData = usePrefetchSurvivorPersonalData();
+  const {
+    displayName,
+    alertsFeed,
+    safetyPlanSummary,
+    appointmentSummary,
+    trustedContactsSummary,
+    documentVaultSummary,
+    supportRequestsSummary,
+    secureMessagesSummary,
+    liveActivitySummary,
+    activityPresenceSummary,
+    isProfileLoading,
+    isAlertsLoading,
+    isSourceLoading,
+    profileError,
+    alertsError,
+    refreshDashboard,
+  } = usePersonalDashboardBundle(user?.id);
 
   const recentUpdates = useMemo(
     () => dedupeBy(alertsFeed, (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
@@ -56,7 +47,7 @@ const PersonalDashboard: React.FC = () => {
   }, [setActiveModule]);
 
   const handleCallHotline = useCallback(() => {
-    window.location.href = "tel:+2710111";
+    window.location.href = GBV_CRISIS_LINE_TEL;
   }, []);
 
   const handleMessageContact = useCallback(() => {
@@ -79,14 +70,19 @@ const PersonalDashboard: React.FC = () => {
     setActiveModule("support_requests");
   }, [setActiveModule]);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refetchAlerts();
+      await refreshDashboard();
     } finally {
       setRefreshing(false);
     }
-  }, [refetchAlerts]);
+  }, [refreshDashboard]);
+
+  const cardSummariesLoading = isProfileLoading || isAlertsLoading || isSourceLoading;
+  const statsLoading = isAlertsLoading;
 
   if (profileError) {
     return (
@@ -105,8 +101,8 @@ const PersonalDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/14 blur-[140px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-rose-600/12 blur-[140px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/14 blur-[140px] rounded-full motion-reduce:blur-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-rose-600/12 blur-[140px] rounded-full motion-reduce:blur-none" />
         <div className="absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:140px_140px]" />
       </div>
       <div className="mx-auto flex max-w-5xl flex-col gap-8 relative z-10">
@@ -117,55 +113,96 @@ const PersonalDashboard: React.FC = () => {
               <h1 className="text-3xl font-bold tracking-tight text-white">Personal Dashboard</h1>
               <p className="text-base text-slate-300 font-medium">Welcome back, {displayName}</p>
               <div className="flex flex-wrap gap-2 pt-2" aria-live="polite">
-                <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-200" aria-label={`Support requests status: ${supportRequestsSummary.headline}`}>
+                <span
+                  className="rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-200"
+                  aria-label={`Support requests status: ${supportRequestsSummary.headline}`}
+                >
                   {supportRequestsSummary.headline}
                 </span>
-                <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200" aria-label={`Secure messages status: ${secureMessagesSummary.headline}`}>
+                <span
+                  className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200"
+                  aria-label={`Secure messages status: ${secureMessagesSummary.headline}`}
+                >
                   {secureMessagesSummary.headline}
                 </span>
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200" aria-label={`Recent unseen activity: ${activityPresenceSummary.hasNew ? `${activityPresenceSummary.newCount} new` : "All caught up"}`}>
+                <span
+                  className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200"
+                  aria-label={`Recent unseen activity: ${activityPresenceSummary.hasNew ? `${activityPresenceSummary.newCount} new` : "All caught up"}`}
+                >
                   {activityPresenceSummary.hasNew ? `${activityPresenceSummary.newCount} new` : "All caught up"}
                 </span>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleOpenSafetyPlan} aria-label="Open safety plan workspace">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                onClick={handleOpenSafetyPlan}
+                onMouseEnter={prefetchSurvivorData}
+                onFocus={prefetchSurvivorData}
+                aria-label="Open safety plan workspace"
+              >
                 Update Plan
               </Button>
-              <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20" onClick={handleOpenSupportRequests} aria-label="Open support requests workspace">
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20"
+                onClick={handleOpenSupportRequests}
+                onMouseEnter={prefetchSurvivorData}
+                onFocus={prefetchSurvivorData}
+                aria-label="Open support requests workspace"
+              >
                 New Support Request
               </Button>
             </div>
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3" aria-busy={statsLoading}>
           <Card className="border-white/15 bg-slate-950/60 shadow-xl backdrop-blur-md">
             <div className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Live Activity</p>
-              <p className="mt-2 text-2xl font-bold text-white">{liveActivitySummary.recentEventCount}</p>
+              {statsLoading ? (
+                <Skeleton className="mt-2 h-8 w-16 bg-slate-800/60" />
+              ) : (
+                <p className="mt-2 text-2xl font-bold text-white">{liveActivitySummary.recentEventCount}</p>
+              )}
               <p className="mt-1 text-sm text-slate-400">Recent events tracked</p>
             </div>
           </Card>
           <Card className="border-white/15 bg-slate-950/60 shadow-xl backdrop-blur-md">
             <div className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Module Pulse</p>
-              <p className="mt-2 text-2xl font-bold text-white">{liveActivitySummary.activeModules}</p>
+              {statsLoading ? (
+                <Skeleton className="mt-2 h-8 w-16 bg-slate-800/60" />
+              ) : (
+                <p className="mt-2 text-2xl font-bold text-white">{liveActivitySummary.activeModules}</p>
+              )}
               <p className="mt-1 text-sm text-slate-400">Modules active in the live feed</p>
             </div>
           </Card>
           <Card className="border-white/15 bg-slate-950/60 shadow-xl backdrop-blur-md">
             <div className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Latest Update</p>
-              <p className="mt-2 text-sm font-semibold text-white">{liveActivitySummary.latestUpdateLabel}</p>
-              <p className="mt-2 text-xs text-slate-500">{activityPresenceSummary.lastSeenLabel}</p>
+              {statsLoading ? (
+                <>
+                  <Skeleton className="mt-2 h-5 w-full max-w-xs bg-slate-800/60" />
+                  <Skeleton className="mt-2 h-3 w-24 bg-slate-800/60" />
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-white">{liveActivitySummary.latestUpdateLabel}</p>
+                  <p className="mt-2 text-xs text-slate-500">{activityPresenceSummary.lastSeenLabel}</p>
+                </>
+              )}
             </div>
           </Card>
         </section>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3" onMouseEnter={prefetchSurvivorData}>
           <SafetyPlanCard
-            isLoading={isLoading || safetyPlanLoading}
+            isLoading={cardSummariesLoading}
             status={safetyPlanSummary.status}
             statusTone={safetyPlanSummary.statusTone}
             meta={safetyPlanSummary.meta}
@@ -173,14 +210,14 @@ const PersonalDashboard: React.FC = () => {
             onAction={handleOpenSafetyPlan}
           />
           <AppointmentCard
-            isLoading={isLoading || appointmentLoading}
+            isLoading={cardSummariesLoading}
             headline={appointmentSummary.headline}
             meta={appointmentSummary.meta}
             actionLabel={appointmentSummary.actionLabel}
             onAction={handleOpenAppointments}
           />
           <TrustedContactsCard
-            isLoading={isLoading || trustedContactsLoading}
+            isLoading={cardSummariesLoading}
             headline={trustedContactsSummary.headline}
             meta={trustedContactsSummary.meta}
             actionLabel={trustedContactsSummary.actionLabel}
@@ -196,13 +233,19 @@ const PersonalDashboard: React.FC = () => {
                   <h2 className="text-xl font-bold text-white">Emergency Support</h2>
                   <p className="text-sm text-slate-300">Immediate outreach options.</p>
                 </div>
-                <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleOpenTrustedContacts} aria-label="Open trusted contacts workspace">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                  onClick={handleOpenTrustedContacts}
+                  aria-label="Open trusted contacts workspace"
+                >
                   View Contacts
                 </Button>
               </div>
               <div className="mb-4">
                 <DocumentVaultCard
-                  isLoading={isLoading || documentVaultLoading}
+                  isLoading={cardSummariesLoading}
                   headline={documentVaultSummary.headline}
                   meta={documentVaultSummary.meta}
                   actionLabel={documentVaultSummary.actionLabel}
@@ -211,15 +254,30 @@ const PersonalDashboard: React.FC = () => {
                 />
               </div>
               <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/40 p-4">
-                  <span className="font-medium text-slate-200">Emergency Hotline</span>
-                  <Button size="sm" variant="ghost" className="text-rose-400 hover:text-rose-300 hover:bg-rose-400/10" onClick={handleCallHotline} aria-label="Call emergency hotline">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-slate-950/40 p-4">
+                  <div>
+                    <span className="font-medium text-slate-200">Emergency Hotline</span>
+                    <p className="text-xs text-slate-500 mt-1 font-mono">{GBV_CRISIS_LINE_DISPLAY} · 24/7</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-rose-400 hover:text-rose-300 hover:bg-rose-400/10 shrink-0"
+                    onClick={handleCallHotline}
+                    aria-label="Call GBV crisis line"
+                  >
                     Call
                   </Button>
                 </div>
                 <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/40 p-4">
                   <span className="font-medium text-slate-200">Trusted Contact</span>
-                  <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10" onClick={handleMessageContact} aria-label="Open secure messaging workspace">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                    onClick={handleMessageContact}
+                    aria-label="Open secure messaging workspace"
+                  >
                     Message
                   </Button>
                 </div>
@@ -267,7 +325,15 @@ const PersonalDashboard: React.FC = () => {
                   >
                     Mark seen
                   </Button>
-                  <Button size="sm" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh recent updates">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    aria-busy={refreshing}
+                    aria-label="Refresh recent updates"
+                  >
                     {refreshing ? "Refreshing..." : "Refresh"}
                   </Button>
                 </div>
@@ -280,41 +346,41 @@ const PersonalDashboard: React.FC = () => {
                 />
               ) : (
                 <>
-              <div className="mb-6 rounded-xl border border-white/5 bg-slate-950/40 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">What changed recently</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {liveActivitySummary.topModules.length > 0 ? (
-                    liveActivitySummary.topModules.map((item) => (
-                      <span key={item.module} className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200">
-                        {item.module}: {item.count}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-sm text-slate-500">No module activity yet</span>
-                  )}
-                </div>
-              </div>
-              {isLoading || alertsLoading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-12 w-full bg-slate-800/60" />
-                  <Skeleton className="h-12 w-5/6 bg-slate-800/60" />
-                </div>
-              ) : recentUpdates.length === 0 ? (
-                <div className="text-slate-500 text-sm font-bold text-center py-10 border border-dashed border-slate-800 rounded-xl uppercase tracking-widest">
-                  No recent updates
-                </div>
-              ) : (
-                <div className="space-y-3" aria-live="polite">
-                  {recentUpdates.map((update) => (
-                    <div key={update.id} className="rounded-xl border border-white/5 bg-slate-950/40 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm text-slate-200">{update.message}</p>
-                        <span className="text-[10px] uppercase tracking-wider text-slate-400 whitespace-nowrap">{update.time}</span>
-                      </div>
+                  <div className="mb-6 rounded-xl border border-white/5 bg-slate-950/40 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">What changed recently</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {liveActivitySummary.topModules.length > 0 ? (
+                        liveActivitySummary.topModules.map((item) => (
+                          <span key={item.module} className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200">
+                            {item.module}: {item.count}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-slate-500">No module activity yet</span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                  {cardSummariesLoading ? (
+                    <div className="space-y-3">
+                      <Skeleton className="h-12 w-full bg-slate-800/60" />
+                      <Skeleton className="h-12 w-5/6 bg-slate-800/60" />
+                    </div>
+                  ) : recentUpdates.length === 0 ? (
+                    <div className="text-slate-500 text-sm font-bold text-center py-10 border border-dashed border-slate-800 rounded-xl uppercase tracking-widest">
+                      No recent updates
+                    </div>
+                  ) : (
+                    <div className="space-y-3" aria-live="polite">
+                      {recentUpdates.map((update) => (
+                        <div key={update.id} className="rounded-xl border border-white/5 bg-slate-950/40 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm text-slate-200">{update.message}</p>
+                            <span className="text-[10px] uppercase tracking-wider text-slate-400 whitespace-nowrap">{update.time}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>

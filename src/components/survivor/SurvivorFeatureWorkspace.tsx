@@ -4,15 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  useDocumentVaultSummary,
-  useModulePulseSummary,
-  useSafetyPlanSummary,
-  useSecureMessagesSummary,
-  useSupportRequestsSummary,
-  useTrustedContactsSummary,
-  useUpcomingAppointmentSummary,
-} from "@/hooks/survivor/usePersonalDashboardSummaries";
+import { useSurvivorWorkspaceSummaries } from "@/hooks/survivor/usePersonalDashboardSummaries";
 
 interface SurvivorFeatureWorkspaceProps {
   module: Extract<
@@ -34,13 +26,15 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
   const { user } = useAuth();
   const { setActiveModule } = useAppStore();
   const metadata = MODULE_METADATA[module];
-  const { data: safetyPlanSummary } = useSafetyPlanSummary(user?.id);
-  const { data: appointmentSummary } = useUpcomingAppointmentSummary(user?.id);
-  const { data: trustedContactsSummary } = useTrustedContactsSummary(user?.id);
-  const { data: documentVaultSummary } = useDocumentVaultSummary(user?.id);
-  const { data: supportRequestsSummary } = useSupportRequestsSummary(user?.id);
-  const { data: secureMessagesSummary } = useSecureMessagesSummary(user?.id);
-  const { data: modulePulseSummary } = useModulePulseSummary(module, user?.id);
+  const {
+    safetyPlanSummary,
+    appointmentSummary,
+    trustedContactsSummary,
+    documentVaultSummary,
+    supportRequestsSummary,
+    secureMessagesSummary,
+    modulePulseSummary,
+  } = useSurvivorWorkspaceSummaries(module, user?.id);
 
   const summaryContent =
     module === "safety_plan"
@@ -65,12 +59,12 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
               detail: trustedContactsSummary.meta,
             }
           : module === "document_vault"
-          ? {
-              title: "Document Vault Snapshot",
-              primary: documentVaultSummary.headline,
-              secondary: documentVaultSummary.vaultState === "ready" ? "Vault activity detected" : "Vault is empty",
-              detail: documentVaultSummary.meta,
-            }
+            ? {
+                title: "Document Vault Snapshot",
+                primary: documentVaultSummary.headline,
+                secondary: documentVaultSummary.vaultState === "ready" ? "Vault activity detected" : "Vault is empty",
+                detail: documentVaultSummary.meta,
+              }
             : module === "support_requests"
               ? {
                   title: "Support Requests Snapshot",
@@ -85,7 +79,7 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
                     secondary: secureMessagesSummary.unreadCount > 0 ? "Unread communication available" : "Inbox is clear",
                     detail: secureMessagesSummary.meta,
                   }
-        : null;
+                : null;
 
   return (
     <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
@@ -130,7 +124,7 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
           <div className="p-6">
             <h2 className="text-xl font-bold text-white">Implementation Workspace</h2>
             <p className="text-sm text-slate-300 mt-2">
-              This route is now distinct and operational. The next iteration will bind it to feature-specific data and workflows.
+              This route is now distinct and operational. Summaries combine live Supabase data with the alerts feed when needed.
             </p>
             <ul className="mt-6 space-y-3">
               {featureHighlights[module].map((item) => (

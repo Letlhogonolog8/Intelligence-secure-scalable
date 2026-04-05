@@ -935,7 +935,7 @@ const fetchSystemMetrics = async () => {
   return data ? mapSystemMetrics(data as Record<string, unknown>) : null
 }
 
-const fetchAlertsFeed = async (options?: FetchOptions) => {
+export const fetchAlertsFeed = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as AlertItem[]
   const query = applyPagination(
     supabase
@@ -1303,7 +1303,7 @@ export const acknowledgePoliceAlert = async (alertId: string) => {
   await apiClient.post(`/police/alerts/${alertId}/acknowledge`)
 }
 
-const fetchUserProfile = async (userId: string) => {
+export const fetchUserProfile = async (userId: string) => {
   if (!hasSupabase) return null as UserProfile | null
   const { data, error } = await supabase
     .from("user_profiles")
@@ -1959,7 +1959,7 @@ export const useOrganizationCoordination = (options?: ListQueryOptions) => useRe
   { ...options, queryKey: [options?.limit, options?.offset] }
 )
 
-const fetchSurvivorProfile = async (userId: string) => {
+export const fetchSurvivorProfile = async (userId: string) => {
   if (!hasSupabase) return null as SurvivorProfile | null
   const { data, error } = await supabase
     .from("survivors")

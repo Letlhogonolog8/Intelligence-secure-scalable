@@ -414,7 +414,7 @@ const fetchLiveSurvivors = async (options?: FetchOptions & { userId?: string | n
   });
 };
 
-const fetchLiveSafetyPlans = async (options?: FetchOptions & { survivorId?: string | null }) => {
+export const fetchLiveSafetyPlans = async (options?: FetchOptions & { survivorId?: string | null }) => {
   if (!hasSupabase) return [] as SafetyPlan[];
   let query = supabase
     .from("safety_plans")
@@ -483,7 +483,7 @@ const fetchLiveNgoPrograms = async (options?: FetchOptions & { organizationId?: 
   return (data ?? []).map((row) => mapNgoProgram(row as Record<string, unknown>));
 };
 
-const fetchLiveSurvivorChatSessions = async (options?: FetchOptions & { survivorId?: string | null; counselorId?: string | null }) => {
+export const fetchLiveSurvivorChatSessions = async (options?: FetchOptions & { survivorId?: string | null; counselorId?: string | null }) => {
   if (!hasSupabase) return [] as LiveSurvivorChatSession[];
   let query = supabase
     .from("survivor_chat_sessions")
@@ -501,7 +501,7 @@ const fetchLiveSurvivorChatSessions = async (options?: FetchOptions & { survivor
   return (data ?? []).map((row) => mapSurvivorChatSession(row as Record<string, unknown>));
 };
 
-const fetchLiveCaseReports = async (options?: FetchOptions & { survivorId?: string | null; caseId?: string | null }) => {
+export const fetchLiveCaseReports = async (options?: FetchOptions & { survivorId?: string | null; caseId?: string | null }) => {
   if (!hasSupabase) return [] as LiveCaseReport[];
   let query = supabase
     .from("case_reports")

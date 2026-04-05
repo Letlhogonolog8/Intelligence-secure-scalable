@@ -8,6 +8,28 @@ const mockUseUserProfile = vi.fn();
 const mockUseAlertsFeed = vi.fn();
 const mockSetActiveModule = vi.fn();
 const mockRefetchAlerts = vi.fn();
+const mockRefetchProfile = vi.fn();
+
+const { mockRefetchSource } = vi.hoisted(() => ({
+  mockRefetchSource: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/hooks/survivor/useSurvivorPersonalSourceData", () => ({
+  useSurvivorPersonalSourceData: () => ({
+    payload: {
+      survivor: null,
+      safetyPlans: [],
+      caseReports: [],
+      chatSessions: [],
+    },
+    isLoading: false,
+    refetchSource: mockRefetchSource,
+  }),
+}));
+
+vi.mock("@/hooks/survivor/usePrefetchSurvivorNavigation", () => ({
+  usePrefetchSurvivorPersonalData: () => vi.fn(),
+}));
 
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: () => mockUseAuth(),
@@ -26,13 +48,18 @@ describe("PersonalDashboard", () => {
   beforeEach(() => {
     mockSetActiveModule.mockReset();
     mockRefetchAlerts.mockReset();
+    mockRefetchProfile.mockReset();
+    mockRefetchSource.mockReset();
     mockRefetchAlerts.mockResolvedValue(undefined);
+    mockRefetchProfile.mockResolvedValue(undefined);
+    mockRefetchSource.mockResolvedValue(undefined);
 
     mockUseAuth.mockReturnValue({ user: { id: "survivor-user-1" } });
     mockUseAppStore.mockReturnValue({ setActiveModule: mockSetActiveModule });
     mockUseUserProfile.mockReturnValue({
       data: { fullName: "Amina" },
       isLoading: false,
+      refetch: mockRefetchProfile,
     });
     mockUseAlertsFeed.mockReturnValue({
       data: [
@@ -86,6 +113,8 @@ describe("PersonalDashboard", () => {
     await user.click(screen.getByRole("button", { name: /Refresh|Refresh recent updates/ }));
 
     expect(mockRefetchAlerts).toHaveBeenCalledTimes(1);
+    expect(mockRefetchProfile).toHaveBeenCalledTimes(1);
+    expect(mockRefetchSource).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Refresh|Refresh recent updates/ })).toBeEnabled();
     });
@@ -101,9 +130,9 @@ describe("PersonalDashboard", () => {
     });
 
     render(<PersonalDashboard />);
-    await user.click(screen.getByRole("button", { name: /Call|Call emergency hotline/ }));
+    await user.click(screen.getByRole("button", { name: /Call|GBV|crisis/ }));
 
-    expect(window.location.href).toBe("tel:+2710111");
+    expect(window.location.href).toBe("tel:0800428428");
 
     Object.defineProperty(window, "location", {
       configurable: true,
