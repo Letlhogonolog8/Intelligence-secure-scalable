@@ -137,7 +137,7 @@ export const initializeRateLimiting = async (): Promise<void> => {
   limiterHandlers = buildLimiters();
 };
 
-export const getRedisClient = () => redisClient;
+export const getRedisClient = (): ReturnType<typeof createClient> | null => redisClient;
 
 export const getRateLimitStoreStatus = (): RateLimitStoreStatus => {
   if (redisConnected && redisClient?.isOpen) {
