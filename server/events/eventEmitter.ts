@@ -203,19 +203,21 @@ export class EventBus {
   }
 
   /**
-   * Get event statistics
+   * Get event statistics — bounded to the most recent window to avoid a full
+   * table scan.  For exact counts use a dedicated DB aggregate view or RPC.
    */
-  public async getEventStats(): Promise<Record<EventType, number>> {
+  public async getEventStats(recentLimit: number = 10_000): Promise<Record<EventType, number>> {
     const { data, error } = await this.supabase
       .from('events_log')
-      .select('event_type');
+      .select('event_type')
+      .order('created_at', { ascending: false })
+      .limit(recentLimit);
 
     if (error) throw error;
 
     const stats: Record<EventType, number> = {} as Record<EventType, number>;
-    (data as EventLogRow[] | null || []).forEach((row) => {
-      const currentCount = stats[row.event_type] ?? 0;
-      stats[row.event_type] = currentCount + 1;
+    (data as EventLogRow[] | null ?? []).forEach((row) => {
+      stats[row.event_type] = (stats[row.event_type] ?? 0) + 1;
     });
 
     return stats;

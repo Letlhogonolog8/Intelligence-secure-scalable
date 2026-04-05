@@ -91,8 +91,10 @@ async function queryHuggingFace(
     const resp = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
-      signal: AbortSignal.timeout(8000),
+      // 2.5 s hard cap — cold-start HF models can take 20–60 s with wait_for_model.
+      // The heuristic fallback path is fast and safe for emergency triage.
+      body: JSON.stringify({ inputs: text, options: { wait_for_model: false } }),
+      signal: AbortSignal.timeout(2500),
     });
 
     if (!resp.ok) return null;
@@ -244,6 +246,49 @@ export class RiskScoringEngine {
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
+  }
+
+  /**
+   * Fast synchronous risk triage using only keyword heuristics and survivor
+   * vulnerability data — no network calls.  Used as an immediate fallback when
+   * the full ML assessment exceeds the emergency response deadline.
+   */
+  public quickAssessRisk(caseData: RiskCaseData): RiskAssessment {
+    const edgeResult = heuristicEdgeInference(caseData.description || '');
+    const survivorBoost = this.survivorVulnerabilityScore(caseData.survivorData || {});
+    const riskScore = Math.round(
+      Math.min(100, edgeResult.sentimentScore * 0.6 + edgeResult.emotionBoost * 0.1 + survivorBoost * 0.3)
+    );
+    const riskLevel = this.determineRiskLevel(riskScore);
+    const factors: RiskFactor[] = [
+      { name: 'severity_assessment', weight: 0.35, value: edgeResult.sentimentScore, contribution: edgeResult.sentimentScore, flag: 'HEURISTIC_QUICK' },
+      { name: 'survivor_vulnerability', weight: 0.15, value: survivorBoost, contribution: survivorBoost },
+    ];
+    return {
+      riskLevel,
+      riskScore,
+      confidence: 0.6,
+      factors,
+      recommendation: this.generateRecommendation(riskLevel, factors),
+      biasDetected: false,
+      explainability: 'Quick heuristic triage — full ML assessment pending.',
+      explainabilityDetails: {
+        topContributors: factors.map((f) => ({ factor: f.name, contribution: f.contribution, percent: Math.round((f.contribution / (riskScore || 1)) * 100) })),
+        modelPath: 'heuristic-fast',
+        summary: 'Emergency fast-path: keyword + survivor vulnerability only.',
+      },
+    };
+  }
+
+  private survivorVulnerabilityScore(survivorData: SurvivorRiskProfile): number {
+    let score = 20;
+    if (survivorData.age_under_18) score += 25;
+    if (survivorData.pregnant) score += 20;
+    if (survivorData.disabled) score += 15;
+    if (survivorData.economic_hardship) score += 10;
+    if (survivorData.undocumented) score += 15;
+    if (survivorData.previous_abuse) score += 20;
+    return Math.min(100, score);
   }
 
   /**

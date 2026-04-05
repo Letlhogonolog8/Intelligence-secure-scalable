@@ -105,10 +105,16 @@ export class EncryptionService {
   }
 
   /**
-   * Hash sensitive data (irreversible, for comparison)
+   * Hash sensitive data for comparison using HMAC-SHA256 with the active key.
+   * Keyed hash prevents rainbow-table attacks on leaked values.
+   * An optional per-value salt can be prepended for additional uniqueness.
    */
-  public hash(data: string): string {
-    return crypto.createHash('sha256').update(data).digest('hex');
+  public hash(data: string, salt?: string): string {
+    const payload = salt ? `${salt}:${data}` : data;
+    return crypto
+      .createHmac('sha256', this.activeKey.key)
+      .update(payload)
+      .digest('hex');
   }
 
   /**

@@ -90,6 +90,42 @@ export class EscalationWorkflow {
     this.eventBus = eventBus;
   }
 
+  /**
+   * Time-boxed risk assessment for the escalation hot path.
+   * The full ML assessment is attempted first.  If it exceeds the deadline
+   * (default 4 s) the fast heuristic assessment is returned immediately so
+   * that notifications and geo-matching are never blocked by a slow ML call.
+   * The full ML result is still computed in the background and logged.
+   */
+  private async timedRiskAssessment(
+    request: EscalationRequest,
+    deadlineMs: number = 4000
+  ): Promise<RiskAssessment> {
+    const mlPromise = this.riskEngine.assessCaseRisk(request.caseId, request.caseData);
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), deadlineMs)
+    );
+
+    const winner = await Promise.race([mlPromise, timeoutPromise]);
+
+    if (winner !== null) {
+      return winner as RiskAssessment;
+    }
+
+    console.warn(`⚠️  ML risk assessment exceeded ${deadlineMs}ms for case ${request.caseId}. Using heuristic fallback.`);
+
+    // Fire-and-forget: let the full ML run finish in the background for logging
+    mlPromise
+      .then((fullResult) => {
+        console.log(`🔄 Background ML risk completed for case ${request.caseId}: ${fullResult.riskLevel} (score ${fullResult.riskScore})`);
+      })
+      .catch((err) => {
+        console.error(`❌ Background ML risk assessment failed for case ${request.caseId}:`, err);
+      });
+
+    return this.riskEngine.quickAssessRisk(request.caseData);
+  }
+
   public async processEscalation(request: EscalationRequest): Promise<EscalationResult> {
     const startTime = Date.now();
     const escalationId = `esc_${Date.now()}`;
@@ -97,7 +133,7 @@ export class EscalationWorkflow {
     console.log(`🚨 Starting escalation workflow for case ${request.caseId}`);
 
     try {
-      const riskAssessment = await this.riskEngine.assessCaseRisk(request.caseId, request.caseData);
+      const riskAssessment = await this.timedRiskAssessment(request);
 
       console.log(`✅ Risk assessment: ${riskAssessment.riskLevel} (${riskAssessment.riskScore})`);
 

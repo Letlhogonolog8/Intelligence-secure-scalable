@@ -28,6 +28,11 @@ export interface AuditLogEntry {
 export class AuditLogService {
   private supabase: SupabaseClient;
   private lastHash: string | null = null;
+  /**
+   * Serial write queue — ensures the hash chain is computed and written
+   * one entry at a time even under concurrent callers, preventing forks.
+   */
+  private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -35,9 +40,31 @@ export class AuditLogService {
   }
 
   /**
-   * Log an action (immutable)
+   * Log an action (immutable).
+   * Writes are serialised through a promise queue so the hash chain
+   * remains consistent under concurrent requests.
    */
-  public async log(entry: AuditLogEntry): Promise<string> {
+  public log(entry: AuditLogEntry): Promise<string> {
+    let resolve!: (id: string) => void;
+    let reject!: (err: unknown) => void;
+    const result = new Promise<string>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    this.writeQueue = this.writeQueue.then(async () => {
+      try {
+        const id = await this._writeEntry(entry);
+        resolve(id);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    return result;
+  }
+
+  private async _writeEntry(entry: AuditLogEntry): Promise<string> {
     try {
       const timestamp = new Date().toISOString();
       const hash = this.computeHash(entry, this.lastHash || '');
@@ -257,46 +284,61 @@ export class AuditLogService {
   }
 
   /**
-   * Verify full chain integrity
+   * Verify chain integrity over the most recent `pageSize` entries per page.
+   * Paginated to prevent loading the full table into memory at once.
+   * Returns false on the first broken link found.
    */
-  public async verifyChain(): Promise<boolean> {
+  public async verifyChain(pageSize: number = 500): Promise<boolean> {
     try {
-      const { data: entries, error } = await this.supabase
-        .from('audit_logs_immutable')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (error || !entries) {
-        return false;
-      }
-
+      let offset = 0;
       let previousHash = '';
-      for (const entry of entries) {
-        const computedHash = this.computeHash(
-          {
-            userId: entry.user_id,
-            action: entry.action,
-            module: entry.module,
-            resourceId: entry.resource_id,
-            resourceType: entry.resource_type,
-            status: entry.status,
-            ipAddress: entry.ip_address,
-            userAgent: entry.user_agent,
-            metadata: entry.metadata,
-            timestamp: entry.created_at,
-          },
-          previousHash
-        );
+      let totalVerified = 0;
 
-        if (computedHash !== entry.hash) {
-          console.error(`❌ Chain integrity broken at entry ${entry.id}`);
+      while (true) {
+        const { data: entries, error } = await this.supabase
+          .from('audit_logs_immutable')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) {
+          console.error('Failed to fetch audit entries for chain verification:', error);
           return false;
         }
 
-        previousHash = entry.hash;
+        if (!entries || entries.length === 0) break;
+
+        for (const entry of entries) {
+          const computedHash = this.computeHash(
+            {
+              userId: entry.user_id,
+              action: entry.action,
+              module: entry.module,
+              resourceId: entry.resource_id,
+              resourceType: entry.resource_type,
+              status: entry.status,
+              ipAddress: entry.ip_address,
+              userAgent: entry.user_agent,
+              metadata: entry.metadata,
+              timestamp: entry.created_at,
+            },
+            previousHash
+          );
+
+          if (computedHash !== entry.hash) {
+            console.error(`❌ Chain integrity broken at entry ${entry.id}`);
+            return false;
+          }
+
+          previousHash = entry.hash;
+        }
+
+        totalVerified += entries.length;
+        if (entries.length < pageSize) break;
+        offset += pageSize;
       }
 
-      console.log(`✅ Audit log chain integrity verified (${entries.length} entries)`);
+      console.log(`✅ Audit log chain integrity verified (${totalVerified} entries)`);
       return true;
     } catch (error) {
       console.error('Failed to verify audit chain:', error);

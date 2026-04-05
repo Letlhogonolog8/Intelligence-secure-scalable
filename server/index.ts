@@ -8,7 +8,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { v4 as uuid } from 'uuid';
-import jwt from 'jsonwebtoken';
 
 import { WebSocketManager } from './websocket';
 import { EventBus } from './events/eventEmitter';
@@ -40,6 +39,7 @@ import {
 import { ErrorTrackingService, setupGlobalErrorHandlers } from './observability/errorTracking';
 import { closeDatadog, initializeDatadog, trackTiming } from './utils/datadog';
 import { ADMIN_DASHBOARD_CONFIG } from './config/adminDashboardConfig';
+import { IntrusionDetectionSystem } from './security/intrusionDetection';
 
 dotenv.config();
 const rateLimitingInitialization = initializeRateLimiting();
@@ -127,6 +127,7 @@ let ussdGateway: USSDGateway;
 let offlineCache: OfflineCache;
 let escalationWorkflow: EscalationWorkflow;
 let twilioNotificationService: TwilioNotificationService;
+let ids: IntrusionDetectionSystem;
 let notificationWorkerInterval: ReturnType<typeof setInterval> | null = null;
 let notificationWorkerInFlight = false;
 
@@ -158,6 +159,7 @@ try {
   auditLogService = new AuditLogService(supabase);
   ussdGateway = new USSDGateway(supabase);
   offlineCache = new OfflineCache();
+  ids = new IntrusionDetectionSystem(supabase);
 
   const riskScoringEngine = new RiskScoringEngine(supabase);
   const geoMatchingEngine = new GeoMatchingEngine(supabase);
@@ -428,6 +430,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.on('finish', () => {
     const duration = Date.now() - startTime;
     const requestId = (req as AppRequest).id;
+    const route = req.route?.path || req.path;
+
     logger.logRequest(req, res, duration, requestId);
     errorTracking.captureApiRequest(req.method, req.path, res.statusCode, duration);
     trackTiming('api.request.duration_ms', duration, [
@@ -435,32 +439,47 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       `route:${req.path}`,
       `status_code:${res.statusCode}`,
     ]);
+
+    httpRequestDuration
+      .labels(req.method, route, res.statusCode.toString())
+      .observe(duration);
+
+    httpRequestsTotal
+      .labels(req.method, route, res.statusCode.toString())
+      .inc();
   });
   next();
 });
 
 app.use('/api/', defaultLimiter);
 
-app.get('/metrics', metricsHandler);
+app.use(ids.analyzeRequest());
 
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const start = Date.now();
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    const route = req.route?.path || req.path;
-    
-    httpRequestDuration
-      .labels(req.method, route, res.statusCode.toString())
-      .observe(duration);
-    
-    httpRequestsTotal
-      .labels(req.method, route, res.statusCode.toString())
-      .inc();
-  });
-  
-  next();
-});
+const METRICS_TOKEN = process.env.METRICS_TOKEN;
+const METRICS_ALLOWED_IPS = (process.env.METRICS_ALLOWED_IPS || '127.0.0.1,::1,::ffff:127.0.0.1')
+  .split(',')
+  .map((s) => s.trim());
+
+app.get(
+  '/metrics',
+  (req: Request, res: Response, next: NextFunction) => {
+    if (METRICS_TOKEN) {
+      const auth = req.headers.authorization;
+      if (!auth || auth !== `Bearer ${METRICS_TOKEN}`) {
+        res.status(403).end();
+        return;
+      }
+    } else {
+      const clientIP = req.ip || '';
+      if (!METRICS_ALLOWED_IPS.some((ip) => clientIP === ip || clientIP.endsWith(ip))) {
+        res.status(403).end();
+        return;
+      }
+    }
+    next();
+  },
+  metricsHandler
+);
 
 function verifyTelkomSignature(
   body: Record<string, unknown>,
@@ -493,7 +512,23 @@ function extractBearerToken(req: Request): string | undefined {
   return authHeader.slice('Bearer '.length).trim() || undefined;
 }
 
+const AUTH_CACHE_TTL_SECONDS = 30;
+
 async function resolveAuthenticatedUser(token: string): Promise<AuthenticatedUser | null> {
+  const redisClient = getRedisClient();
+  const cacheKey = `auth:user:${crypto.createHash('sha256').update(token).digest('hex')}`;
+
+  if (redisClient?.isOpen) {
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as AuthenticatedUser;
+      }
+    } catch {
+      // Cache read failure is non-fatal — fall through to Supabase
+    }
+  }
+
   const {
     data: { user },
     error,
@@ -509,11 +544,21 @@ async function resolveAuthenticatedUser(token: string): Promise<AuthenticatedUse
     .eq('id', user.id)
     .maybeSingle();
 
-  return {
+  const authUser: AuthenticatedUser = {
     id: user.id,
     role: profile?.role,
     organizationId: profile?.organization_id,
   };
+
+  if (redisClient?.isOpen) {
+    try {
+      await redisClient.setEx(cacheKey, AUTH_CACHE_TTL_SECONDS, JSON.stringify(authUser));
+    } catch {
+      // Cache write failure is non-fatal
+    }
+  }
+
+  return authUser;
 }
 
 async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -836,160 +881,11 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-const jwtSecret = (() => {
-  if (!process.env.JWT_SECRET) {
-    logger.warn('JWT_SECRET not provided, generating temporary key for development');
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('CRITICAL: JWT_SECRET required in production', new Error('Missing JWT_SECRET'));
-      process.exit(1);
-    }
-    return crypto.randomBytes(32).toString('hex');
-  }
-  return process.env.JWT_SECRET;
-})();
-
-const refreshTokenSecret = (() => {
-  if (!process.env.REFRESH_TOKEN_SECRET) {
-    logger.warn('REFRESH_TOKEN_SECRET not provided, generating temporary key for development');
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('CRITICAL: REFRESH_TOKEN_SECRET required in production', new Error('Missing REFRESH_TOKEN_SECRET'));
-      process.exit(1);
-    }
-    return crypto.randomBytes(32).toString('hex');
-  }
-  return process.env.REFRESH_TOKEN_SECRET;
-})();
-
-interface SessionData {
-  userId: string;
-  createdAt: number;
-  expiresAt: number;
-}
-
-const activeSessions = new Map<string, SessionData>();
-const refreshSessionKeyPrefix = 'auth:refresh-session:';
-
-function getRefreshSessionKey(token: string): string {
-  const digest = crypto.createHash('sha256').update(token).digest('hex');
-  return `${refreshSessionKeyPrefix}${digest}`;
-}
-
-async function storeRefreshSession(token: string, session: SessionData): Promise<void> {
-  const redisClient = getRedisClient();
-
-  if (redisClient?.isOpen) {
-    const ttlSeconds = Math.max(1, Math.ceil((session.expiresAt - Date.now()) / 1000));
-    await redisClient.setEx(getRefreshSessionKey(token), ttlSeconds, JSON.stringify(session));
-    return;
-  }
-
-  activeSessions.set(token, session);
-}
-
-async function getRefreshSession(token: string): Promise<SessionData | null> {
-  const redisClient = getRedisClient();
-
-  if (redisClient?.isOpen) {
-    const rawSession = await redisClient.get(getRefreshSessionKey(token));
-    return rawSession ? JSON.parse(rawSession) as SessionData : null;
-  }
-
-  return activeSessions.get(token) ?? null;
-}
-
-async function deleteRefreshSession(token: string): Promise<void> {
-  const redisClient = getRedisClient();
-
-  if (redisClient?.isOpen) {
-    await redisClient.del(getRefreshSessionKey(token));
-    return;
-  }
-
-  activeSessions.delete(token);
-}
-
-function createAccessToken(userId: string): string {
-  return jwt.sign(
-    { userId, type: 'access' },
-    jwtSecret,
-    { expiresIn: process.env.JWT_EXPIRY || '15m' }
-  );
-}
-
-async function createRefreshToken(userId: string): Promise<string> {
-  const token = jwt.sign(
-    { userId, type: 'refresh' },
-    refreshTokenSecret,
-    { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d' }
-  );
-
-  const decodedToken = jwt.decode(token) as jwt.JwtPayload | null;
-  const expiresAt = decodedToken?.exp ? decodedToken.exp * 1000 : Date.now() + (7 * 24 * 60 * 60 * 1000);
-  const session: SessionData = {
-    userId,
-    createdAt: Date.now(),
-    expiresAt,
-  };
-
-  await storeRefreshSession(token, session);
-  return token;
-}
-
-app.post('/api/auth/refresh', async (req: Request, res: Response) => {
-  try {
-    const requestId = (req as AppRequest).id;
-    const { refreshToken } = req.body;
-    
-    if (!refreshToken) {
-      logger.warn('Refresh token missing', {}, requestId);
-      return res.status(401).json({ error: 'Refresh token required', requestId });
-    }
-    
-    const session = await getRefreshSession(refreshToken);
-    if (!session || session.expiresAt < Date.now()) {
-      logger.warn('Invalid or expired refresh token', { userId: session?.userId }, requestId);
-      await deleteRefreshSession(refreshToken);
-      return res.status(401).json({ error: 'Invalid or expired token', requestId });
-    }
-    
-    try {
-      jwt.verify(refreshToken, refreshTokenSecret);
-    } catch (error) {
-      logger.error('Refresh token verification failed', error, { userId: session.userId }, requestId);
-      return res.status(401).json({ error: 'Invalid token', requestId });
-    }
-    
-    await deleteRefreshSession(refreshToken);
-    
-    const newAccessToken = createAccessToken(session.userId);
-    const newRefreshToken = await createRefreshToken(session.userId);
-    
-    logger.info('Token refreshed', { userId: session.userId }, requestId);
-    
-    res.json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      expiresIn: '15m',
-      requestId,
-    });
-  } catch (error) {
-    const requestId = (req as AppRequest).id;
-    logger.error('Token refresh failed', error, {}, requestId);
-    res.status(500).json({ error: 'Failed to refresh token', requestId });
-  }
-});
-
 app.post('/api/auth/logout', requireAuth, async (req: Request, res: Response) => {
   try {
     const requestId = (req as AppRequest).id;
-    const { refreshToken } = req.body;
     const userId = (req as AppRequest).user?.id;
-    
-    if (refreshToken) {
-      await deleteRefreshSession(refreshToken);
-      logger.info('User logged out', { userId }, requestId);
-    }
-    
+
     await auditLogService.log({
       userId: userId || 'anonymous',
       action: 'user_logout',
@@ -1000,7 +896,8 @@ app.post('/api/auth/logout', requireAuth, async (req: Request, res: Response) =>
       userAgent: req.headers['user-agent'] || '',
       timestamp: new Date().toISOString(),
     });
-    
+
+    logger.info('User logged out', { userId }, requestId);
     res.json({ message: 'Logged out successfully', requestId });
   } catch (error) {
     const requestId = (req as AppRequest).id;

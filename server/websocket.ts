@@ -20,9 +20,20 @@ export class WebSocketManager {
 
   constructor(httpServer: HTTPServer, supabase: SupabaseClient) {
     this.supabase = supabase;
+    const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8080')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
+        origin: (origin, callback) => {
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            callback(new Error('WebSocket CORS policy violation'));
+          }
+        },
         credentials: true,
       },
       transports: ['websocket', 'polling'],

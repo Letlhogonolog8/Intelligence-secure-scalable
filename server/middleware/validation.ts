@@ -5,19 +5,16 @@ const validator = createValidator();
 
 export const schemas = {
   escalate: Joi.object({
-    caseId: Joi.string().required().alphanum().min(5),
+    caseId: Joi.string().required().pattern(/^[a-zA-Z0-9\-_]+$/).min(5),
     severity: Joi.string().required().valid('low', 'medium', 'high', 'critical'),
     reason: Joi.string().required().min(10).max(500),
-    userId: Joi.string().required().uuid(),
   }),
 
   mfaSetup: Joi.object({
-    userId: Joi.string().required().uuid(),
     username: Joi.string().required().min(3).max(100),
   }),
 
   mfaVerify: Joi.object({
-    userId: Joi.string().required().uuid(),
     code: Joi.string().required().length(6).pattern(/^\d+$/),
   }),
 
