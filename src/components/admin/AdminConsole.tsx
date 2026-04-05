@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,8 +56,11 @@ import {
   CheckCircle2,
   FileText,
   Copy,
-  KeyRound
+  KeyRound,
+  Download,
+  Timer,
 } from "lucide-react";
+import { useDocumentVisibility } from "@/hooks/useDocumentVisibility";
 
 const roleOptions = ["admin", "counselor", "analyst", "ngo", "police", "survivor"] as const;
 const editablePrivilegedRoleOptions = ["counselor", "analyst", "ngo", "police"] as const;
@@ -105,6 +108,7 @@ const AdminConsole: React.FC = () => {
   const isAdmin = profile?.role === "admin";
   const { setActiveModule } = useAppStore();
   const navigate = useNavigate();
+  const documentVisible = useDocumentVisibility();
   const [activeSection, setActiveSection] = useState<AdminSectionKey>("overview");
   const [verificationClock, setVerificationClock] = useState(() => Date.now());
 
@@ -115,10 +119,11 @@ const AdminConsole: React.FC = () => {
 
   const { data: organizations = [], isLoading: orgLoading, refetch: refetchOrganizations } = useOrganizations({ enabled: shouldLoadOrganizations, limit: 100 });
   const { data: users = [], isLoading: userLoading, refetch: refetchUsers } = useUserProfiles({ enabled: shouldLoadUsers, limit: 200 });
-  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: shouldLoadDeletionRequests, staleTime: 30000, refetchInterval: activeSection === "overview" ? 60000 : undefined });
-  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useAuditLogs({ enabled: shouldLoadAuditLogs, limit: 100, staleTime: 30000, refetchInterval: activeSection === "overview" ? 60000 : undefined });
+  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: shouldLoadDeletionRequests, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : false });
+  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useAuditLogs({ enabled: shouldLoadAuditLogs, limit: 100, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : false });
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [refreshLoading, setRefreshLoading] = useState(false);
   const [organizationAssignments, setOrganizationAssignments] = useState<Record<string, string | null>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
@@ -239,7 +244,7 @@ const AdminConsole: React.FC = () => {
       );
     }
     if (auditSeverity !== "all") {
-      logs = logs.filter((log) => log.severity === auditSeverity);
+      logs = logs.filter((log) => (log.severity ?? "").toLowerCase() === auditSeverity);
     }
     return logs;
   }, [auditLogs, deferredAuditSearch, auditSeverity]);
@@ -737,24 +742,44 @@ const AdminConsole: React.FC = () => {
   };
 
   const handleRefreshVisibleData = async () => {
-    const tasks: Array<Promise<unknown>> = [];
-
-    if (shouldLoadOrganizations) {
-      tasks.push(refetchOrganizations());
+    setRefreshLoading(true);
+    try {
+      const tasks: Array<Promise<unknown>> = [];
+      if (shouldLoadOrganizations) tasks.push(refetchOrganizations());
+      if (shouldLoadUsers) tasks.push(refetchUsers());
+      if (shouldLoadDeletionRequests) tasks.push(refetchDeletionRequests());
+      if (shouldLoadAuditLogs) tasks.push(refetchAuditLogs());
+      await Promise.all(tasks);
+      toast.success("Visible admin data refreshed");
+    } finally {
+      setRefreshLoading(false);
     }
-    if (shouldLoadUsers) {
-      tasks.push(refetchUsers());
-    }
-    if (shouldLoadDeletionRequests) {
-      tasks.push(refetchDeletionRequests());
-    }
-    if (shouldLoadAuditLogs) {
-      tasks.push(refetchAuditLogs());
-    }
-
-    await Promise.all(tasks);
-    toast.success("Visible admin data refreshed");
   };
+
+  const handleExportAuditCsv = useCallback(() => {
+    if (filteredAuditLogs.length === 0) {
+      toast.error("No audit logs to export");
+      return;
+    }
+    const header = ["Time", "Action", "Module", "User", "Severity", "Description"];
+    const rows = filteredAuditLogs.map((log) => [
+      log.time,
+      log.action,
+      log.module,
+      log.user ?? "system",
+      log.severity ?? "info",
+      (log.description ?? "").replace(/"/g, '""'),
+    ].map((cell) => `"${cell}"`).join(","));
+    const csv = [header.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `aegis-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredAuditLogs.length} audit records`);
+  }, [filteredAuditLogs]);
 
   const handleOrgVerificationToggle = async (orgId: string, nextStatus: boolean) => {
     const targetOrganization = organizations.find((item) => item.id === orgId);
@@ -909,6 +934,21 @@ const AdminConsole: React.FC = () => {
                 <span className="rounded-full border border-rose-400/25 bg-rose-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-rose-300">
                   {pendingRequests} deletion requests
                 </span>
+                {adminStepUpActive ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300">
+                    <Timer className="h-3 w-3" />
+                    Verified · {adminStepUpMinutesRemaining}m remaining
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-slate-600/25 bg-slate-800/40 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    Step-up required
+                  </span>
+                )}
+                {!documentVisible && (
+                  <span className="rounded-full border border-slate-600/20 bg-slate-900/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">
+                    Polling paused
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
@@ -929,9 +969,11 @@ const AdminConsole: React.FC = () => {
                 variant="outline"
                 className="h-12 border-white/15 bg-white/5 text-white hover:bg-white/10"
                 onClick={() => void handleRefreshVisibleData()}
+                disabled={refreshLoading}
+                aria-busy={refreshLoading}
               >
-                <RefreshCw className="mr-2 h-4 w-4 text-emerald-300" />
-                Refresh Visible Data
+                <RefreshCw className={`mr-2 h-4 w-4 text-emerald-300 ${refreshLoading ? "animate-spin" : ""}`} />
+                {refreshLoading ? "Refreshing…" : "Refresh Data"}
               </Button>
               <Button
                 size="lg"
@@ -1025,9 +1067,14 @@ const AdminConsole: React.FC = () => {
                       <SelectItem value="ngo">NGO Partner</SelectItem>
                       <SelectItem value="counselor">Specialized Counselor</SelectItem>
                       <SelectItem value="analyst">Data Analyst</SelectItem>
-                      <SelectItem value="admin">System Admin</SelectItem>
+                      <SelectItem value="admin">System Admin ⚠️</SelectItem>
                     </SelectContent>
                   </Select>
+                  {provisionForm.role === "admin" && (
+                    <p className="text-[10px] text-amber-400 font-bold mt-1">
+                      ⚠️ System Admin grants full platform control. Use only for trusted operators.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -2024,8 +2071,21 @@ const AdminConsole: React.FC = () => {
                   </h2>
                   <p className="text-sm text-slate-400 font-medium">Immutable record of all administrative & system events.</p>
                 </div>
-                <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-indigo-400" />
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/10 font-black text-[10px] uppercase tracking-widest"
+                    onClick={handleExportAuditCsv}
+                    disabled={filteredAuditLogs.length === 0}
+                    title="Export filtered audit logs as CSV"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Export CSV
+                  </Button>
+                  <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                    <Activity className="h-5 w-5 text-indigo-400" />
+                  </div>
                 </div>
               </div>
 
@@ -2066,8 +2126,8 @@ const AdminConsole: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {filteredAuditLogs.map((log) => (
-                    <div key={`${log.time}-${log.action}-${log.user ?? "system"}`} className="p-4 hover:bg-white/[0.02] transition-colors flex items-start gap-4">
+                  {filteredAuditLogs.map((log, index) => (
+                    <div key={`${log.time}-${log.action}-${log.user ?? "system"}-${index}`} className="p-4 hover:bg-white/[0.02] transition-colors flex items-start gap-4">
                       <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${
                         log.severity === "critical" ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" : 
                         log.severity === "error" ? "bg-orange-500" : 

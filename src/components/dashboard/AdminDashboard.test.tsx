@@ -144,9 +144,9 @@ describe("AdminDashboard", () => {
     mockUseLiveUserProfiles.mockReturnValue({
       ...idle,
       data: [
-        { id: "1", role: "admin", isActive: true, approvalStatus: "approved" },
-        { id: "2", role: "analyst", isActive: true, approvalStatus: "pending" },
-        { id: "3", role: "police", isActive: false, approvalStatus: "approved" },
+        { id: "1", role: "admin", isActive: true, approvalStatus: "approved", mfaEnabled: true },
+        { id: "2", role: "analyst", isActive: true, approvalStatus: "pending", mfaEnabled: false },
+        { id: "3", role: "police", isActive: false, approvalStatus: "approved", mfaEnabled: true },
       ],
     });
     mockUseAlertsFeed.mockReturnValue({
@@ -168,6 +168,52 @@ describe("AdminDashboard", () => {
     expect(screen.getByText("Investigate critical alerts")).toBeInTheDocument();
     expect(screen.getByText("Threshold notifications")).toBeInTheDocument();
     expect(screen.getByText("Critical monitoring signals detected")).toBeInTheDocument();
+  });
+
+  it("shows MFA coverage badge when privileged users are present", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
+    mockUseLiveUserProfiles.mockReturnValue({
+      ...idle,
+      data: [
+        { id: "1", role: "analyst", isActive: true, approvalStatus: "approved", mfaEnabled: true },
+        { id: "2", role: "counselor", isActive: true, approvalStatus: "approved", mfaEnabled: true },
+        { id: "3", role: "police", isActive: true, approvalStatus: "approved", mfaEnabled: false },
+        { id: "4", role: "survivor", isActive: true, approvalStatus: "approved", mfaEnabled: false },
+      ],
+    });
+
+    render(<AdminDashboard />);
+
+    expect(screen.getByText("67% MFA coverage")).toBeInTheDocument();
+  });
+
+  it("omits MFA coverage badge when no privileged users exist", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
+    mockUseLiveUserProfiles.mockReturnValue({
+      ...idle,
+      data: [
+        { id: "1", role: "survivor", isActive: true, approvalStatus: "approved", mfaEnabled: false },
+      ],
+    });
+
+    render(<AdminDashboard />);
+
+    expect(screen.queryByText(/MFA coverage/)).not.toBeInTheDocument();
+  });
+
+  it("normalizes decimal systemUptime (0–1 range) into percent for security posture", () => {
+    const idle = { isPending: false, isFetching: false, error: null, refetch: vi.fn() };
+    mockUseSystemMetrics.mockReturnValue({
+      ...idle,
+      data: { systemUptime: 0.995, encryptionStatus: "active", apiRequestsToday: 0, dataPointsProcessed: "0", activeAlerts: 0 },
+    });
+
+    render(<AdminDashboard />);
+
+    const postureBadges = screen.getAllByText(/security posture/i);
+    const heroBadge = postureBadges.find((el) => el.tagName === "SPAN");
+    const pct = parseInt(heroBadge?.textContent ?? "0");
+    expect(pct).toBeGreaterThan(90);
   });
 
   it("normalizes audit and alert inputs before rendering admin operational widgets", () => {

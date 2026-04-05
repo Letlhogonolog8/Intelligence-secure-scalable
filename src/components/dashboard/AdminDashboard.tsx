@@ -245,8 +245,16 @@ const AdminDashboard: React.FC = () => {
     return summary;
   }, [sanitizedAuditLogs]);
   const recentAuditActors = useMemo(() => new Set(sanitizedAuditLogs.slice(0, 12).map((entry) => entry.user).filter(Boolean)).size, [sanitizedAuditLogs]);
+  const mfaCoverage = useMemo(() => {
+    const privileged = users.filter((u) => ["admin", "analyst", "ngo", "police", "counselor"].includes(u.role));
+    if (privileged.length === 0) return null;
+    const covered = privileged.filter((u) => u.mfaEnabled).length;
+    return Math.round((covered / privileged.length) * 100);
+  }, [users]);
+
   const securityPosture = useMemo(() => {
-    const uptime = systemMetrics?.systemUptime ?? 0;
+    const rawUptime = systemMetrics?.systemUptime ?? 0;
+    const uptime = rawUptime > 0 && rawUptime <= 1 ? rawUptime * 100 : rawUptime;
     const encryptionFactor = systemMetrics?.encryptionStatus === "active" ? 100 : 70;
     const alertPenalty = Math.min(35, criticalAlerts.length * 6);
     return Math.min(100, Math.max(0, Math.round((uptime + encryptionFactor) / 2 - alertPenalty)));
@@ -389,6 +397,9 @@ const AdminDashboard: React.FC = () => {
           <HeroBadge key="posture" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200">{securityPosture}% security posture</HeroBadge>,
           <HeroBadge key="approvals" className="border-amber-500/20 bg-amber-500/10 text-amber-200">{pendingApprovals.length} pending approvals</HeroBadge>,
           <HeroBadge key="alerts" className="border-rose-500/20 bg-rose-500/10 text-rose-200">{criticalAlerts.length} critical alerts</HeroBadge>,
+          ...(mfaCoverage !== null
+            ? [<HeroBadge key="mfa" className={mfaCoverage >= 80 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : mfaCoverage >= 50 ? "border-amber-500/20 bg-amber-500/10 text-amber-200" : "border-rose-500/20 bg-rose-500/10 text-rose-200"}>{mfaCoverage}% MFA coverage</HeroBadge>]
+            : []),
           ...(isFetchingAdminData && !isInitialDashboardPending && documentVisible
             ? [<HeroBadge key="sync" className="border-cyan-500/20 bg-cyan-500/10 text-cyan-200">Syncing live data…</HeroBadge>]
             : []),
