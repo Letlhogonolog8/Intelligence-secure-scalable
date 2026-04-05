@@ -72,6 +72,11 @@ const CommandCenter: React.FC = () => {
     return 'Operational baseline';
   }, [systemMetrics]);
 
+  const normalizedUptime = useMemo(() => {
+    const raw = systemMetrics?.systemUptime ?? 0;
+    return raw > 0 && raw <= 1 ? parseFloat((raw * 100).toFixed(2)) : raw;
+  }, [systemMetrics?.systemUptime]);
+
   useEffect(() => {
     if (alertsPage > totalAlertPages - 1) {
       setAlertsPage(Math.max(0, totalAlertPages - 1));
@@ -119,7 +124,7 @@ const CommandCenter: React.FC = () => {
         <div className={`p-2 rounded-lg bg-gradient-to-br ${color}`}>
           <Icon className="text-white" size={18} />
         </div>
-        {trend && (
+        {!!trend && (
           <div className={`flex items-center gap-1 text-xs ${trend > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
             {trend > 0 ? <TrendUpIcon size={12} /> : <TrendDownIcon size={12} />}
             <span>{Math.abs(trend)}%</span>
@@ -285,7 +290,7 @@ const CommandCenter: React.FC = () => {
         <MetricCard
           icon={ActivityIcon}
           label="System Uptime"
-          value={systemMetrics ? `${systemMetrics.systemUptime}%` : <Skeleton className="h-7 w-12 bg-slate-800/60" />}
+          value={systemMetrics ? `${normalizedUptime}%` : <Skeleton className="h-7 w-12 bg-slate-800/60" />}
           color="from-cyan-500/20 to-cyan-600/20"
         />
       </div>
