@@ -29,6 +29,12 @@ type IconComponent = React.FC<{ className?: string; size?: number }>;
 const moduleIcons: Record<ModuleType, IconComponent> = {
   dashboard: BarChartIcon,
   personal_dashboard: HeartIcon,
+  safety_plan: HeartIcon,
+  appointments: ActivityIcon,
+  trusted_contacts: ShieldIcon,
+  document_vault: FileTextIcon,
+  support_requests: MessageCircleIcon,
+  secure_messages: MessageCircleIcon,
   reporting: FileTextIcon,
   admin_console: SettingsIcon,
   command_center: ActivityIcon,

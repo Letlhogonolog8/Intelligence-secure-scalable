@@ -14,7 +14,23 @@ import {
 export { getErrorMessage }
 
 export type RiskLevel = "low" | "medium" | "high" | "critical"
-export type ModuleType = "dashboard" | "personal_dashboard" | "reporting" | "admin_console" | "command_center" | "survivor_support" | "prediction" | "justice" | "policy" | "governance"
+export type ModuleType =
+  | "dashboard"
+  | "personal_dashboard"
+  | "safety_plan"
+  | "appointments"
+  | "trusted_contacts"
+  | "document_vault"
+  | "support_requests"
+  | "secure_messages"
+  | "reporting"
+  | "admin_console"
+  | "command_center"
+  | "survivor_support"
+  | "prediction"
+  | "justice"
+  | "policy"
+  | "governance"
 export type TrendDirection = "up" | "down" | "stable"
 
 export type ModuleMetadata = {
@@ -320,6 +336,54 @@ export const MODULE_METADATA: Record<ModuleType, ModuleMetadata> = {
     shortLabel: "PD",
     description: "Safety plan, appointments, and personal documents",
     colorClass: "text-purple-400",
+  },
+  safety_plan: {
+    title: "Safety Plan",
+    subtitle: "Personal safety preparation",
+    label: "Safety Plan",
+    shortLabel: "SAFE",
+    description: "Review your personal safety plan, trusted contacts, and safe actions",
+    colorClass: "text-emerald-400",
+  },
+  appointments: {
+    title: "Appointments",
+    subtitle: "Upcoming care and support sessions",
+    label: "Appointments",
+    shortLabel: "APT",
+    description: "Track counseling, legal, and follow-up appointments",
+    colorClass: "text-sky-400",
+  },
+  trusted_contacts: {
+    title: "Trusted Contacts",
+    subtitle: "People you can reach quickly",
+    label: "Trusted Contacts",
+    shortLabel: "TC",
+    description: "Manage trusted contacts and emergency outreach options",
+    colorClass: "text-rose-400",
+  },
+  document_vault: {
+    title: "Document Vault",
+    subtitle: "Secure document access",
+    label: "Document Vault",
+    shortLabel: "DOC",
+    description: "View and manage encrypted personal and case-related files",
+    colorClass: "text-amber-400",
+  },
+  support_requests: {
+    title: "Support Requests",
+    subtitle: "Open and track help requests",
+    label: "Support Requests",
+    shortLabel: "REQ",
+    description: "Create and monitor requests for support and follow-up",
+    colorClass: "text-pink-400",
+  },
+  secure_messages: {
+    title: "Secure Messages",
+    subtitle: "Private support communications",
+    label: "Secure Messages",
+    shortLabel: "MSG",
+    description: "Access private messages and communication history",
+    colorClass: "text-indigo-300",
   },
   reporting: {
     title: "Reporting Center",

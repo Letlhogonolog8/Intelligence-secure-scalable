@@ -24,6 +24,7 @@ const NgoDashboard = lazy(() => import('@/components/dashboard/NgoDashboard'));
 const PoliceDashboard = lazy(() => import('@/components/dashboard/PoliceDashboard'));
 const AnalystDashboard = lazy(() => import('@/components/dashboard/AnalystDashboard'));
 const PersonalDashboard = lazy(() => import('@/components/survivor/PersonalDashboard'));
+const SurvivorFeatureWorkspace = lazy(() => import('@/components/survivor/SurvivorFeatureWorkspace'));
 const ReportingCenter = lazy(() => import('@/components/reporting/ReportingCenter'));
 const AdminConsole = lazy(() => import('@/components/admin/AdminConsole'));
 
@@ -113,6 +114,13 @@ const AppLayout: React.FC = () => {
     switch (activeModule) {
       case 'personal_dashboard':
         return <PersonalDashboard />;
+      case 'safety_plan':
+      case 'appointments':
+      case 'trusted_contacts':
+      case 'document_vault':
+      case 'support_requests':
+      case 'secure_messages':
+        return <SurvivorFeatureWorkspace module={activeModule} />;
       case 'reporting':
         return <ReportingCenter />;
       case 'admin_console':

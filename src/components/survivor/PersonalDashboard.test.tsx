@@ -51,33 +51,43 @@ describe("PersonalDashboard", () => {
     expect(screen.getByText("Personal Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Welcome back, Amina")).toBeInTheDocument();
     expect(screen.getByText("Plan updated")).toBeInTheDocument();
-    expect(screen.getByText("Appointment reminder")).toBeInTheDocument();
+    expect(screen.getAllByText("Appointment reminder").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Plan updated")).toHaveLength(1);
   });
 
-  it("routes support-related buttons to survivor support", async () => {
+  it("routes dashboard actions to distinct survivor workflows", async () => {
     const user = userEvent.setup();
     render(<PersonalDashboard />);
 
-    await user.click(screen.getByRole("button", { name: "Update Plan" }));
-    await user.click(screen.getByRole("button", { name: "New Support Request" }));
-    await user.click(screen.getByRole("button", { name: "Review Plan" }));
-    await user.click(screen.getByRole("button", { name: "View Contacts" }));
-    await user.click(screen.getByRole("button", { name: "Message" }));
+    await user.click(screen.getByRole("button", { name: /Update Plan|Open safety plan workspace/ }));
+    await user.click(screen.getByRole("button", { name: /New Support Request|Open support requests workspace/ }));
+    await user.click(screen.getByRole("button", { name: /Review Plan|Complete Plan/ }));
+    await user.click(screen.getByRole("button", { name: /View Contacts|Open trusted contacts workspace/ }));
+    await user.click(screen.getByRole("button", { name: /Message|Open secure messaging workspace/ }));
+    await user.click(screen.getByRole("button", { name: "View Schedule" }));
+    await user.click(screen.getByRole("button", { name: "Manage Contacts" }));
+    await user.click(screen.getByRole("button", { name: "Open Vault" }));
 
-    expect(mockSetActiveModule).toHaveBeenCalledTimes(5);
-    expect(mockSetActiveModule).toHaveBeenCalledWith("survivor_support");
+    expect(mockSetActiveModule).toHaveBeenCalledTimes(8);
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(1, "safety_plan");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(2, "support_requests");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(3, "safety_plan");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(4, "trusted_contacts");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(5, "secure_messages");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(6, "appointments");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(7, "trusted_contacts");
+    expect(mockSetActiveModule).toHaveBeenNthCalledWith(8, "document_vault");
   });
 
   it("refreshes recent updates and restores button state", async () => {
     const user = userEvent.setup();
     render(<PersonalDashboard />);
 
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await user.click(screen.getByRole("button", { name: /Refresh|Refresh recent updates/ }));
 
     expect(mockRefetchAlerts).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Refresh|Refresh recent updates/ })).toBeEnabled();
     });
   });
 
@@ -91,7 +101,7 @@ describe("PersonalDashboard", () => {
     });
 
     render(<PersonalDashboard />);
-    await user.click(screen.getByRole("button", { name: "Call" }));
+    await user.click(screen.getByRole("button", { name: /Call|Call emergency hotline/ }));
 
     expect(window.location.href).toBe("tel:+2710111");
 

@@ -12,6 +12,12 @@ interface BreadcrumbProps {
 const moduleNames: Record<ModuleType, string> = {
   dashboard: "Dashboard",
   personal_dashboard: "Personal Dashboard",
+  safety_plan: "Safety Plan",
+  appointments: "Appointments",
+  trusted_contacts: "Trusted Contacts",
+  document_vault: "Document Vault",
+  support_requests: "Support Requests",
+  secure_messages: "Secure Messages",
   reporting: "Reporting Center",
   admin_console: "Admin Console",
   command_center: "Command Center",

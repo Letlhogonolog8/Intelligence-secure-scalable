@@ -81,7 +81,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     label: "Survivor",
     description: "Support seeker accessing personal support resources",
     icon: "UserIcon",
-    modules: ["dashboard", "personal_dashboard", "survivor_support"],
+    modules: ["dashboard", "personal_dashboard", "safety_plan", "appointments", "trusted_contacts", "document_vault", "support_requests", "secure_messages", "survivor_support"],
     defaultModule: "personal_dashboard",
     dashboardType: "survivor_dashboard",
     color: "text-purple-500",
