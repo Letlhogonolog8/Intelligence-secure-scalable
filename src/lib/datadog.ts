@@ -1,4 +1,4 @@
-import type { DatadogRumInit, RumUserAction } from '@datadog/browser-rum';
+import type { RumInitConfiguration } from '@datadog/browser-rum';
 
 export interface DatadogConfig {
   applicationId: string;
@@ -38,7 +38,7 @@ export async function initDatadog(): Promise<void> {
     const { datadogRum } = rum;
     const { datadogLogs } = logs;
 
-    const config: DatadogRumInit = {
+    const config: RumInitConfiguration = {
       applicationId: import.meta.env.VITE_DATADOG_APPLICATION_ID,
       clientToken: import.meta.env.VITE_DATADOG_CLIENT_TOKEN,
       site: 'datadoghq.com',
@@ -50,7 +50,6 @@ export async function initDatadog(): Promise<void> {
       trackUserInteractions: true,
       trackResources: true,
       trackLongTasks: true,
-      trackFrustrations: true,
       defaultPrivacyLevel: 'mask-user-input',
       actionNameAttribute: 'data-dd-action-name',
     };
@@ -83,11 +82,7 @@ export function trackUserAction(
   if (!ddInitialized || !rumApi) return;
 
   try {
-    const action: RumUserAction = {
-      name,
-      context,
-    };
-    rumApi.addUserAction(action.name, action.context);
+    rumApi.addAction(name, context);
   } catch (error) {
     console.error('Error tracking user action:', error);
   }
@@ -122,8 +117,8 @@ export function addGlobalContext(
   if (!ddInitialized || !rumApi || !logsApi) return;
 
   try {
-    rumApi.addRumGlobalContext(key, value);
-    logsApi.addLoggerGlobalContext(key, value);
+    rumApi.setGlobalContextProperty(key, value);
+    logsApi.setGlobalContextProperty(key, value);
   } catch (error) {
     console.error('Error adding global context:', error);
   }
@@ -145,7 +140,7 @@ export function setUser(user: {
       name: user.name,
       email: user.email,
     });
-    logsApi.setUserContext({
+    logsApi.setUser({
       id: user.id,
       name: user.name,
       email: user.email,
@@ -164,7 +159,7 @@ export function clearUser(): void {
 
   try {
     rumApi.clearUser();
-    logsApi.clearUserContext();
+    logsApi.clearUser();
   } catch (error) {
     console.error('Error clearing user context:', error);
   }

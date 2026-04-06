@@ -142,7 +142,7 @@ export const getErrorMessage = (error: unknown): string => {
 export const logError = (error: unknown, context?: Record<string, unknown>) => {
   const normalized = normalizeError(error)
   console.error(normalized)
-  const payload = {
+  const payload: LogPayload = {
     level: "error",
     message: normalized.message,
     name: normalized.name,
@@ -156,7 +156,7 @@ export const logError = (error: unknown, context?: Record<string, unknown>) => {
 
 export const logInfo = (message: string, context?: Record<string, unknown>) => {
   console.info(message)
-  const payload = {
+  const payload: LogPayload = {
     level: "info",
     message,
     context,

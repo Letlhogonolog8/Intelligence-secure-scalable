@@ -273,15 +273,15 @@ export class NDoHHealthAlignment {
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
 
-    const sessionData = sessions.data || [];
+    const sessionData = (sessions.data ?? []) as Array<Record<string, unknown>>;
     const totalSessions = sessionData.length;
 
     const satisfactorySessions = sessionData.filter(
-      (s) => (s as Record<string, unknown>).satisfaction_score >= 4
+      (s) => Number(s.satisfaction_score ?? 0) >= 4
     ).length;
 
     const completedFollowups = sessionData.filter(
-      (s) => (s as Record<string, unknown>).follow_up_completed === true
+      (s) => s.follow_up_completed === true
     ).length;
 
     return {

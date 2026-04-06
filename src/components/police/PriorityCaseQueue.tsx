@@ -74,49 +74,55 @@ export const PriorityCaseQueue: React.FC<PriorityCaseQueueProps> = ({ onSelectCa
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {priorityQueue.map((caseItem, index) => (
-            <button
-              key={caseItem.id}
-              onClick={() => onSelectCase?.(caseItem.id)}
-              className="w-full text-left"
-            >
-              <div
-                className={`p-4 rounded-lg border transition-all hover:border-opacity-100 ${getPriorityColor(
-                  caseItem.priority
-                )}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold">
-                      {index + 1}
-                    </span>
-                    {getStatusIcon(caseItem.priority)}
-                    <span className="font-bold uppercase text-xs">
-                      {caseItem.priority === 'critical' ? 'CRITICAL' : caseItem.priority.toUpperCase()}
-                    </span>
-                  </div>
-                  <span className="text-xs font-mono text-slate-400">ID: {caseItem.id.substring(0, 8)}</span>
-                </div>
+            (() => {
+              const jurisdiction = (caseItem as { jurisdiction?: string | null }).jurisdiction;
 
-                <div className="space-y-2 mb-3">
-                  <p className="text-sm font-semibold text-white line-clamp-1">
-                    {caseItem.type || 'Case Report'}
-                  </p>
-                  {caseItem.jurisdiction && (
-                    <div className="flex items-center gap-1 text-xs text-slate-300">
-                      <MapPin className="h-3 w-3" />
-                      <span>{caseItem.jurisdiction}</span>
+              return (
+                <button
+                  key={caseItem.id}
+                  onClick={() => onSelectCase?.(caseItem.id)}
+                  className="w-full text-left"
+                >
+                  <div
+                    className={`p-4 rounded-lg border transition-all hover:border-opacity-100 ${getPriorityColor(
+                      caseItem.priority
+                    )}`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold">
+                          {index + 1}
+                        </span>
+                        {getStatusIcon(caseItem.priority)}
+                        <span className="font-bold uppercase text-xs">
+                          {caseItem.priority === 'critical' ? 'CRITICAL' : caseItem.priority.toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-slate-400">ID: {caseItem.id.substring(0, 8)}</span>
                     </div>
-                  )}
-                </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400">
-                    {caseItem.status}
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-white transition-colors" />
-                </div>
-              </div>
-            </button>
+                    <div className="space-y-2 mb-3">
+                      <p className="text-sm font-semibold text-white line-clamp-1">
+                        {caseItem.type || 'Case Report'}
+                      </p>
+                      {jurisdiction && (
+                        <div className="flex items-center gap-1 text-xs text-slate-300">
+                          <MapPin className="h-3 w-3" />
+                          <span>{jurisdiction}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">
+                        {caseItem.status}
+                      </span>
+                      <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-white transition-colors" />
+                    </div>
+                  </div>
+                </button>
+              );
+            })()
           ))}
         </div>
       )}

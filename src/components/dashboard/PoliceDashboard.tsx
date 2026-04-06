@@ -1,5 +1,6 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { acknowledgePoliceAlert, useOrganizationCoordination, usePoliceAlertsFeed, useUserProfile } from "@/data/aegisData";
 import { useLiveJusticeCases, useLiveOrganization, useLivePoliceDepartments, useLiveUserProfiles } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
@@ -11,16 +12,16 @@ import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
 import { dedupeBy, formatRelativeDateTime, percent, sortByPriorityAndRecency } from "@/lib/dashboardMetrics";
 import CaseDispatchDialog from "@/components/justice/CaseDispatchDialog";
 import FileIncidentDialog from "@/components/justice/FileIncidentDialog";
-import {
-  buildPoliceAvailabilitySummary,
-  buildPoliceRecommendedActions,
-  buildPoliceStageAging,
-  normalizePoliceAlerts,
-  normalizePoliceCases,
-  normalizePoliceReferrals,
-} from "@/lib/policeDashboard";
+import { buildPoliceAvailabilitySummary, buildPoliceRecommendedActions, buildPoliceStageAging, normalizePoliceAlerts, normalizePoliceReferrals } from "@/lib/policeDashboard";
 import { buildWeeklyLifecycle } from "@/lib/dashboardMetrics";
 import { PoliceAvailabilityGrid, PoliceRecommendedActionsList, PoliceStageAgingList } from "@/components/dashboard/PoliceOperationalWidgets";
+import { policeMonitor, normalizePoliceCasesEnhanced, prioritizeAlerts, downloadQueueReport } from "@/lib/policeDashboardEnhanced";
+import { QueueMetricsDashboard } from "@/components/police/QueueMetricsDashboard";
+import { CasePredictions } from "@/components/police/CasePredictions";
+import { OfficerWorkloadGrid } from "@/components/police/OfficerWorkloadGrid";
+import { CoordinationInsights } from "@/components/police/CoordinationInsights";
+import { ConnectionStatus } from "@/components/police/ConnectionStatus";
+import { usePoliceKeyboardShortcuts } from "@/hooks/usePoliceKeyboardShortcuts";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const PoliceDashboard: React.FC = () => {
@@ -38,6 +39,7 @@ const PoliceDashboard: React.FC = () => {
   const [isFileIncidentDialogOpen, setIsFileIncidentDialogOpen] = useState(false);
   const [queueSearch, setQueueSearch] = useState("");
   const [queuePriorityFilter, setQueuePriorityFilter] = useState("all");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const deferredQueueSearch = useDeferredValue(queueSearch);
 
   const { data: organization } = useLiveOrganization(organizationId, {
@@ -82,9 +84,20 @@ const PoliceDashboard: React.FC = () => {
     limit: 30,
   });
 
+  useEffect(() => {
+    policeMonitor.startTracking("dashboard-load");
+
+    return () => {
+      policeMonitor.endTracking("dashboard-load");
+      if (import.meta.env.DEV) {
+        policeMonitor.logReport();
+      }
+    };
+  }, []);
+
   const isLoadingData = departmentsLoading || officersLoading || casesLoading || alertsLoading || referralsLoading;
 
-  const sanitizedCases = useMemo(() => normalizePoliceCases(justiceCases), [justiceCases]);
+  const sanitizedCases = useMemo(() => normalizePoliceCasesEnhanced(justiceCases), [justiceCases]);
   const sanitizedAlerts = useMemo(() => normalizePoliceAlerts(alertsFeed), [alertsFeed]);
   const sanitizedReferrals = useMemo(() => normalizePoliceReferrals(referrals), [referrals]);
 
@@ -117,6 +130,7 @@ const PoliceDashboard: React.FC = () => {
     () => dedupeBy(sanitizedAlerts.filter((entry) => entry.status !== "acknowledged"), (entry) => `${entry.module}|${entry.type}|${entry.message}`),
     [sanitizedAlerts]
   );
+  const prioritizedAlerts = useMemo(() => prioritizeAlerts(pendingAlerts), [pendingAlerts]);
   const pendingReferrals = useMemo(() => sanitizedReferrals.filter((entry) => entry.status === "pending"), [sanitizedReferrals]);
   const completedCases = useMemo(() => jurisdictionCases.filter((entry) => ["closed", "resolved"].includes(entry.status)), [jurisdictionCases]);
   const assignedCaseRatio = percent(openCases.length - unassignedOpenCases.length, Math.max(openCases.length, 1));
@@ -157,6 +171,7 @@ const PoliceDashboard: React.FC = () => {
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
   const selectedDispatchCase = liveQueue.find((entry) => entry.id === dispatchCaseId) ?? null;
+  const topPredictedCase = liveQueue[0] ?? null;
   const recommendedActions = useMemo(
     () =>
       buildPoliceRecommendedActions({
@@ -169,6 +184,10 @@ const PoliceDashboard: React.FC = () => {
     [pendingAlerts.length, pendingReferrals.length, responseLoad, unassignedOpenCases.length, urgentCases.length]
   );
 
+  const handleExportQueue = () => {
+    downloadQueueReport(filteredQueue, `police-queue-${new Date().toISOString().split("T")[0]}.csv`);
+  };
+
   const handleAcknowledgeAlert = async (alertId: string) => {
     try {
       await acknowledgePoliceAlert(alertId);
@@ -178,6 +197,20 @@ const PoliceDashboard: React.FC = () => {
       // Keep failure silent in the dashboard shell; the queue will retry on refresh.
     }
   };
+
+  usePoliceKeyboardShortcuts({
+    onSearch: () => searchInputRef.current?.focus(),
+    onRefresh: () => void queryClient.invalidateQueries({ queryKey: ["live-dashboard"] }),
+    onDispatch: () => {
+      if (!liveQueue[0] || !permissions.canViewOrgData) return;
+      setDispatchCaseId(liveQueue[0].id);
+      setIsDispatchDialogOpen(true);
+    },
+    onAcknowledge: () => {
+      if (!prioritizedAlerts[0]) return;
+      void handleAcknowledgeAlert(prioritizedAlerts[0].id);
+    },
+  });
 
   if (!isPolice) {
     return (
@@ -194,6 +227,7 @@ const PoliceDashboard: React.FC = () => {
 
   return (
     <DashboardPage accent="rose">
+      <ConnectionStatus />
       <DashboardHero
         eyebrow="Field operations"
         title="Police emergency response"
@@ -218,6 +252,10 @@ const PoliceDashboard: React.FC = () => {
         <MetricCard label="Partner handoffs" value={pendingReferrals.length} helper={`${pendingAlerts.length} live alerts awaiting acknowledgement`} accent="indigo" loading={isLoadingData} />
       </section>
 
+      <section>
+        <QueueMetricsDashboard cases={jurisdictionCases} />
+      </section>
+
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard title="Case status lookup" description="Verify live case state without switching out of dispatch mode.">
           <CaseStatusLookup description="Use a case reference to verify the live report state before dispatch or escalation." />
@@ -237,11 +275,21 @@ const PoliceDashboard: React.FC = () => {
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard title="Priority dispatch queue" description="Ranked by severity and last update.">
+        <SectionCard
+          title="Priority dispatch queue"
+          description="Ranked by severity and last update."
+          action={
+            <Button size="sm" variant="outline" onClick={handleExportQueue} disabled={filteredQueue.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Export Queue
+            </Button>
+          }
+        >
           <div className="mb-4 flex flex-col gap-3 md:flex-row">
             <label className="flex-1">
               <span className="sr-only">Search dispatch queue</span>
               <input
+                ref={searchInputRef}
                 aria-label="Search dispatch queue"
                 value={queueSearch}
                 onChange={(event) => setQueueSearch(event.target.value)}
@@ -282,7 +330,7 @@ const PoliceDashboard: React.FC = () => {
                 <ListItemCard
                   key={entry.id}
                   title={`Case ${entry.caseNumber}`}
-                  subtitle={`${entry.stage || "intake"} â€¢ ${entry.region || "region pending"} â€¢ updated ${formatRelativeDateTime(entry.updatedAt)}`}
+                  subtitle={`${entry.stage || "intake"} • ${entry.region || "region pending"} • updated ${formatRelativeDateTime(entry.updatedAt)}`}
                   meta={<StatusPill tone={entry.priority === "critical" ? "rose" : entry.priority === "high" ? "amber" : "sky"}>{entry.priority}</StatusPill>}
                   action={<Button size="sm" variant="outline" onClick={() => { setDispatchCaseId(entry.id); setIsDispatchDialogOpen(true); }} disabled={!permissions.canViewOrgData}>Dispatch</Button>}
                 />
@@ -303,12 +351,17 @@ const PoliceDashboard: React.FC = () => {
                 ]}
               />
             ) : (
-              pendingAlerts.slice(0, 5).map((entry) => (
+              prioritizedAlerts.slice(0, 5).map((entry) => (
                 <ListItemCard
                   key={entry.id}
                   title={entry.message}
-                  subtitle={`${entry.module || "core"} â€¢ ${entry.time}`}
-                  meta={<StatusPill tone={entry.type === "critical" ? "rose" : "amber"}>{entry.type || "notice"}</StatusPill>}
+                  subtitle={`${entry.module || "core"} • ${entry.time} • Response: ${entry.estimatedResponseTime}min`}
+                  meta={
+                    <div className="flex items-center gap-2">
+                      <StatusPill tone={entry.urgencyLevel === "immediate" ? "rose" : entry.urgencyLevel === "high" ? "amber" : "sky"}>{entry.urgencyLevel}</StatusPill>
+                      <span className="text-xs text-slate-400">Score: {entry.priorityScore}</span>
+                    </div>
+                  }
                   action={<Button size="sm" variant="outline" onClick={() => void handleAcknowledgeAlert(entry.id)}>Acknowledge</Button>}
                 />
               ))
@@ -334,7 +387,7 @@ const PoliceDashboard: React.FC = () => {
                 <ListItemCard
                   key={entry.id}
                   title={`Referral ${entry.caseId.slice(0, 8)}`}
-                  subtitle={`${entry.referralType} â€¢ ${formatRelativeDateTime(entry.createdAt)}`}
+                  subtitle={`${entry.referralType} • ${formatRelativeDateTime(entry.createdAt)}`}
                   meta={<StatusPill tone={entry.status === "completed" ? "emerald" : entry.status === "pending" ? "amber" : "sky"}>{entry.status}</StatusPill>}
                 />
               ))
@@ -368,6 +421,45 @@ const PoliceDashboard: React.FC = () => {
               <ListItemCard title="Unassigned work" subtitle="Open cases without an officer" meta={<StatusPill tone={unassignedOpenCases.length > 0 ? "amber" : "emerald"}>{unassignedOpenCases.length}</StatusPill>} />
               <ListItemCard title="Alert backlog" subtitle="Active police-facing alerts" meta={<StatusPill tone={pendingAlerts.length > 0 ? "rose" : "emerald"}>{pendingAlerts.length}</StatusPill>} />
             </div>
+          </div>
+        </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Predictive triage" description="Heuristic guidance for the next queue item most likely to need intervention.">
+          {topPredictedCase ? (
+            <div className="space-y-4">
+              <ListItemCard
+                title={`Forecast ${topPredictedCase.caseNumber}`}
+                subtitle={`${topPredictedCase.stage || "intake"} • ${topPredictedCase.region || "region pending"}`}
+                meta={<StatusPill tone={topPredictedCase.priority === "critical" ? "rose" : topPredictedCase.priority === "high" ? "amber" : "sky"}>{topPredictedCase.priority}</StatusPill>}
+              />
+              <CasePredictions caseItem={topPredictedCase} />
+            </div>
+          ) : (
+            <EmptyState
+              title="No case predictions"
+              description="Predictions will appear once an active queue item is available for triage."
+            />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Officer workload balancing" description="Assignment pressure by active officer to support fair dispatching.">
+          <OfficerWorkloadGrid officers={activeOfficers} cases={jurisdictionCases} />
+        </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
+        <SectionCard title="Coordination insights" description="Referral throughput, partner hotspots, and handoff bottlenecks.">
+          <CoordinationInsights referrals={sanitizedReferrals} />
+        </SectionCard>
+
+        <SectionCard title="Keyboard shortcuts" description="Power-user actions for faster police operations workflows.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ListItemCard title="Focus search" subtitle="Jump to the dispatch queue search field" meta={<StatusPill tone="sky">Ctrl/Cmd + K</StatusPill>} />
+            <ListItemCard title="Refresh live data" subtitle="Invalidate live dashboard queries" meta={<StatusPill tone="emerald">Ctrl/Cmd + R</StatusPill>} />
+            <ListItemCard title="Dispatch top case" subtitle="Open the first item in the priority queue" meta={<StatusPill tone="amber">Ctrl/Cmd + D</StatusPill>} />
+            <ListItemCard title="Acknowledge top alert" subtitle="Resolve the highest-priority pending alert" meta={<StatusPill tone="rose">Ctrl/Cmd + A</StatusPill>} />
           </div>
         </SectionCard>
       </section>
@@ -407,6 +499,7 @@ const PoliceDashboard: React.FC = () => {
             <ListItemCard title="Queries are jurisdiction-gated" subtitle="Organization, department, officer, and case queries now wait for the right identity context before fetching." />
             <ListItemCard title="Police alerts are backend-scoped" subtitle="The alert board now uses a police-access API endpoint and acknowledgements are written through an auditable backend route." />
             <ListItemCard title="Queue controls are live" subtitle="Dispatch search, priority filters, stage aging, and response trend analytics are now integrated into the dashboard." />
+            <ListItemCard title="Enhanced police tooling" subtitle="Performance monitoring, export support, predictive triage, workload balancing, shortcuts, and connection awareness are now integrated." />
           </div>
         </SectionCard>
       </section>
@@ -432,3 +525,4 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
+

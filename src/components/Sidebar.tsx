@@ -54,6 +54,9 @@ const modules: { id: ModuleType; label: string; shortLabel: string; icon: IconCo
   description: MODULE_METADATA[moduleId].description,
 }));
 
+type SidebarModule = (typeof modules)[number];
+type SidebarRenderSection = Omit<SidebarSection, 'modules'> & { modules: SidebarModule[] };
+
 const Sidebar: React.FC<SidebarProps> = ({ 
   activeModule, 
   onModuleChange, 
@@ -65,6 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   userRole 
 }) => {
   const { sidebarSearchQuery, setSidebarSearchQuery, recentModules, favoriteModules, toggleFavoriteModule, moduleActivities } = useAppStore();
+  const [, setShowSearch] = useState(false);
   const [tooltip, setTooltip] = useState<{
     label: string;
     description: string;
@@ -104,13 +108,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const renderRoleSpecificSections = useMemo(() => {
     if (!roleConfig) return null;
-    return roleConfig.sections.map((section: SidebarSection) => {
+    return roleConfig.sections.reduce<SidebarRenderSection[]>((sections, section: SidebarSection) => {
       const sectionModules = visibleModules.filter(
         (m) => section.modules.includes(m.id) && !highlightedModuleIds.has(m.id)
       );
-      if (sectionModules.length === 0) return null;
-      return { ...section, modules: sectionModules };
-    }).filter(Boolean);
+      if (sectionModules.length > 0) {
+        sections.push({ ...section, modules: sectionModules });
+      }
+      return sections;
+    }, []);
   }, [highlightedModuleIds, roleConfig, visibleModules]);
 
   const getStatusIcon = (status: string) => {

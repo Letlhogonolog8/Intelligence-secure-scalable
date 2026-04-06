@@ -1,13 +1,195 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { env, hasSupabase } from "@/lib/env"
 
-type SupabaseClient = ReturnType<typeof createClient>
+type Json = unknown
 
-type SupabaseFallback = Pick<SupabaseClient, "auth" | "functions" | "from" | "channel" | "removeChannel">
+type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
+  Row: Row
+  Insert: Insert
+  Update: Update
+  Relationships: []
+}
+
+export type Database = {
+  public: {
+    Tables: {
+      audit_log: TableDefinition<{
+        id: string
+        table_name: string | null
+        record_id: string | null
+        operation: string | null
+        old_values: Json | null
+        new_values: Json | null
+        changed_by: string | null
+        changed_at: string | null
+        notes: string | null
+      }>
+      audit_logs: TableDefinition<{
+        id: string
+        user_id: string | null
+        action: string
+        module: string | null
+        description: string | null
+        severity: string | null
+        resource: string | null
+        resource_id: string | null
+        status: string | null
+        details: Json | null
+        ip_address: string | null
+        user_agent: string | null
+        timestamp: string | null
+        created_at: string | null
+      }>
+      case_reports: TableDefinition<{
+        id: string
+        survivor_id: string | null
+        source: string | null
+        report_method: string | null
+        language: string | null
+        status: string
+        risk_level: string
+        risk_score: number | null
+        priority: string
+        description: string | null
+        encrypted_location: string | null
+        location_iv: string | null
+        created_at: string | null
+        updated_at: string | null
+      }>
+      chat_messages: TableDefinition<{
+        id: string
+        session_id: string
+        role: string | null
+        sender_id: string | null
+        sender_role: string | null
+        message_type: string | null
+        content: string
+        encrypted_content: string | null
+        is_encrypted: boolean | null
+        metadata: Json | null
+        emotion_detected: string | null
+        risk_score: number | null
+        language: string | null
+        created_at: string | null
+      }>
+      escalation_events: TableDefinition<{
+        id: string
+        case_id: string | null
+        triggered_by: string | null
+        user_id: string | null
+        escalation_type: string | null
+        severity: string
+        reason: string | null
+        location: Json | null
+        status: string
+        acknowledged_by: string | null
+        acknowledged_at: string | null
+        resolved_at: string | null
+        triggered_at: string | null
+        metadata: Json | null
+        created_at: string | null
+      }>
+      incidents: TableDefinition<{
+        id: string
+        region_id: string
+        incident_type: string
+        description: string | null
+        severity: string
+        reported_by: string | null
+        anonymous: boolean | null
+        latitude: number | null
+        longitude: number | null
+        incident_date: string
+        created_at: string | null
+        updated_at: string | null
+      }>
+      justice_cases: TableDefinition<{
+        id: string
+        case_number: string
+        case_type: string
+        region_id: string | null
+        status: string
+        stage: string | null
+        assigned_to: string | null
+        priority: string
+        days_open: number | null
+        created_at: string | null
+        updated_at: string | null
+        closed_at: string | null
+      }>
+      resource_capacity: TableDefinition<{
+        id: string
+        current_occupancy: number | null
+      }>
+      ussd_messages: TableDefinition<{
+        id: string
+        session_id: string
+        direction: string
+        content: string
+        menu_level: string
+        timestamp: string | null
+        status: string | null
+        error_message: string | null
+        created_at: string | null
+      }>
+      ussd_sessions: TableDefinition<{
+        id: string | null
+        session_id: string
+        phone_number: string | null
+        state: string | null
+        current_menu: string | null
+        last_input: string | null
+        payload: Json | null
+        user_id: string | null
+        user_role: string | null
+        metadata: Json | null
+        created_at: string | null
+        updated_at: string | null
+        expires_at: string | null
+        is_active: boolean | null
+      }>
+      ussd_submissions: TableDefinition<{
+        id: string
+        session_id: string
+        menu_level: string
+        menu_code: string
+        user_input: string | null
+        timestamp: string | null
+        status: string | null
+        processed_by: string | null
+        processed_at: string | null
+        response_message: string | null
+        created_at: string | null
+      }>
+      user_profiles: TableDefinition<{
+        id: string
+        organization_id: string | null
+        role: string
+        full_name: string | null
+        email: string | null
+        avatar_url: string | null
+        is_active: boolean | null
+        approval_status: ApprovalStatus | null
+        mfa_enabled: boolean | null
+        role_assigned_by: string | null
+        approved_by: string | null
+        approved_at: string | null
+        created_at: string | null
+        updated_at: string | null
+      }>
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
+  }
+}
+
+type AppSupabaseClient = SupabaseClient<Database>
 
 type EmptyQueryResult<T> = { data: T | null; error: Error }
 
-const createFallbackClient = (): SupabaseFallback => {
+const createFallbackClient = (): AppSupabaseClient => {
   const error = new Error("Supabase is not configured")
   const createEmptyBuilder = <T,>() => {
     const builder = {
@@ -26,24 +208,24 @@ const createFallbackClient = (): SupabaseFallback => {
   }
   return {
     auth: {
-      getSession: async () => ({ data: { session: null }, error }),
+      getSession: async () => ({ data: { session: null }, error: null }),
       onAuthStateChange: () => ({
         data: { subscription: { unsubscribe: () => undefined } },
       }),
-      signInWithOtp: async () => ({ data: null, error }),
-      signOut: async () => ({ error }),
+      signInWithOtp: async () => ({ data: { user: null, session: null }, error: error as never }),
+      signOut: async () => ({ error: error as never }),
     },
     functions: {
-      invoke: async () => ({ data: null, error }),
+      invoke: async () => ({ data: null, error: error as never }),
     },
     from: () => createEmptyBuilder(),
     channel: () => channel,
-    removeChannel: () => undefined,
-  }
+    removeChannel: async () => "ok",
+  } as unknown as AppSupabaseClient
 }
 
-const supabase: SupabaseFallback = hasSupabase
-  ? createClient(env.VITE_SUPABASE_URL as string, env.VITE_SUPABASE_KEY as string, {
+const supabase: AppSupabaseClient = hasSupabase
+  ? createClient<Database>(env.VITE_SUPABASE_URL as string, env.VITE_SUPABASE_KEY as string, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -159,7 +341,7 @@ const invokeEdgeFunction = async <TResponse, TPayload = unknown>(
     }
 
     const { data, error } = await supabase.functions.invoke(name, {
-      body: payload,
+      body: payload as BodyInit | Record<string, unknown> | undefined,
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
     })
 
@@ -271,7 +453,7 @@ const toSvgDataUri = (value: string): string => {
   return `data:image/svg+xml;base64,${toBase64Utf8(trimmed)}`
 }
 
-const getMfaApi = () => (supabase as SupabaseClient).auth.mfa
+const getMfaApi = () => supabase.auth.mfa
 
 const mapMfaFactor = (value: unknown): MfaFactor | null => {
   if (!value || typeof value !== "object") {
@@ -435,7 +617,9 @@ export const verifyMfaFactor = async (
   }
 
   try {
-    const { error } = await getMfaApi().verify({ factorId, code, challengeId })
+    const { error } = challengeId
+      ? await getMfaApi().verify({ factorId, challengeId, code })
+      : await getMfaApi().challengeAndVerify({ factorId, code })
     return { error: error ?? null }
   } catch (error) {
     return {

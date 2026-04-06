@@ -77,15 +77,15 @@ const AdminDashboard: React.FC = () => {
   const adminThresholds = adminDashboardConfig?.thresholds ?? ADMIN_DASHBOARD_THRESHOLDS;
 
   const metricsInterval = useMemo(
-    () => (documentVisible ? refreshIntervals.metricsMs : false),
+    () => (documentVisible ? refreshIntervals.metricsMs : undefined),
     [documentVisible, refreshIntervals.metricsMs]
   );
   const alertsInterval = useMemo(
-    () => (documentVisible ? refreshIntervals.alertsMs : false),
+    () => (documentVisible ? refreshIntervals.alertsMs : undefined),
     [documentVisible, refreshIntervals.alertsMs]
   );
   const auditInterval = useMemo(
-    () => (documentVisible ? refreshIntervals.auditMs : false),
+    () => (documentVisible ? refreshIntervals.auditMs : undefined),
     [documentVisible, refreshIntervals.auditMs]
   );
 
@@ -579,7 +579,7 @@ const AdminDashboard: React.FC = () => {
         </SectionCard>
 
         <SectionCard title="Recommended actions" description="System-generated next steps based on current admin pressure points.">
-          <AdminRecommendedActionsList items={recommendedActions} onAction={setActiveModule} />
+          <AdminRecommendedActionsList items={recommendedActions} onAction={(module) => setActiveModule(module as never)} />
         </SectionCard>
       </section>
 
@@ -829,5 +829,4 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-
 

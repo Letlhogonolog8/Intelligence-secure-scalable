@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { USSDGateway } from '../../../server/ussd/ussdGateway';
+import { USSDGateway, type Language } from '../../../server/ussd/ussdGateway';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 type MockSupabaseClient = {
@@ -304,7 +304,7 @@ describe('USSDGateway', () => {
         subscriber: '27821234567',
         input: '',
         sessionId: 'telkom_session_1',
-        language: 'en'
+        language: 'en' as Language,
       };
       
       const response = await gateway.handleTelkomCallback(payload);

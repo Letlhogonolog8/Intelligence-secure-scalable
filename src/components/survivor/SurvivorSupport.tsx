@@ -195,7 +195,7 @@ const SurvivorSupport: React.FC = () => {
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
 
-      const isJwtToken = (token: string | null | undefined) => {
+      const isJwtToken = (token: string | null | undefined): token is string => {
         if (!token) {
           return false;
         }
@@ -271,7 +271,8 @@ const SurvivorSupport: React.FC = () => {
         }
         const refreshedToken = refreshedData.session?.access_token;
         if (isJwtToken(refreshedToken)) {
-          ({ data, error } = await invokeChat(refreshedToken));
+          const nextAccessToken: string = refreshedToken;
+          ({ data, error } = await invokeChat(nextAccessToken));
         }
       }
 
@@ -323,7 +324,7 @@ const SurvivorSupport: React.FC = () => {
     } catch (err) {
       console.error('Chat error:', err);
       const errorDetail = err instanceof Error ? err.message : String(err);
-      const isDevelopment = env.VITE_ENV === 'development';
+      const isDevelopment = import.meta.env.DEV;
       const fallbackMessage = "I'm experiencing a brief connection issue, but I'm still here for you. If you're in immediate danger, please contact emergency services. You can also try sending your message again.";
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,

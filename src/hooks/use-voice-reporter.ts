@@ -13,10 +13,51 @@ export interface UseVoiceReporterReturn {
   isSupported: boolean;
 }
 
+type VoiceRecognitionAlternative = {
+  transcript: string;
+};
+
+type VoiceRecognitionResult = {
+  isFinal: boolean;
+  0: VoiceRecognitionAlternative;
+};
+
+type VoiceRecognitionResultList = {
+  length: number;
+  [index: number]: VoiceRecognitionResult;
+};
+
+type VoiceRecognitionEvent = Event & {
+  resultIndex: number;
+  results: VoiceRecognitionResultList;
+};
+
+type VoiceRecognitionErrorEvent = Event & {
+  error: string;
+};
+
 declare global {
+  interface SpeechRecognition extends EventTarget {
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    maxAlternatives: number;
+    onstart: (() => void) | null;
+    onresult: ((event: VoiceRecognitionEvent) => void) | null;
+    onerror: ((event: VoiceRecognitionErrorEvent) => void) | null;
+    onend: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+    abort: () => void;
+  }
+
+  interface SpeechRecognitionConstructor {
+    new (): SpeechRecognition;
+  }
+
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
   }
 }
 
@@ -27,9 +68,9 @@ export function useVoiceReporter(lang = "en-ZA"): UseVoiceReporterReturn {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const SpeechRecognitionAPI =
+  const SpeechRecognitionAPI: SpeechRecognitionConstructor | null =
     typeof window !== "undefined"
-      ? window.SpeechRecognition || window.webkitSpeechRecognition
+      ? window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
       : null;
 
   const isSupported = !!SpeechRecognitionAPI;
@@ -60,7 +101,7 @@ export function useVoiceReporter(lang = "en-ZA"): UseVoiceReporterReturn {
       setErrorMessage(null);
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: VoiceRecognitionEvent) => {
       let final = "";
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -75,7 +116,7 @@ export function useVoiceReporter(lang = "en-ZA"): UseVoiceReporterReturn {
       setInterimTranscript(interim);
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: VoiceRecognitionErrorEvent) => {
       const msg =
         event.error === "not-allowed"
           ? "Microphone access denied. Please allow microphone access and try again."

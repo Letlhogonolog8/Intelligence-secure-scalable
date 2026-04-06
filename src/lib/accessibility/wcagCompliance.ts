@@ -367,13 +367,17 @@ export class WCAGCompliance {
 
     const violations = allResults
       .filter((r) => !r.compliant)
-      .map((r) => ({
-        issue: `${r.category} failures`,
-        severity:
-          (r as Record<string, unknown>).issues?.length > 5 ? 'critical' : 'major',
-        count: ((r as Record<string, unknown>).issues as unknown[])?.length || 0,
-        remediation: this.getRemediation(r.category),
-      }));
+      .map((r) => {
+        const count = "issues" in r ? r.issues.length : r.missing.length;
+        const severity: "critical" | "major" = count > 5 ? 'critical' : 'major';
+
+        return {
+          issue: `${r.category} failures`,
+          severity,
+          count,
+          remediation: this.getRemediation(r.category),
+        };
+      });
 
     return {
       audited_url: window.location.href,

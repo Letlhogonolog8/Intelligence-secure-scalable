@@ -7,7 +7,6 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",

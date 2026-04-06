@@ -29,25 +29,25 @@ const loadLanguageResource = async (language: SupportedLanguage): Promise<Transl
     case "en":
       return en;
     case "zu":
-      return (await import("./locales/zu")).default;
+      return (await import("./locales/zu")).default as TranslationResource;
     case "af":
-      return (await import("./locales/af")).default;
+      return (await import("./locales/af")).default as TranslationResource;
     case "xh":
-      return (await import("./locales/xh")).default;
+      return (await import("./locales/xh")).default as TranslationResource;
     case "st":
-      return (await import("./locales/st")).default;
+      return (await import("./locales/st")).default as TranslationResource;
     case "tn":
-      return (await import("./locales/tn")).default;
+      return (await import("./locales/tn")).default as TranslationResource;
     case "ts":
-      return (await import("./locales/ts")).default;
+      return (await import("./locales/ts")).default as TranslationResource;
     case "ve":
-      return (await import("./locales/ve")).default;
+      return (await import("./locales/ve")).default as TranslationResource;
     case "nso":
-      return (await import("./locales/nso")).default;
+      return (await import("./locales/nso")).default as TranslationResource;
     case "nr":
-      return (await import("./locales/nr")).default;
+      return (await import("./locales/nr")).default as TranslationResource;
     case "ss":
-      return (await import("./locales/ss")).default;
+      return (await import("./locales/ss")).default as TranslationResource;
     default:
       return en;
   }

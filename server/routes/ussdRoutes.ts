@@ -149,7 +149,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     }
 
-    next();
+    return next();
   };
 
   /**
@@ -214,7 +214,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
         return sendArkeselResponse(res, ussdResponse.text, !ussdResponse.endSession);
       }
 
-      res.json({
+      return res.json({
         success: true,
         sessionId: ussdResponse.sessionId,
         menu: ussdResponse.menu,
@@ -240,7 +240,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
         return sendArkeselResponse(res, 'An error occurred. Please try again.', false);
       }
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to process USSD request',
       });
@@ -266,7 +266,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       // Queue SMS message
       const messageId = offlineCache.queueMessage(phoneNumber, 'ussd_confirmation', message);
 
-      res.json({
+      return res.json({
         success: true,
         messageId,
         status: 'queued',
@@ -274,7 +274,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('SMS fallback error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to queue SMS fallback',
       });
@@ -290,14 +290,14 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       const { phoneNumber } = req.params;
 
       // In production: query database for recent cases
-      res.json({
+      return res.json({
         success: true,
         phoneNumber,
         message: 'Use menu option 3 to check case status',
       });
     } catch (error) {
       console.error('Status query error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to get status',
       });
@@ -308,7 +308,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * POST /api/ussd/offline-sync
    * Sync offline cached data with server
    */
-  router.post('/offline-sync', requireTrustedOrigin, async (req: Request, res: Response) => {
+  router.post('/offline-sync', requireTrustedOrigin, async (_req: Request, res: Response) => {
     try {
       const stats = await offlineCache.syncWithServer(
         async (_caseData) => {
@@ -319,13 +319,13 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
         }
       );
 
-      res.json({
+      return res.json({
         success: true,
         synced: stats,
       });
     } catch (error) {
       console.error('Offline sync error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to sync offline data',
       });
@@ -336,17 +336,17 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * GET /api/ussd/cache/stats
    * Get offline cache statistics
    */
-  router.get('/cache/stats', (req: Request, res: Response) => {
+  router.get('/cache/stats', (_req: Request, res: Response) => {
     try {
       const stats = offlineCache.getStats();
 
-      res.json({
+      return res.json({
         success: true,
         stats,
       });
     } catch (error) {
       console.error('Stats error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to get cache stats',
       });
@@ -363,14 +363,14 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
 
       const deletedCount = offlineCache.cleanOldData(retentionDays);
 
-      res.json({
+      return res.json({
         success: true,
         deleted: deletedCount,
         message: `Cleaned ${deletedCount} old cache entries`,
       });
     } catch (error) {
       console.error('Cleanup error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to cleanup cache',
       });
@@ -381,7 +381,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
    * GET /api/ussd/cache/export
    * Export cache for backup
    */
-  router.get('/cache/export', (req: Request, res: Response) => {
+  router.get('/cache/export', (_req: Request, res: Response) => {
     try {
       const backup = offlineCache.exportData();
 
@@ -390,10 +390,10 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
         'Content-Disposition',
         `attachment; filename="ussd-cache-backup-${Date.now()}.json"`
       );
-      res.send(backup);
+      return res.send(backup);
     } catch (error) {
       console.error('Export error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to export cache',
       });
@@ -417,13 +417,13 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
 
       const success = offlineCache.importData(backupData);
 
-      res.json({
+      return res.json({
         success,
         message: success ? 'Cache imported successfully' : 'Failed to import cache',
       });
     } catch (error) {
       console.error('Import error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to import cache',
       });
@@ -453,7 +453,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       const message = `EMERGENCY ALERT - AEGIS received your report. Police and resources dispatched. Emergency ID: ${emergencyId}`;
       offlineCache.queueMessage(phoneNumber, 'sms', message);
 
-      res.json({
+      return res.json({
         success: true,
         emergencyId,
         status: 'dispatched',
@@ -461,7 +461,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('Emergency alert error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to send emergency alert',
       });
@@ -477,7 +477,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       const { period = 'day' } = req.query;
 
       // In production: query database for analytics
-      res.json({
+      return res.json({
         success: true,
         period,
         analytics: {
@@ -498,7 +498,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('Analytics error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Failed to get analytics',
       });
@@ -544,7 +544,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       const maxResponseTime = Math.max(...results.map((r) => r.responseTime));
       const minResponseTime = Math.min(...results.map((r) => r.responseTime));
 
-      res.json({
+      return res.json({
         success: true,
         testSummary: {
           totalRequests: concurrentUsers * requestsPerUser,
@@ -558,7 +558,7 @@ export function createUSSDRoutes(ussdGateway: USSDGateway, offlineCache: Offline
       });
     } catch (error) {
       console.error('Load test error:', error);
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: 'Load test failed',
       });

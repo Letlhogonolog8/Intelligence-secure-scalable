@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { Session, User } from "@supabase/supabase-js"
 import { vi } from "vitest"
 import SurvivorSupport from "@/components/survivor/SurvivorSupport"
 import { supabase } from "@/lib/supabase"
@@ -24,8 +25,8 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "header.payload.signature" } }, error: null }),
-      refreshSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+      getSession: vi.fn(),
+      refreshSession: vi.fn(),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },
     functions: {
@@ -33,6 +34,49 @@ vi.mock("@/lib/supabase", () => ({
     },
   },
 }))
+
+const createMockUser = (): User =>
+  ({
+    id: "user-1",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  }) as User
+
+const createMockSession = (accessToken: string): Session =>
+  ({
+    access_token: accessToken,
+    refresh_token: "refresh-token",
+    expires_in: 3600,
+    token_type: "bearer",
+    user: createMockUser(),
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+  }) as Session
+
+type GetSessionResult = Awaited<ReturnType<typeof supabase.auth.getSession>>
+type RefreshSessionResult = Awaited<ReturnType<typeof supabase.auth.refreshSession>>
+
+const createGetSessionResponse = (accessToken: string): GetSessionResult => ({
+  data: {
+    session: createMockSession(accessToken),
+  },
+  error: null,
+})
+
+const createRefreshSessionResponse = (accessToken: string | null): RefreshSessionResult =>
+  accessToken
+    ? ({
+        data: {
+          user: createMockSession(accessToken).user,
+          session: createMockSession(accessToken),
+        },
+        error: null,
+      } as RefreshSessionResult)
+    : ({
+        data: { user: null, session: null },
+        error: null,
+      } as RefreshSessionResult)
 
 describe("SurvivorSupport", () => {
   const invoke = vi.mocked(supabase.functions.invoke)
@@ -47,8 +91,8 @@ describe("SurvivorSupport", () => {
     invoke.mockReset()
     getSession.mockReset()
     refreshSession.mockReset()
-    getSession.mockResolvedValue({ data: { session: { access_token: "header.payload.signature" } }, error: null })
-    refreshSession.mockResolvedValue({ data: { session: null }, error: null })
+    getSession.mockResolvedValue(createGetSessionResponse("header.payload.signature"))
+    refreshSession.mockResolvedValue(createRefreshSessionResponse(null))
   })
 
   it("sends a message and renders the assistant response", async () => {
@@ -98,23 +142,9 @@ describe("SurvivorSupport", () => {
       statusText: "Unauthorized",
     })
 
-    getSession.mockResolvedValueOnce({
-      data: {
-        session: {
-          access_token: "header.payload.signature",
-        },
-      },
-      error: null,
-    })
+    getSession.mockResolvedValueOnce(createGetSessionResponse("header.payload.signature"))
 
-    refreshSession.mockResolvedValueOnce({
-      data: {
-        session: {
-          access_token: "next.payload.signature",
-        },
-      },
-      error: null,
-    })
+    refreshSession.mockResolvedValueOnce(createRefreshSessionResponse("next.payload.signature"))
 
     invoke
       .mockResolvedValueOnce({
@@ -155,19 +185,9 @@ describe("SurvivorSupport", () => {
       statusText: "Unauthorized",
     })
 
-    getSession.mockResolvedValueOnce({
-      data: {
-        session: {
-          access_token: "header.payload.signature",
-        },
-      },
-      error: null,
-    })
+    getSession.mockResolvedValueOnce(createGetSessionResponse("header.payload.signature"))
 
-    refreshSession.mockResolvedValueOnce({
-      data: { session: null },
-      error: null,
-    })
+    refreshSession.mockResolvedValueOnce(createRefreshSessionResponse(null))
 
     invoke.mockResolvedValueOnce({
       data: null,

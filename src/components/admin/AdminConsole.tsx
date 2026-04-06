@@ -119,8 +119,8 @@ const AdminConsole: React.FC = () => {
 
   const { data: organizations = [], isLoading: orgLoading, refetch: refetchOrganizations } = useOrganizations({ enabled: shouldLoadOrganizations, limit: 100 });
   const { data: users = [], isLoading: userLoading, refetch: refetchUsers } = useUserProfiles({ enabled: shouldLoadUsers, limit: 200 });
-  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: shouldLoadDeletionRequests, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : false });
-  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useAuditLogs({ enabled: shouldLoadAuditLogs, limit: 100, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : false });
+  const { data: deletionRequests = [], isLoading: deletionLoading, refetch: refetchDeletionRequests } = useDeletionRequests({ enabled: shouldLoadDeletionRequests, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : undefined });
+  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useAuditLogs({ enabled: shouldLoadAuditLogs, limit: 100, staleTime: 30000, refetchInterval: activeSection === "overview" && documentVisible ? 60000 : undefined });
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [refreshLoading, setRefreshLoading] = useState(false);

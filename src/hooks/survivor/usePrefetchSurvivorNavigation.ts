@@ -23,6 +23,7 @@ export function usePrefetchSurvivorPersonalData() {
     if (!uid) return;
 
     const alertOpts = PERSONAL_DASHBOARD_ALERTS_OPTIONS;
+    const alertOffset = 0;
 
     await Promise.all([
       queryClient.prefetchQuery({
@@ -34,7 +35,7 @@ export function usePrefetchSurvivorPersonalData() {
         queryFn: () => fetchSurvivorProfile(uid),
       }),
       queryClient.prefetchQuery({
-        queryKey: ["aegis", "alertsFeed", alertOpts.limit, alertOpts.offset],
+        queryKey: ["aegis", "alertsFeed", alertOpts.limit, alertOffset],
         queryFn: () => fetchAlertsFeed(alertOpts),
       }),
     ]);

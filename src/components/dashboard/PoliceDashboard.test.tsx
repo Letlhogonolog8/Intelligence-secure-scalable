@@ -136,11 +136,11 @@ describe("PoliceDashboard", () => {
 
     render(<PoliceDashboard />);
 
-    expect(screen.getByText("Case A-102")).toBeInTheDocument();
-    expect(screen.getByText(/intake • Region pending • updated/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Case A-102")[0]).toBeInTheDocument();
+    expect(screen.getByText(/intake.*Region pending.*updated/i)).toBeInTheDocument();
     expect(screen.getByText("Officer assistance required")).toBeInTheDocument();
-    expect(screen.getByText(/core • --/i)).toBeInTheDocument();
-    expect(screen.getByText(/coordination •/i)).toBeInTheDocument();
+    expect(screen.getByText(/core.*--.*response: 5min/i)).toBeInTheDocument();
+    expect(screen.getByText(/Referral case-1-r/i)).toBeInTheDocument();
     expect(screen.getByText("Reduce unassigned investigations")).toBeInTheDocument();
   });
 

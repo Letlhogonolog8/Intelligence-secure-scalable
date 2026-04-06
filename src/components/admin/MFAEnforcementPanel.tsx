@@ -16,8 +16,8 @@ export const MFAEnforcementPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const mfaEnabledCount = users.filter((u) => u.mfa_enabled).length;
-  const mfaDisabledCount = users.filter((u) => !u.mfa_enabled && (u.role === 'police' || u.role === 'admin')).length;
+  const mfaEnabledCount = users.filter((u) => u.mfaEnabled).length;
+  const mfaDisabledCount = users.filter((u) => !u.mfaEnabled && (u.role === 'police' || u.role === 'admin')).length;
   const mfaCompliancePercentage = users.length > 0 ? Math.round((mfaEnabledCount / users.length) * 100) : 0;
 
   const handleEnforceMFAForRole = async (role: string) => {
@@ -25,7 +25,7 @@ export const MFAEnforcementPanel: React.FC = () => {
     setMessage(null);
 
     try {
-      const usersToUpdate = users.filter((u) => u.role === role && !u.mfa_enabled);
+      const usersToUpdate = users.filter((u) => u.role === role && !u.mfaEnabled);
 
       for (const user of usersToUpdate) {
         const { error } = await supabase
@@ -66,16 +66,17 @@ export const MFAEnforcementPanel: React.FC = () => {
     setMessage(null);
 
     try {
-      const usersWithoutMFA = users.filter((u) => !u.mfa_enabled && (u.role === 'police' || u.role === 'admin'));
+      const usersWithoutMFA = users.filter((u) => !u.mfaEnabled && (u.role === 'police' || u.role === 'admin'));
 
       for (const user of usersWithoutMFA) {
+        const userContact = user as unknown as { email?: string | null; full_name?: string | null; fullName?: string | null };
         await supabase.functions.invoke('send-email', {
           body: {
-            to: user.email,
+            to: userContact.email,
             subject: 'Action Required: Enable Multi-Factor Authentication',
             template: 'mfa_reminder',
             data: {
-              userName: user.full_name,
+              userName: userContact.fullName ?? userContact.full_name,
               deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString(),
             },
           },

@@ -30,7 +30,7 @@ describe.skip('Row Level Security (RLS) Policies', () => {
 
   afterEach(async () => {
     const { data: logs } = await adminClient
-      .from<{ id: string }>('audit_logs')
+      .from('audit_logs')
       .select('id')
       .in('user_id', Object.values(testUsers).map((user) => user.id));
     

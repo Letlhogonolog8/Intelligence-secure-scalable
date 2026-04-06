@@ -240,7 +240,11 @@ export class WebVitalsTracker {
       const lcpObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         const lastEntry = entries[entries.length - 1];
-        this.vitals.lcp = lastEntry.renderTime || lastEntry.loadTime;
+        const lcpEntry = lastEntry as PerformanceEntry & {
+          renderTime?: number;
+          loadTime?: number;
+        };
+        this.vitals.lcp = lcpEntry.renderTime ?? lcpEntry.loadTime ?? 0;
       });
       lcpObserver.observe({ entryTypes: ["largest-contentful-paint"] });
     } catch (_error) {

@@ -5,7 +5,6 @@
     "lib": ["ES2020", "DOM"],
     "types": ["node"],
     "moduleResolution": "NodeNext",
-    "ignoreDeprecations": "6.0",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -30,8 +29,7 @@
     "experimentalEsm": true,
     "compilerOptions": {
       "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "ignoreDeprecations": "6.0"
+      "moduleResolution": "NodeNext"
     }
   },
   "include": ["scripts/**/*"],

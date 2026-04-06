@@ -7,7 +7,7 @@
  * Handles SMS-based communication, session management, and data synchronization.
  */
 
-import { supabase } from "@/lib/supabase";
+import { supabase, type Database } from "@/lib/supabase";
 import { getErrorMessage } from "@/lib/logger";
 
 // ============================================================================
@@ -57,6 +57,21 @@ export interface USSDMenuConfig {
   timeout: number;
   maxRetries: number;
 }
+
+type USSDSessionRow = Database["public"]["Tables"]["ussd_sessions"]["Row"];
+
+const mapSessionRow = (row: USSDSessionRow): USSDSession => ({
+  id: row.id ?? row.session_id,
+  phoneNumber: row.phone_number ?? "",
+  sessionId: row.session_id,
+  currentMenu: (row.current_menu ?? "main") as USSDMenuLevel,
+  userRole: row.user_role ?? undefined,
+  userId: row.user_id ?? undefined,
+  metadata: (row.metadata as Record<string, unknown> | null) ?? {},
+  createdAt: row.created_at ?? new Date().toISOString(),
+  expiresAt: row.expires_at ?? new Date().toISOString(),
+  isActive: row.is_active ?? false,
+});
 
 // ============================================================================
 // MENU CONFIGURATIONS
@@ -299,18 +314,7 @@ export class USSDGateway {
 
       if (error) throw error;
 
-      return {
-        id: data.id,
-        phoneNumber: data.phone_number,
-        sessionId: data.session_id,
-        currentMenu: data.current_menu,
-        userRole: data.user_role,
-        userId: data.user_id,
-        metadata: data.metadata || {},
-        createdAt: data.created_at,
-        expiresAt: data.expires_at,
-        isActive: data.is_active,
-      };
+      return mapSessionRow(data as USSDSessionRow);
     } catch (error) {
       throw new Error(`Failed to create USSD session: ${getErrorMessage(error)}`);
     }
@@ -333,20 +337,10 @@ export class USSDGateway {
       if (error && error.code !== "PGRST116") throw error;
 
       if (data) {
-        const expiresAt = new Date(data.expires_at);
+        const sessionRow = data as USSDSessionRow;
+        const expiresAt = new Date(sessionRow.expires_at ?? new Date().toISOString());
         if (expiresAt > new Date()) {
-          return {
-            id: data.id,
-            phoneNumber: data.phone_number,
-            sessionId: data.session_id,
-            currentMenu: data.current_menu,
-            userRole: data.user_role,
-            userId: data.user_id,
-            metadata: data.metadata || {},
-            createdAt: data.created_at,
-            expiresAt: data.expires_at,
-            isActive: data.is_active,
-          };
+          return mapSessionRow(sessionRow);
         }
       }
 
@@ -495,18 +489,7 @@ export class USSDGateway {
 
     if (error) throw error;
 
-    return {
-      id: data.id,
-      phoneNumber: data.phone_number,
-      sessionId: data.session_id,
-      currentMenu: data.current_menu,
-      userRole: data.user_role,
-      userId: data.user_id,
-      metadata: data.metadata || {},
-      createdAt: data.created_at,
-      expiresAt: data.expires_at,
-      isActive: data.is_active,
-    };
+    return mapSessionRow(data as USSDSessionRow);
   }
 
   /**
@@ -563,18 +546,7 @@ export class USSDGateway {
       if (error && error.code === "PGRST116") return null;
       if (error) throw error;
 
-      return {
-        id: data.id,
-        phoneNumber: data.phone_number,
-        sessionId: data.session_id,
-        currentMenu: data.current_menu,
-        userRole: data.user_role,
-        userId: data.user_id,
-        metadata: data.metadata || {},
-        createdAt: data.created_at,
-        expiresAt: data.expires_at,
-        isActive: data.is_active,
-      };
+      return mapSessionRow(data as USSDSessionRow);
     } catch (error) {
       throw new Error(`Failed to get USSD session: ${getErrorMessage(error)}`);
     }

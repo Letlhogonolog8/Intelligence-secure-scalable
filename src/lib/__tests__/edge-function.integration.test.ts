@@ -18,11 +18,13 @@ const shouldRun = supabaseUrl && supabaseKey;
 
 describe.skipIf(!shouldRun)("Edge Function: aegis-survivor-chat", () => {
   const _supabase = createClient(supabaseUrl || "", supabaseKey || "");
+  void _supabase;
 
   describe("Chat API Response Structure", () => {
     it("should return properly structured response", async () => {
       // Test basic request structure
       const _testMessage = { message: "I need help", conversation_history: [], session_id: "test-uuid", language: "en" };
+      void _testMessage;
 
       // In real environment, this would call the deployed function
       // For now, we validate the expected structure

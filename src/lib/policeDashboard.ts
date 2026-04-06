@@ -31,7 +31,7 @@ export const normalizePoliceCases = (items: LiveJusticeCase[]) =>
       stage: (entry.stage || "intake").toLowerCase(),
       priority: (entry.priority || "medium").toLowerCase() as LiveJusticeCase["priority"],
       region: entry.region || "Region pending",
-      updatedAt: entry.updatedAt || entry.createdAt || null,
+      updatedAt: entry.updatedAt || entry.createdAt || undefined,
       assignedTo: entry.assignedTo || "",
     }));
 
@@ -69,54 +69,61 @@ export const buildPoliceRecommendedActions = ({
   pendingAlerts: number;
   pendingReferrals: number;
   responseLoad: number;
-}): PoliceRecommendedAction[] =>
-  [
-    urgentCases > 0
-      ? {
-          title: "Dispatch critical cases first",
-          description: `${urgentCases} critical case${urgentCases === 1 ? "" : "s"} need immediate police action.`,
-          tone: "rose" as const,
-          actionLabel: "Open dispatch",
-          actionModule: "command_center" as const,
-        }
-      : null,
-    unassignedOpenCases > 0
-      ? {
-          title: "Reduce unassigned investigations",
-          description: `${unassignedOpenCases} open case${unassignedOpenCases === 1 ? "" : "s"} still lack an assigned officer.`,
-          tone: "amber" as const,
-          actionLabel: "Review justice queue",
-          actionModule: "justice" as const,
-        }
-      : null,
-    pendingAlerts > 0
-      ? {
-          title: "Clear live alert backlog",
-          description: `${pendingAlerts} field alert${pendingAlerts === 1 ? "" : "s"} are still waiting for acknowledgement.`,
-          tone: "amber" as const,
-          actionLabel: "Open dispatch",
-          actionModule: "command_center" as const,
-        }
-      : null,
-    pendingReferrals > 0
-      ? {
-          title: "Close partner handoffs",
-          description: `${pendingReferrals} referral${pendingReferrals === 1 ? "" : "s"} still need partner follow-up.`,
-          tone: "indigo" as const,
-          actionLabel: "Open reporting",
-          actionModule: "reporting" as const,
-        }
-      : null,
-    responseLoad >= 80
-      ? {
-          title: "Response load is approaching saturation",
-          description: `Current response pressure is ${responseLoad}%. Rebalance cases before new incidents arrive.`,
-          tone: "rose" as const,
-          actionLabel: "Open dispatch",
-          actionModule: "command_center" as const,
-        }
-      : null,
-  ].filter((entry): entry is PoliceRecommendedAction => Boolean(entry)).slice(0, 3);
+}): PoliceRecommendedAction[] => {
+  const actions: PoliceRecommendedAction[] = [];
+
+  if (urgentCases > 0) {
+    actions.push({
+      title: "Dispatch critical cases first",
+      description: `${urgentCases} critical case${urgentCases === 1 ? "" : "s"} need immediate police action.`,
+      tone: "rose",
+      actionLabel: "Open dispatch",
+      actionModule: "command_center",
+    });
+  }
+
+  if (unassignedOpenCases > 0) {
+    actions.push({
+      title: "Reduce unassigned investigations",
+      description: `${unassignedOpenCases} open case${unassignedOpenCases === 1 ? "" : "s"} still lack an assigned officer.`,
+      tone: "amber",
+      actionLabel: "Review justice queue",
+      actionModule: "justice",
+    });
+  }
+
+  if (pendingAlerts > 0) {
+    actions.push({
+      title: "Clear live alert backlog",
+      description: `${pendingAlerts} field alert${pendingAlerts === 1 ? "" : "s"} are still waiting for acknowledgement.`,
+      tone: "amber",
+      actionLabel: "Open dispatch",
+      actionModule: "command_center",
+    });
+  }
+
+  if (pendingReferrals > 0) {
+    actions.push({
+      title: "Close partner handoffs",
+      description: `${pendingReferrals} referral${pendingReferrals === 1 ? "" : "s"} still need partner follow-up.`,
+      tone: "indigo",
+      actionLabel: "Open reporting",
+      actionModule: "reporting",
+    });
+  }
+
+  if (responseLoad >= 80) {
+    actions.push({
+      title: "Response load is approaching saturation",
+      description: `Current response pressure is ${responseLoad}%. Rebalance cases before new incidents arrive.`,
+      tone: "rose",
+      actionLabel: "Open dispatch",
+      actionModule: "command_center",
+    });
+  }
+
+  return actions.slice(0, 3);
+};
 
 export const buildPoliceAvailabilitySummary = ({
   activeOfficerIds,

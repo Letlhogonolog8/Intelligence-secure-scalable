@@ -109,51 +109,61 @@ export const buildAdminRecommendedActions = ({
   criticalAlerts: number;
   unresolvedEscalations: number;
   pendingDeletionRequests: number;
-}): AdminActionItem[] =>
-  [
-    pendingApprovals > 0
-      ? {
-          title: "Clear privileged approval backlog",
-          description: `${pendingApprovals} privileged accounts are waiting for admin action.`,
-          tone: "amber" as const,
-          actionLabel: "Open approvals",
-          actionModule: "admin_console",
-        }
-      : null,
-    criticalAlerts > 0
-      ? {
-          title: "Investigate critical alerts",
-          description: `${criticalAlerts} critical monitoring signals are affecting security posture.`,
-          tone: "rose" as const,
-          actionLabel: "Inspect alerts",
-          actionModule: "governance",
-        }
-      : null,
-    unresolvedEscalations > 0
-      ? {
-          title: "Reduce unresolved escalations",
-          description: `${unresolvedEscalations} escalations still need oversight follow-up.`,
-          tone: "rose" as const,
-          actionLabel: "Open justice queue",
-          actionModule: "justice",
-        }
-      : null,
-    pendingDeletionRequests > 0
-      ? {
-          title: "Close privacy request backlog",
-          description: `${pendingDeletionRequests} deletion requests remain open.`,
-          tone: "indigo" as const,
-          actionLabel: "Process requests",
-          actionModule: "admin_console",
-        }
-      : {
-          title: "Admin posture is stable",
-          description: "Core queues are clear. Use this window to review audit history and export governance reporting.",
-          tone: "emerald" as const,
-          actionLabel: "Open reporting",
-          actionModule: "reporting",
-        },
-  ].filter((entry): entry is AdminActionItem => Boolean(entry)).slice(0, 3);
+}): AdminActionItem[] => {
+  const actions: AdminActionItem[] = [];
+
+  if (pendingApprovals > 0) {
+    actions.push({
+      title: "Clear privileged approval backlog",
+      description: `${pendingApprovals} privileged accounts are waiting for admin action.`,
+      tone: "amber",
+      actionLabel: "Open approvals",
+      actionModule: "admin_console",
+    });
+  }
+
+  if (criticalAlerts > 0) {
+    actions.push({
+      title: "Investigate critical alerts",
+      description: `${criticalAlerts} critical monitoring signals are affecting security posture.`,
+      tone: "rose",
+      actionLabel: "Inspect alerts",
+      actionModule: "governance",
+    });
+  }
+
+  if (unresolvedEscalations > 0) {
+    actions.push({
+      title: "Reduce unresolved escalations",
+      description: `${unresolvedEscalations} escalations still need oversight follow-up.`,
+      tone: "rose",
+      actionLabel: "Open justice queue",
+      actionModule: "justice",
+    });
+  }
+
+  if (pendingDeletionRequests > 0) {
+    actions.push({
+      title: "Close privacy request backlog",
+      description: `${pendingDeletionRequests} deletion requests remain open.`,
+      tone: "indigo",
+      actionLabel: "Process requests",
+      actionModule: "admin_console",
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      title: "Admin posture is stable",
+      description: "Core queues are clear. Use this window to review audit history and export governance reporting.",
+      tone: "emerald",
+      actionLabel: "Open reporting",
+      actionModule: "reporting",
+    });
+  }
+
+  return actions.slice(0, 3);
+};
 
 export const buildThresholdNotifications = ({
   pendingApprovals,
@@ -169,41 +179,48 @@ export const buildThresholdNotifications = ({
   pendingDeletionRequests: number;
   securityPosture: number;
   thresholds?: AdminDashboardThresholds;
-}): AdminThresholdNotification[] =>
-  [
-    pendingApprovals >= thresholds.pendingApprovalsWarning
-      ? {
-          title: "Approval queue threshold breached",
-          description: `${pendingApprovals} privileged approvals are waiting. Consider reallocating admin time or adding approval automation.`,
-          tone: "amber" as const,
-        }
-      : null,
-    criticalAlerts > 0
-      ? {
-          title: "Critical monitoring signals detected",
-          description: `${criticalAlerts} critical alerts are active. Governance review should be prioritized ahead of routine reporting.`,
-          tone: "rose" as const,
-        }
-      : null,
-    unresolvedEscalations >= thresholds.unresolvedEscalationsWarning
-      ? {
-          title: "Escalation backlog is building",
-          description: `${unresolvedEscalations} escalations remain unresolved. This creates operational drag for the oversight team.`,
-          tone: "rose" as const,
-        }
-      : null,
-    pendingDeletionRequests >= thresholds.pendingDeletionRequestsWarning
-      ? {
-          title: "Privacy processing queue is elevated",
-          description: `${pendingDeletionRequests} deletion requests are still open. Review SLA risk for privacy operations.`,
-          tone: "indigo" as const,
-        }
-      : null,
-    securityPosture < thresholds.securityPostureMinimum
-      ? {
-          title: "Security posture is below target",
-          description: `Composite posture is ${securityPosture}%. Treat this as an active reliability and governance issue.`,
-          tone: "rose" as const,
-        }
-      : null,
-  ].filter((entry): entry is AdminThresholdNotification => Boolean(entry));
+}): AdminThresholdNotification[] => {
+  const notifications: AdminThresholdNotification[] = [];
+
+  if (pendingApprovals >= thresholds.pendingApprovalsWarning) {
+    notifications.push({
+      title: "Approval queue threshold breached",
+      description: `${pendingApprovals} privileged approvals are waiting. Consider reallocating admin time or adding approval automation.`,
+      tone: "amber",
+    });
+  }
+
+  if (criticalAlerts > 0) {
+    notifications.push({
+      title: "Critical monitoring signals detected",
+      description: `${criticalAlerts} critical alerts are active. Governance review should be prioritized ahead of routine reporting.`,
+      tone: "rose",
+    });
+  }
+
+  if (unresolvedEscalations >= thresholds.unresolvedEscalationsWarning) {
+    notifications.push({
+      title: "Escalation backlog is building",
+      description: `${unresolvedEscalations} escalations remain unresolved. This creates operational drag for the oversight team.`,
+      tone: "rose",
+    });
+  }
+
+  if (pendingDeletionRequests >= thresholds.pendingDeletionRequestsWarning) {
+    notifications.push({
+      title: "Privacy processing queue is elevated",
+      description: `${pendingDeletionRequests} deletion requests are still open. Review SLA risk for privacy operations.`,
+      tone: "indigo",
+    });
+  }
+
+  if (securityPosture < thresholds.securityPostureMinimum) {
+    notifications.push({
+      title: "Security posture is below target",
+      description: `Composite posture is ${securityPosture}%. Treat this as an active reliability and governance issue.`,
+      tone: "rose",
+    });
+  }
+
+  return notifications;
+};

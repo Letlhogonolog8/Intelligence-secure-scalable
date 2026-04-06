@@ -27,9 +27,9 @@ export class SecureEncryption {
     password: string,
     salt?: Uint8Array
   ): Promise<{ key: CryptoKey; salt: Uint8Array }> {
-    if (!salt) {
-      salt = crypto.getRandomValues(new Uint8Array(this.SALT_LENGTH));
-    }
+    const normalizedSalt = salt
+      ? Uint8Array.from(salt)
+      : crypto.getRandomValues(new Uint8Array(this.SALT_LENGTH));
 
     const encoder = new TextEncoder();
     const passwordData = encoder.encode(password);
@@ -46,7 +46,7 @@ export class SecureEncryption {
       {
         name: 'PBKDF2',
         hash: this.PBKDF2_DIGEST,
-        salt: salt,
+        salt: normalizedSalt,
         iterations: this.PBKDF2_ITERATIONS,
       },
       passwordKey,
@@ -55,7 +55,7 @@ export class SecureEncryption {
       ['encrypt', 'decrypt']
     );
 
-    return { key, salt };
+    return { key, salt: normalizedSalt };
   }
 
   /**

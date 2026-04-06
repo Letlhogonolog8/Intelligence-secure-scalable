@@ -378,7 +378,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
           setPassword("");
           setError(null);
           setWarning(`Signed out of your existing ${assignedRole} session. Sign in as ${activeRole} to continue.`);
-          setStep(policy.allowedAuthMethods.length === 1 ? "auth" : "method-select");
+          setStep((policy?.allowedAuthMethods.length ?? 0) === 1 ? "auth" : "method-select");
           return;
         }
 

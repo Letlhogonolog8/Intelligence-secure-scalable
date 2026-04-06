@@ -898,7 +898,7 @@ const fetchRegions = async (options?: FetchOptions) => {
     )
     const result = await query
     if (!result.error) {
-      data = (result.data ?? []) as Record<string, unknown>[]
+      data = (result.data ?? []) as unknown as Record<string, unknown>[]
       lastError = null
       break
     }
@@ -968,7 +968,7 @@ const fetchContinentalStats = async () => {
   for (const selectColumns of selectVariants) {
     const result = await supabase.from("continental_stats").select(selectColumns)
     if (!result.error) {
-      data = (result.data ?? []) as Record<string, unknown>[]
+      data = (result.data ?? []) as unknown as Record<string, unknown>[]
       lastError = null
       break
     }
@@ -1108,7 +1108,7 @@ const fetchJusticeCases = async (options?: FetchOptions) => {
 
     const result = await query
     if (!result.error) {
-      data = (result.data ?? []) as Record<string, unknown>[]
+      data = (result.data ?? []) as unknown as Record<string, unknown>[]
       lastError = null
       break
     }

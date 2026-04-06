@@ -49,14 +49,12 @@ export class OfflineCache {
   private sessionsFile: string;
   private casesFile: string;
   private queueFile: string;
-  private encryptionKey: string;
 
-  constructor(cacheDir: string = './offline_cache', encryptionKey: string = process.env.ENCRYPTION_KEY || 'default-key') {
+  constructor(cacheDir: string = './offline_cache', _encryptionKey: string = process.env.ENCRYPTION_KEY || 'default-key') {
     this.cacheDir = cacheDir;
     this.sessionsFile = path.join(cacheDir, 'sessions.json');
     this.casesFile = path.join(cacheDir, 'cases.json');
     this.queueFile = path.join(cacheDir, 'queue.json');
-    this.encryptionKey = encryptionKey;
 
     this.initializeCache();
   }

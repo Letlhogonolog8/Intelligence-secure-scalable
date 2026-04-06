@@ -161,7 +161,7 @@ describe('APIClient', () => {
       const config: Record<string, unknown> = { headers: {} };
       await (requestInterceptor as (config: Record<string, unknown>) => Promise<void>)(config);
 
-      expect(config.headers.Authorization).toBe('Bearer test-token-123');
+      expect((config.headers as Record<string, unknown>).Authorization).toBe('Bearer test-token-123');
     });
 
     it('should not add authorization header if no session', async () => {

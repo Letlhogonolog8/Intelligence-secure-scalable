@@ -60,11 +60,12 @@ export const PanicButton: React.FC<PanicButtonProps> = ({ onActivate }) => {
       }, 1000);
 
       setTimeout(() => {
-        if (escalation) {
+        const escalationId = (escalation as { id?: string } | null)?.id;
+        if (escalationId) {
           supabase
             .from('escalation_events')
             .update({ status: 'acknowledged' })
-            .eq('id', escalation.id)
+            .eq('id', escalationId)
             .then(() => setIsActive(false));
         }
       }, 120000);

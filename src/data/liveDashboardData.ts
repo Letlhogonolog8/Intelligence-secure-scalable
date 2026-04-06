@@ -386,7 +386,7 @@ const fetchLiveJusticeCases = async (options?: FetchOptions & { assignedTo?: str
   }
 
   return (data ?? []).map((row) => {
-    const mapped = row as Record<string, unknown> & { regions?: { name?: unknown } | Array<{ name?: unknown }> };
+    const mapped = row as unknown as Record<string, unknown> & { regions?: { name?: unknown } | Array<{ name?: unknown }> };
     const related = Array.isArray(mapped.regions) ? mapped.regions[0] : mapped.regions;
     return mapJusticeCase({ ...mapped, region_name: related?.name ?? mapped.region_name });
   });

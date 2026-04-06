@@ -74,7 +74,7 @@ export class DataSubjectRightsManager {
         format: 'json',
       };
 
-      await this.logAccessRequest(survivorId);
+      await this.logAccessRequest(survivorId, 'data_access');
       return dataExport;
     } catch (_error) {
       throw new Error(`Failed to export data for survivor: ${survivorId}`);
@@ -272,7 +272,8 @@ export class DataSubjectRightsManager {
         .eq('id', survivorId)
         .single();
 
-      return result.data?.[field];
+      const survivorRecord = result.data as Record<string, unknown> | null;
+      return survivorRecord?.[field];
     } catch {
       return null;
     }

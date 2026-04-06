@@ -240,12 +240,17 @@ export class I18nManager {
     region: string
   ): { primary: string; secondary: string[] } {
     const config = REGIONAL_CONFIGS[region as keyof typeof REGIONAL_CONFIGS];
-    return (
-      config || {
-        primary: 'en',
-        secondary: ['af', 'zu'],
-      }
-    );
+    if (config) {
+      return {
+        primary: config.primary_language,
+        secondary: config.secondary_languages,
+      };
+    }
+
+    return {
+      primary: 'en',
+      secondary: ['af', 'zu'],
+    };
   }
 
   /**
