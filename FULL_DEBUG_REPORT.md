@@ -287,6 +287,8 @@ const isMissingTableError = (error: unknown) => {
 
 ## Potential Issues & Recommendations
 
+Note: The following unresolved items — empty database tables, missing indexes, Supabase realtime connection limits, and unverified RLS policies — must be addressed and verified before production deployment.
+
 ### ⚠️ Issue 1: Empty Database Tables
 
 **Problem:** If database tables are empty, dashboards will show "No data"
@@ -476,7 +478,7 @@ npm run dev
 
 ## Conclusion
 
-### ✅ READY FOR REAL-TIME PRODUCTION USE
+### ✅ Code uses real data sources; requires database setup and verification before production deployment
 
 **Summary:**
 - ✅ **NO MOCK DATA** - All data comes from real Supabase database
