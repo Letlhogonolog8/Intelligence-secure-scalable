@@ -4,6 +4,7 @@ import https from 'https';
 import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
@@ -27,6 +28,8 @@ import { EscalationWorkflow } from './workflows/escalationWorkflow';
 import { TwilioNotificationService } from './notifications/twilio';
 import { RiskScoringEngine } from './intelligence/riskScoring';
 import { GeoMatchingEngine } from './intelligence/geoMatching';
+import { dbPool } from './utils/dbPoolOptimized';
+import { cacheManager } from './utils/cacheManager';
 import { 
   defaultLimiter, 
   escalationLimiter, 
@@ -46,6 +49,12 @@ const rateLimitingInitialization = initializeRateLimiting();
 
 const logger = createLogger('aegis-api');
 const errorTracking = new ErrorTrackingService();
+
+async function initializeServices() {
+  await cacheManager.initialize();
+  dbPool.initialize();
+  logger.info('Cache and database pool initialized');
+}
 
 if (process.env.SENTRY_DSN) {
   errorTracking.initialize(
@@ -372,6 +381,7 @@ async function getReadinessStatus(): Promise<{
   return { ready, services };
 }
 
+app.use(compression());
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -1030,6 +1040,7 @@ if (process.env.NODE_ENV === 'production' && process.env.SSL_CERT_PATH && proces
 }
 
 async function startServer(): Promise<void> {
+  await initializeServices();
   await rateLimitingInitialization;
   await wsManager.initializeScaling();
   startNotificationWorker();
@@ -1090,6 +1101,20 @@ const gracefulShutdown = async (signal: string) => {
       logger.info('WebSocket connections closed');
     } catch (error) {
       logger.error('Error closing WebSocket', error);
+    }
+
+    try {
+      await cacheManager.close();
+      logger.info('Cache manager closed');
+    } catch (error) {
+      logger.error('Error closing cache manager', error);
+    }
+
+    try {
+      await dbPool.close();
+      logger.info('Database pool closed');
+    } catch (error) {
+      logger.error('Error closing database pool', error);
     }
 
     await new Promise(resolve => setTimeout(resolve, 5000));

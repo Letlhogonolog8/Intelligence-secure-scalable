@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
+import { visualizer } from 'rollup-plugin-visualizer';
 
 export default defineConfig(() => ({
   server: {
@@ -26,9 +27,9 @@ export default defineConfig(() => ({
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: process.env.NODE_ENV === 'production',
+        drop_console: true,
         drop_debugger: true,
-        pure_funcs: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug'] : [],
+        pure_funcs: ['console.log', 'console.debug'],
       },
     },
     rollupOptions: {
@@ -38,6 +39,7 @@ export default defineConfig(() => ({
             return undefined;
           }
 
+          // Core React libraries
           if (
             id.includes("/react/") ||
             id.includes("react-dom") ||
@@ -46,14 +48,17 @@ export default defineConfig(() => ({
             return "react-core";
           }
 
+          // React Router
           if (id.includes("react-router")) {
             return "react-router";
           }
 
+          // React Query
           if (id.includes("@tanstack/react-query")) {
             return "react-query";
           }
 
+          // UI Components - Split into smaller chunks
           if (id.includes("@radix-ui")) {
             return "radix-ui";
           }
@@ -70,6 +75,7 @@ export default defineConfig(() => ({
             return "ui-animations";
           }
 
+          // Data & API
           if (id.includes("@supabase")) {
             return "supabase";
           }
@@ -78,10 +84,12 @@ export default defineConfig(() => ({
             return "websocket";
           }
 
+          // Charts & Visualization
           if (id.includes("recharts")) {
             return "charts";
           }
 
+          // Forms & Validation
           if (
             id.includes("react-hook-form") ||
             id.includes("zod") ||
@@ -90,17 +98,23 @@ export default defineConfig(() => ({
             return "forms";
           }
 
+          // Date utilities
           if (id.includes("date-fns")) {
             return "date-utils";
           }
 
+          // i18n
           if (id.includes("i18next") || id.includes("react-i18next")) {
             return "i18n";
           }
 
+          // Everything else
           return "vendor";
         },
-        chunkFileNames: 'assets/js/[name]-[hash].js',
+        chunkFileNames: (chunkInfo) => {
+          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk';
+          return `assets/js/[name]-[hash].js`;
+        },
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
           const info = assetInfo.name?.split('.');
@@ -119,7 +133,13 @@ export default defineConfig(() => ({
     reportCompressedSize: false,
   },
   plugins: [
-    react(),
+    react({
+      babel: {
+        plugins: [
+          ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
+        ],
+      },
+    }),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico"],
@@ -182,6 +202,12 @@ export default defineConfig(() => ({
         clientsClaim: true,
       },
       devOptions: { enabled: false },
+    }),
+    visualizer({
+      filename: './dist/stats.html',
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
     }),
   ].filter(Boolean),
   resolve: {
