@@ -307,6 +307,8 @@ npm run db:migrate
 npm run seed
 ```
 
+**Repository verification:** Migration SQL files are present under `supabase/migrations` and a seed script is available at `scripts/seed-data/seed.ts`. Apply migrations (`supabase db push` / `npm run db:migrate`) and then run `npm run seed` to populate tables.
+
 ### ⚠️ Issue 2: Missing Database Indexes
 
 **Problem:** Slow queries on large datasets
@@ -320,6 +322,8 @@ CREATE INDEX idx_case_reports_status ON case_reports(status);
 -- etc.
 ```
 
+**Repository verification:** Index creation statements are included in the schema migration(s) (e.g., `supabase/migrations/001_create_aegis_schema.sql`). Ensure migrations are applied to provision these indexes in the target database.
+
 ### ⚠️ Issue 3: Realtime Subscription Limits
 
 **Problem:** Supabase free tier has realtime connection limits
@@ -329,6 +333,8 @@ CREATE INDEX idx_case_reports_status ON case_reports(status);
 - Application already handles connection failures gracefully
 - Falls back to polling if realtime unavailable
 
+**Mitigation:** The code includes graceful fallback logic, but for high-traffic deployments consider batching subscriptions, reusing connections, and upgrading the Supabase plan. Also implement exponential backoff and connection pooling at the client side to reduce concurrent realtime connections.
+
 ### ⚠️ Issue 4: Row Level Security (RLS)
 
 **Problem:** RLS policies may block data access
@@ -337,6 +343,8 @@ CREATE INDEX idx_case_reports_status ON case_reports(status);
 - Verify RLS policies are configured correctly
 - Check service role key has proper permissions
 - Review `supabase/migrations/002_rls_policies.sql`
+
+**Repository verification:** RLS policies are defined in `supabase/migrations/002_rls_policies.sql`. After applying migrations, verify effective policies in the target Supabase project and confirm the service role key and auth metadata sync trigger are functioning.
 
 ---
 
