@@ -13,16 +13,17 @@ const CounselorDashboard: React.FC = () => {
   const { user, session } = useAuth();
   const { setActiveModule } = useAppStore();
   const { data: profile } = useUserProfile(user?.id);
+  const isCounselor = profile?.role === "counselor";
   const resolvedRole = (profile?.role ?? "counselor") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
 
-  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ assignedTo: user?.id, staleTime: 15000, refetchInterval: 30000, limit: 120 });
-  const { data: sessions = [], isLoading: sessionsLoading } = useLiveSurvivorChatSessions({ counselorId: user?.id, staleTime: 10000, refetchInterval: 20000, limit: 120 });
-  const { data: survivors = [], isLoading: survivorsLoading } = useLiveSurvivors({ staleTime: 15000, refetchInterval: 30000, limit: 120 });
-  const { data: safetyPlans = [], isLoading: plansLoading } = useLiveSafetyPlans({ staleTime: 15000, refetchInterval: 30000, limit: 120 });
-  const { data: escalationReviews = [], isLoading: escalationLoading } = useEscalationReviews({ staleTime: 10000, refetchInterval: 20000, limit: 80 });
-  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 10 });
-  const { data: coordination = [], isLoading: coordinationLoading } = useOrganizationCoordination({ staleTime: 15000, refetchInterval: 30000, limit: 30 });
+  const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ enabled: isCounselor, assignedTo: user?.id, staleTime: 15000, refetchInterval: 30000, limit: 120 });
+  const { data: sessions = [], isLoading: sessionsLoading } = useLiveSurvivorChatSessions({ enabled: isCounselor, counselorId: user?.id, staleTime: 10000, refetchInterval: 20000, limit: 120 });
+  const { data: survivors = [], isLoading: survivorsLoading } = useLiveSurvivors({ enabled: isCounselor, staleTime: 15000, refetchInterval: 30000, limit: 120 });
+  const { data: safetyPlans = [], isLoading: plansLoading } = useLiveSafetyPlans({ enabled: isCounselor, staleTime: 15000, refetchInterval: 30000, limit: 120 });
+  const { data: escalationReviews = [], isLoading: escalationLoading } = useEscalationReviews({ enabled: isCounselor, staleTime: 10000, refetchInterval: 20000, limit: 80 });
+  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ enabled: isCounselor, staleTime: 10000, refetchInterval: 15000, limit: 10 });
+  const { data: coordination = [], isLoading: coordinationLoading } = useOrganizationCoordination({ enabled: isCounselor, staleTime: 15000, refetchInterval: 30000, limit: 30 });
 
   const isLoadingData = casesLoading || sessionsLoading || survivorsLoading || plansLoading || escalationLoading || alertsLoading || coordinationLoading;
 
@@ -70,6 +71,19 @@ const CounselorDashboard: React.FC = () => {
     .map((entry) => entry.updatedAt ?? entry.createdAt)
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
+
+  if (profile && !isCounselor) {
+    return (
+      <DashboardPage accent="emerald">
+        <EmptyState
+          title="Counselor access required"
+          description="Your account does not have the required privileges to view the counselor operations board."
+          actionLabel="Open dashboard"
+          onAction={() => setActiveModule("dashboard")}
+        />
+      </DashboardPage>
+    );
+  }
 
   return (
     <DashboardPage accent="emerald">

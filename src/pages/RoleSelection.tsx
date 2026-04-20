@@ -27,7 +27,6 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import AuthTopBar from "@/components/auth/AuthTopBar";
 import AuthContextIntro from "@/components/auth/AuthContextIntro";
-import AuthInfoPanel from "@/components/auth/AuthInfoPanel";
 import AuthActionSummaryCard from "@/components/auth/AuthActionSummaryCard";
 import AuthMetricCard from "@/components/auth/AuthMetricCard";
 import AuthCalloutCard from "@/components/auth/AuthCalloutCard";
@@ -470,26 +469,6 @@ const RoleSelection: React.FC = () => {
                     </p>
                   )}
                 </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25, duration: 0.5 }}
-              >
-                <AuthInfoPanel
-                  icon={Sparkles}
-                  title="Improvement areas addressed"
-                  description="The redesign work already resolves the following UX and clarity problems."
-                  className="bg-slate-950/70 p-5"
-                >
-                <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                  <li>- Accessible role cards now use real button semantics.</li>
-                  <li>- Mobile users retain access to language switching.</li>
-                  <li>- Disabled actions now explain why they are unavailable.</li>
-                  <li>- The layout separates role choice from next-step decisions.</li>
-                </ul>
-                </AuthInfoPanel>
               </motion.div>
             </div>
           </motion.section>

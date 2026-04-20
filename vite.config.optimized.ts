@@ -111,8 +111,7 @@ export default defineConfig(() => ({
           // Everything else
           return "vendor";
         },
-        chunkFileNames: (chunkInfo) => {
-          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk';
+        chunkFileNames: (_chunkInfo) => {
           return `assets/js/[name]-[hash].js`;
         },
         entryFileNames: 'assets/js/[name]-[hash].js',

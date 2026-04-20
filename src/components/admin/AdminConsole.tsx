@@ -134,8 +134,10 @@ const AdminConsole: React.FC = () => {
   const [ussdPhoneNumber, setUssdPhoneNumber] = useState("");
   const [ussdServiceCode, setUssdServiceCode] = useState("");
   const [ussdText, setUssdText] = useState("");
+  const [ussdCurrentInput, setUssdCurrentInput] = useState("");
   const [ussdResponse, setUssdResponse] = useState<string | null>(null);
   const [ussdLoading, setUssdLoading] = useState(false);
+  const [ussdMenuType, setUssdMenuType] = useState<"CON" | "END">("CON");
 
   // Provisioning state
   const [isProvisionDialogOpen, setIsProvisionDialogOpen] = useState(false);
@@ -829,7 +831,7 @@ const AdminConsole: React.FC = () => {
     });
   };
 
-  const handleUssdSend = async () => {
+  const handleUssdSend = async (appendInput?: string) => {
     if (!isAdmin) return;
     if (!ussdSessionId.trim() || !ussdPhoneNumber.trim() || !ussdServiceCode.trim()) {
       setUssdResponse("Session ID, phone number, and service code are required.");
@@ -837,7 +839,12 @@ const AdminConsole: React.FC = () => {
     }
 
     setUssdLoading(true);
-    setUssdResponse(null);
+
+    let nextText = ussdText;
+    if (appendInput !== undefined) {
+      nextText = ussdText ? `${ussdText}*${appendInput}` : appendInput;
+      setUssdText(nextText);
+    }
 
     try {
       const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/+$/, "");
@@ -850,7 +857,7 @@ const AdminConsole: React.FC = () => {
           sessionId: ussdSessionId.trim(),
           phoneNumber: ussdPhoneNumber.trim(),
           serviceCode: ussdServiceCode.trim(),
-          text: ussdText.trim(),
+          text: nextText.trim(),
         }).toString(),
       });
 
@@ -859,12 +866,25 @@ const AdminConsole: React.FC = () => {
         throw new Error(responseBody || `USSD request failed with status ${response.status}`);
       }
 
-      setUssdResponse(responseBody || "No response returned.");
+      let parsedResponse = responseBody;
+      if (parsedResponse.startsWith("CON ")) {
+        setUssdMenuType("CON");
+        parsedResponse = parsedResponse.substring(4);
+      } else if (parsedResponse.startsWith("END ")) {
+        setUssdMenuType("END");
+        parsedResponse = parsedResponse.substring(4);
+      } else {
+        setUssdMenuType("CON");
+      }
+
+      setUssdResponse(parsedResponse || "No response returned.");
     } catch (err) {
       logError(err, { source: "admin.ussd" });
-      setUssdResponse(getErrorMessage(err) || "Failed to connect to USSD gateway.");
+      setUssdResponse(String(err));
+      setUssdMenuType("END");
     } finally {
       setUssdLoading(false);
+      setUssdCurrentInput("");
     }
   };
 
@@ -1906,63 +1926,160 @@ const AdminConsole: React.FC = () => {
                 <Smartphone className="h-6 w-6 text-orange-400" />
                 <h2 className="text-xl font-black text-white">Rapid Support Gateway (USSD)</h2>
               </div>
-              <p className="text-sm text-slate-400 font-medium">Simulate Africa&apos;s Talking requests against the live USSD processing route.</p>
+              <p className="text-sm text-slate-400 font-medium">Interactive Africa&apos;s Talking Simulator</p>
             </div>
-            <div className="p-8 space-y-6 flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <div className="p-8 flex-1 grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+              {/* Configuration Panel */}
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Secure Session ID</label>
+                    <Input
+                      value={ussdSessionId}
+                      onChange={(e) => setUssdSessionId(e.target.value)}
+                      placeholder="e.g. AT-SIM-921-X"
+                      className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Verified MSISDN</label>
+                    <Input
+                      value={ussdPhoneNumber}
+                      onChange={(e) => setUssdPhoneNumber(e.target.value)}
+                      placeholder="+27 00 000 0000"
+                      className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Secure Session ID</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Service Code</label>
                   <Input
-                    value={ussdSessionId}
-                    onChange={(e) => setUssdSessionId(e.target.value)}
-                    placeholder="e.g. AT-SIM-921-X"
+                    value={ussdServiceCode}
+                    onChange={(e) => setUssdServiceCode(e.target.value)}
+                    placeholder="e.g. *384*30933#"
                     className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
                   />
                 </div>
+                
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Verified MSISDN</label>
-                  <Input
-                    value={ussdPhoneNumber}
-                    onChange={(e) => setUssdPhoneNumber(e.target.value)}
-                    placeholder="+27 00 000 0000"
-                    className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
-                  />
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Internal State (ussdText)</label>
+                  <div className="h-12 px-3 py-2 bg-slate-950/60 border border-slate-800 text-slate-400 font-mono text-sm rounded-md flex items-center overflow-x-auto whitespace-nowrap">
+                    {ussdText || "Empty"}
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(`sim-${Date.now()}`); setUssdPhoneNumber("+27820000000"); setUssdServiceCode("*384*30933#"); setUssdText(""); setUssdResponse(null); }}>
+                    Auto-Fill
+                  </Button>
+                  <Button variant="outline" className="flex-1 h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30" onClick={() => { setUssdSessionId(""); setUssdPhoneNumber(""); setUssdServiceCode(""); setUssdText(""); setUssdResponse(null); }}>
+                    Reset
+                  </Button>
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Africa&apos;s Talking Service Code</label>
-                <Input
-                  value={ussdServiceCode}
-                  onChange={(e) => setUssdServiceCode(e.target.value)}
-                  placeholder="e.g. *384*30933#"
-                  className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Africa&apos;s Talking Text Field</label>
-                <Input
-                  value={ussdText}
-                  onChange={(e) => setUssdText(e.target.value)}
-                  placeholder="e.g. 1 or 1*Test incident details"
-                  className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
-                />
-              </div>
-              <div className="flex gap-3">
-                <Button onClick={handleUssdSend} disabled={ussdLoading} className="flex-1 h-12 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest shadow-lg shadow-orange-900/20">
-                  {ussdLoading ? <RefreshCw className="h-5 w-5 animate-spin" /> : "Send AT Simulation"}
-                </Button>
-                <Button variant="outline" className="h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(""); setUssdPhoneNumber(""); setUssdServiceCode(""); setUssdText(""); setUssdResponse(null); }}>
-                  Reset
-                </Button>
-              </div>
-              <div className="mt-4 p-5 rounded-2xl bg-slate-950/60 border border-white/5 relative min-h-[120px]">
-                <div className="absolute top-0 right-0 p-3">
-                  <Activity className="h-4 w-4 text-orange-500/30" />
+
+              {/* Phone UI */}
+              <div className="flex justify-center">
+                <div className="w-[320px] h-[640px] bg-slate-950 rounded-[3rem] border-[8px] border-slate-800 relative overflow-hidden shadow-2xl flex flex-col">
+                  {/* Phone Notch */}
+                  <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-20">
+                    <div className="w-32 h-5 bg-slate-800 rounded-b-xl flex items-center justify-center gap-2">
+                      <div className="w-12 h-1 rounded-full bg-slate-900"></div>
+                      <div className="w-2 h-2 rounded-full bg-slate-900/80"></div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 bg-slate-100 flex flex-col relative pt-8 pb-6">
+                    {/* Status Bar */}
+                    <div className="absolute top-1 inset-x-4 flex justify-between items-center text-[10px] text-slate-500 font-bold">
+                      <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="flex gap-1 items-center">
+                        <Activity className="w-3 h-3" />
+                        <div className="h-2 w-3 border border-slate-500 rounded-[2px] flex items-center p-[1px]">
+                          <div className="h-full bg-slate-500 w-[70%]"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex items-center justify-center p-4">
+                      {!ussdResponse ? (
+                         <div className="w-full text-center space-y-4">
+                           <div className="text-3xl font-light text-slate-800 font-mono tracking-wider break-all px-2">
+                             {ussdServiceCode || "*---#"}
+                           </div>
+                           <Button 
+                             onClick={() => handleUssdSend()} 
+                             disabled={ussdLoading || !ussdServiceCode || !ussdSessionId || !ussdPhoneNumber}
+                             className="w-16 h-16 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center"
+                           >
+                             {ussdLoading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <Smartphone className="h-8 w-8" />}
+                           </Button>
+                         </div>
+                      ) : (
+                        <div className="w-full max-h-full flex flex-col">
+                          <div className="w-full bg-white border border-slate-300 shadow-xl rounded-sm flex flex-col overflow-hidden">
+                            <div className="p-4 overflow-y-auto max-h-[350px]">
+                              <p className="whitespace-pre-wrap text-sm text-slate-800 font-medium leading-relaxed font-mono">
+                                {ussdResponse}
+                              </p>
+                            </div>
+                            
+                            {ussdMenuType === "CON" && (
+                              <div className="p-3 border-t border-slate-200 bg-slate-50 space-y-3">
+                                <Input 
+                                  value={ussdCurrentInput}
+                                  onChange={(e) => setUssdCurrentInput(e.target.value)}
+                                  placeholder="Enter your response..."
+                                  className="h-10 bg-white border-slate-300 text-slate-800 font-mono focus:border-orange-500"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleUssdSend(ussdCurrentInput);
+                                  }}
+                                />
+                                <div className="flex gap-2">
+                                  <Button 
+                                    onClick={() => handleUssdSend(ussdCurrentInput)}
+                                    disabled={ussdLoading}
+                                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white"
+                                  >
+                                    {ussdLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Send"}
+                                  </Button>
+                                  <Button 
+                                    variant="outline"
+                                    onClick={() => {
+                                      setUssdResponse(null);
+                                      setUssdText("");
+                                      setUssdCurrentInput("");
+                                    }}
+                                    className="flex-1 border-slate-300 text-slate-600 hover:bg-slate-100"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {ussdMenuType === "END" && (
+                              <div className="p-3 border-t border-slate-200 bg-slate-50">
+                                <Button 
+                                  onClick={() => {
+                                    setUssdResponse(null);
+                                    setUssdText("");
+                                    setUssdCurrentInput("");
+                                  }}
+                                  className="w-full bg-slate-800 hover:bg-slate-700 text-white"
+                                >
+                                  Dismiss
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-2">Africa&apos;s Talking Gateway Response</label>
-                <p className="text-sm font-mono text-orange-200/90 leading-relaxed italic whitespace-pre-wrap break-words">
-                  {ussdResponse || "Awaiting Africa's Talking simulator request..."}
-                </p>
               </div>
             </div>
           </Card>

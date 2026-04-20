@@ -9,7 +9,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationProvider";
-import { logError } from "@/lib/logger";
 import { GlobalLoadingIndicator } from "@/components/GlobalLoadingIndicator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { hasSupabase } from "@/lib/env";

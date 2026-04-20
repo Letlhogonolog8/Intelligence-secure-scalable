@@ -1032,8 +1032,11 @@ if (process.env.NODE_ENV === 'production' && process.env.SSL_CERT_PATH && proces
     server = https.createServer(options, app);
     logger.info('HTTPS server configured');
   } catch (error) {
-    logger.warn('Failed to load SSL certificates, falling back to HTTP', error instanceof Error ? { error: error.message } : undefined);
-    server = httpServer;
+    logger.error(
+      'CRITICAL: Failed to load SSL certificates in production. Refusing to start without TLS.',
+      error instanceof Error ? { error: error.message } : undefined
+    );
+    process.exit(1);
   }
 } else {
   server = httpServer;

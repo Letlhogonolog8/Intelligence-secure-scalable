@@ -1,32 +1,81 @@
 import { Queue, Worker, Job } from 'bullmq';
-import { createClient } from 'redis';
+import IORedis from 'ioredis';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('notification-queue');
 
-const connection = createClient({
-  url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`,
-});
+function resolveRedisUrl(): string | null {
+  if (process.env.REDIS_URL) return process.env.REDIS_URL;
+  if (!process.env.REDIS_HOST) return null;
+  return `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`;
+}
 
-connection.on('error', (err) => {
-  logger.error('Redis connection error for queue', err);
-});
+function createConnection(): IORedis | null {
+  const url = resolveRedisUrl();
+  if (!url) {
+    logger.warn('Redis not configured — notification queue is disabled');
+    return null;
+  }
 
-export const notificationQueue = new Queue('notifications', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
+  const client = new IORedis(url, { maxRetriesPerRequest: null, lazyConnect: true });
+
+  client.on('error', (err) => {
+    logger.error('Redis connection error for queue', err);
+  });
+
+  client.on('connect', () => {
+    logger.info('Notification queue Redis connected');
+  });
+
+  return client;
+}
+
+let _connection: IORedis | null = null;
+let _queue: Queue | null = null;
+
+function getConnection(): IORedis | null {
+  if (_connection === null) {
+    _connection = createConnection();
+  }
+  return _connection;
+}
+
+function getQueue(): Queue | null {
+  if (_queue) return _queue;
+
+  const conn = getConnection();
+  if (!conn) return null;
+
+  _queue = new Queue('notifications', {
+    connection: conn,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: {
+        count: 100,
+        age: 3600,
+      },
+      removeOnFail: {
+        count: 500,
+      },
     },
-    removeOnComplete: {
-      count: 100,
-      age: 3600,
-    },
-    removeOnFail: {
-      count: 500,
-    },
+  });
+
+  return _queue;
+}
+
+export const notificationQueue = new Proxy({} as Queue, {
+  get(_target, prop) {
+    const q = getQueue();
+    if (!q) {
+      throw new Error(`Notification queue unavailable: Redis is not configured (accessing .${String(prop)})`);
+    }
+    return typeof (q as unknown as Record<string | symbol, unknown>)[prop] === 'function'
+      ? (q as unknown as Record<string | symbol, unknown>)[prop]
+      : (q as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 
@@ -38,16 +87,26 @@ export interface NotificationJobData {
   priority?: number;
 }
 
-export async function queueNotification(data: NotificationJobData): Promise<string> {
-  const job = await notificationQueue.add('send-notification', data, {
+export async function queueNotification(data: NotificationJobData): Promise<string | null> {
+  const q = getQueue();
+  if (!q) {
+    logger.warn('Notification queue unavailable — skipping job', { type: data.type, recipient: data.recipient });
+    return null;
+  }
+  const job = await q.add('send-notification', data, {
     priority: data.priority || 5,
   });
   logger.info('Notification queued', { jobId: job.id, type: data.type });
   return job.id!;
 }
 
-export async function queueBulkNotifications(notifications: NotificationJobData[]): Promise<string[]> {
-  const jobs = await notificationQueue.addBulk(
+export async function queueBulkNotifications(notifications: NotificationJobData[]): Promise<(string | null)[]> {
+  const q = getQueue();
+  if (!q) {
+    logger.warn('Notification queue unavailable — skipping bulk jobs', { count: notifications.length });
+    return notifications.map(() => null);
+  }
+  const jobs = await q.addBulk(
     notifications.map((data) => ({
       name: 'send-notification',
       data,
@@ -62,7 +121,13 @@ export async function queueBulkNotifications(notifications: NotificationJobData[
 
 export function createNotificationWorker(
   processor: (job: Job<NotificationJobData>) => Promise<void>
-): Worker {
+): Worker | null {
+  const conn = getConnection();
+  if (!conn) {
+    logger.warn('Notification worker not started — Redis is not configured');
+    return null;
+  }
+
   const worker = new Worker<NotificationJobData>(
     'notifications',
     async (job) => {
@@ -70,7 +135,7 @@ export function createNotificationWorker(
       await processor(job);
     },
     {
-      connection,
+      connection: conn,
       concurrency: 10,
       limiter: {
         max: 100,
@@ -98,13 +163,16 @@ export function createNotificationWorker(
   return worker;
 }
 
-export async function getQueueStats() {
+export async function getQueueStats(): Promise<Record<string, number> | null> {
+  const q = getQueue();
+  if (!q) return null;
+
   const [waiting, active, completed, failed, delayed] = await Promise.all([
-    notificationQueue.getWaitingCount(),
-    notificationQueue.getActiveCount(),
-    notificationQueue.getCompletedCount(),
-    notificationQueue.getFailedCount(),
-    notificationQueue.getDelayedCount(),
+    q.getWaitingCount(),
+    q.getActiveCount(),
+    q.getCompletedCount(),
+    q.getFailedCount(),
+    q.getDelayedCount(),
   ]);
 
   return {
@@ -118,7 +186,13 @@ export async function getQueueStats() {
 }
 
 export async function closeQueue(): Promise<void> {
-  await notificationQueue.close();
-  await connection.quit();
+  if (_queue) {
+    await _queue.close();
+    _queue = null;
+  }
+  if (_connection) {
+    await _connection.quit();
+    _connection = null;
+  }
   logger.info('Notification queue closed');
 }

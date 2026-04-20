@@ -4,6 +4,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient, RedisClientType } from 'redis';
 import crypto from 'crypto';
+import { cacheManager } from './utils/cacheManager';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -34,8 +35,7 @@ export class WebSocketManager {
   private messageBatch: MessageBatch[] = [];
   private batchInterval: NodeJS.Timeout | null = null;
   private readonly BATCH_INTERVAL_MS = 50;
-  private readonly AUTH_CACHE_TTL = 300;
-  private authCache: Map<string, { auth: CachedAuth; expires: number }> = new Map();
+  private readonly AUTH_CACHE_TTL = 300; // seconds
 
   constructor(httpServer: HTTPServer, supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -69,61 +69,9 @@ export class WebSocketManager {
     this.startMessageBatching();
   }
 
-  private startMessageBatching(): void {
-    this.batchInterval = setInterval(() => {
-      this.flushMessageBatch();
-    }, this.BATCH_INTERVAL_MS);
-  }
-
-  private flushMessageBatch(): void {
-    if (this.messageBatch.length === 0) return;
-
-    const batch = [...this.messageBatch];
-    this.messageBatch = [];
-
-    const grouped = new Map<string, MessageBatch[]>();
-    batch.forEach(msg => {
-      const key = `${msg.event}:${msg.rooms.join(',')}`;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(msg);
-    });
-
-    grouped.forEach((messages, key) => {
-      const [event, roomsStr] = key.split(':');
-      const rooms = roomsStr.split(',');
-      
-      if (messages.length === 1) {
-        rooms.forEach(room => this.io.to(room).emit(event, messages[0].payload));
-      } else {
-        const payloads = messages.map(m => m.payload);
-        rooms.forEach(room => this.io.to(room).emit(`${event}:batch`, payloads));
-      }
-    });
-  }
-
-  private getCachedAuth(token: string): CachedAuth | null {
-    const key = this.hashToken(token);
-    const cached = this.authCache.get(key);
-    if (cached && cached.expires > Date.now()) {
-      return cached.auth;
-    }
-    if (cached) {
-      this.authCache.delete(key);
-    }
-    return null;
-  }
-
-  private cacheAuth(token: string, auth: CachedAuth): void {
-    const key = this.hashToken(token);
-    this.authCache.set(key, {
-      auth,
-      expires: Date.now() + (this.AUTH_CACHE_TTL * 1000),
-    });
-  }
-
-  private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex').substring(0, 16);
-  }
+  // ---------------------------------------------------------------------------
+  // Scaling / Redis adapter
+  // ---------------------------------------------------------------------------
 
   public async initializeScaling(): Promise<void> {
     const redisUrl = this.resolveRedisUrl();
@@ -160,6 +108,28 @@ export class WebSocketManager {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Auth caching — Redis-backed via cacheManager, no in-process Map
+  // ---------------------------------------------------------------------------
+
+  private async getCachedAuth(token: string): Promise<CachedAuth | null> {
+    const key = `ws:auth:${this.hashToken(token)}`;
+    return cacheManager.get<CachedAuth>(key);
+  }
+
+  private async setCachedAuth(token: string, auth: CachedAuth): Promise<void> {
+    const key = `ws:auth:${this.hashToken(token)}`;
+    await cacheManager.set(key, auth, { ttl: this.AUTH_CACHE_TTL });
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex').substring(0, 16);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Middleware
+  // ---------------------------------------------------------------------------
+
   private setupMiddleware(): void {
     this.io.use(async (socket: AuthenticatedSocket, next) => {
       try {
@@ -169,7 +139,7 @@ export class WebSocketManager {
           return next(new Error('Authentication error: No token provided'));
         }
 
-        const cached = this.getCachedAuth(token);
+        const cached = await this.getCachedAuth(token);
         if (cached) {
           socket.userId = cached.userId;
           socket.userRole = cached.role;
@@ -199,7 +169,7 @@ export class WebSocketManager {
           socket.organizationId = profile.organization_id;
         }
 
-        this.cacheAuth(token, {
+        await this.setCachedAuth(token, {
           userId: user.id,
           role: profile?.role,
           organizationId: profile?.organization_id,
@@ -211,6 +181,10 @@ export class WebSocketManager {
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Event handlers
+  // ---------------------------------------------------------------------------
 
   private setupEventHandlers(): void {
     this.io.on('connection', (socket: AuthenticatedSocket) => {
@@ -227,8 +201,6 @@ export class WebSocketManager {
         this.subscribeToAlerts(socket);
       });
 
-
-
       socket.on('disconnect', () => {
         this.handleDisconnect(socket);
       });
@@ -237,6 +209,51 @@ export class WebSocketManager {
         console.error(`❌ WebSocket error for ${socket.userId}:`, error.message);
       });
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message batching
+  // ---------------------------------------------------------------------------
+
+  private startMessageBatching(): void {
+    this.batchInterval = setInterval(() => {
+      this.flushMessageBatch();
+    }, this.BATCH_INTERVAL_MS);
+  }
+
+  private flushMessageBatch(): void {
+    if (this.messageBatch.length === 0) return;
+
+    const batch = [...this.messageBatch];
+    this.messageBatch = [];
+
+    const grouped = new Map<string, MessageBatch[]>();
+    batch.forEach((msg) => {
+      const key = `${msg.event}:${msg.rooms.join(',')}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(msg);
+    });
+
+    grouped.forEach((messages, key) => {
+      const [event, roomsStr] = key.split(':');
+      const rooms = roomsStr.split(',');
+
+      if (messages.length === 1) {
+        rooms.forEach((room) => this.io.to(room).emit(event, messages[0].payload));
+      } else {
+        const payloads = messages.map((m) => m.payload);
+        rooms.forEach((room) => this.io.to(room).emit(`${event}:batch`, payloads));
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Broadcast helpers
+  // ---------------------------------------------------------------------------
+
+  private emitToRoles(event: string, payload: Record<string, unknown>, targetRoles: string[]): void {
+    const rooms = targetRoles.flatMap((role) => [`role:${role}`, `alerts:${role}`]);
+    this.messageBatch.push({ event, payload, rooms, timestamp: Date.now() });
   }
 
   public broadcastCaseUpdate(caseId: string, update: Record<string, unknown>): void {
@@ -249,7 +266,7 @@ export class WebSocketManager {
   }
 
   public broadcastAlert(alert: Record<string, unknown>, targetRoles: string[]): void {
-    const rooms = targetRoles.flatMap(role => [`role:${role}`, `alerts:${role}`]);
+    const rooms = targetRoles.flatMap((role) => [`role:${role}`, `alerts:${role}`]);
     this.messageBatch.push({
       event: 'alert:new',
       payload: { timestamp: new Date().toISOString(), ...alert },
@@ -279,24 +296,20 @@ export class WebSocketManager {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Room management
+  // ---------------------------------------------------------------------------
+
   private subscribeToCases(socket: AuthenticatedSocket, caseIds: string[]): void {
-    caseIds.forEach((caseId) => {
-      socket.join(`case:${caseId}`);
-    });
+    caseIds.forEach((caseId) => socket.join(`case:${caseId}`));
     console.log(`📋 User ${socket.userId} subscribed to ${caseIds.length} cases`);
   }
 
   private subscribeToAlerts(socket: AuthenticatedSocket): void {
-    if (socket.userRole) {
-      socket.join(`alerts:${socket.userRole}`);
-    }
-    if (socket.organizationId) {
-      socket.join(`alerts:${socket.organizationId}`);
-    }
+    if (socket.userRole) socket.join(`alerts:${socket.userRole}`);
+    if (socket.organizationId) socket.join(`alerts:${socket.organizationId}`);
     console.log(`🔔 User ${socket.userId} subscribed to alerts`);
   }
-
-
 
   private trackUserConnection(userId: string, socketId: string): void {
     if (!this.connectedUsers.has(userId)) {
@@ -306,22 +319,16 @@ export class WebSocketManager {
   }
 
   private joinScopedRooms(socket: AuthenticatedSocket): void {
-    if (socket.userId) {
-      socket.join(`user:${socket.userId}`);
-    }
-
+    if (socket.userId) socket.join(`user:${socket.userId}`);
     if (socket.userRole) {
       socket.join(`role:${socket.userRole}`);
       socket.join(`alerts:${socket.userRole}`);
     }
-
     if (socket.organizationId) {
       socket.join(`org:${socket.organizationId}`);
       socket.join(`alerts:${socket.organizationId}`);
     }
   }
-
-
 
   private handleDisconnect(socket: AuthenticatedSocket): void {
     if (socket.userId) {
@@ -336,14 +343,13 @@ export class WebSocketManager {
     }
   }
 
-  private resolveRedisUrl(): string | null {
-    if (process.env.REDIS_URL) {
-      return process.env.REDIS_URL;
-    }
+  // ---------------------------------------------------------------------------
+  // Utilities
+  // ---------------------------------------------------------------------------
 
-    if (!process.env.REDIS_HOST) {
-      return null;
-    }
+  private resolveRedisUrl(): string | null {
+    if (process.env.REDIS_URL) return process.env.REDIS_URL;
+    if (!process.env.REDIS_HOST) return null;
 
     const protocol = process.env.REDIS_TLS === 'true' ? 'rediss' : 'redis';
     const credentials = process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : '';
@@ -359,9 +365,7 @@ export class WebSocketManager {
 
     await Promise.allSettled(
       clients.map(async (client) => {
-        if (client.isOpen) {
-          await client.quit();
-        }
+        if (client.isOpen) await client.quit();
       })
     );
 
@@ -382,7 +386,6 @@ export class WebSocketManager {
       socketCount: this.io.engine.clientsCount,
       userCount: this.connectedUsers.size,
       batchQueueSize: this.messageBatch.length,
-      authCacheSize: this.authCache.size,
     };
   }
 
@@ -396,7 +399,6 @@ export class WebSocketManager {
       this.batchInterval = null;
     }
     this.flushMessageBatch();
-    this.authCache.clear();
     await this.closeAdapterClients();
     await new Promise<void>((resolve) => {
       this.io.close(() => resolve());

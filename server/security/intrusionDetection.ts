@@ -12,6 +12,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { cacheManager } from '../utils/cacheManager';
 
 export interface SecurityAlert {
   id: string;
@@ -25,11 +26,18 @@ export interface SecurityAlert {
   status: 'open' | 'investigating' | 'resolved';
 }
 
+interface RateWindow {
+  count: number;
+  windowStart: number;
+}
+
 export class IntrusionDetectionSystem {
   private supabase: SupabaseClient;
-  private requestCounts = new Map<string, number[]>(); // IP -> timestamps
+  private fallbackCounts = new Map<string, number[]>(); // IP -> timestamps (in-process fallback only)
   private readonly RATE_LIMIT_REQUESTS = 100;
   private readonly RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  private readonly RATE_LIMIT_WINDOW_SEC = 15 * 60;
+  private readonly IDS_RATE_KEY_PREFIX = 'ids:rate:';
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -43,8 +51,8 @@ export class IntrusionDetectionSystem {
       const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
 
       try {
-        // Check rate limiting
-        if (this.isRateLimited(clientIp)) {
+        // Check rate limiting (Redis-backed across all replicas, in-process fallback)
+        if (await this.isRateLimited(clientIp)) {
           await this.logAlert({
             alert_type: 'rate_limit_exceeded',
             severity: 'high',
@@ -76,9 +84,6 @@ export class IntrusionDetectionSystem {
           });
           return res.status(400).json({ error: 'Invalid request' });
         }
-
-        // Track request
-        this.trackRequest(clientIp);
 
         next();
       } catch (err) {
@@ -116,39 +121,54 @@ export class IntrusionDetectionSystem {
   }
 
   /**
-   * Check if IP is rate limited
+   * Check if IP is rate limited.
+   * Uses Redis when available so the threshold is enforced consistently across
+   * all replicas. Falls back to an in-process sliding-window Map when Redis is
+   * unavailable (e.g. development or Redis outage).
    */
-  private isRateLimited(ip: string): boolean {
+  private async isRateLimited(ip: string): Promise<boolean> {
+    if (cacheManager.isAvailable()) {
+      return this.isRateLimitedRedis(ip);
+    }
+    return this.isRateLimitedFallback(ip);
+  }
+
+  private async isRateLimitedRedis(ip: string): Promise<boolean> {
+    const key = `${this.IDS_RATE_KEY_PREFIX}${ip}`;
     const now = Date.now();
     const windowStart = now - this.RATE_LIMIT_WINDOW_MS;
 
-    if (!this.requestCounts.has(ip)) {
-      this.requestCounts.set(ip, [now]);
+    const stored = await cacheManager.get<RateWindow>(key);
+
+    if (!stored || stored.windowStart < windowStart) {
+      // New window — record first hit
+      await cacheManager.set<RateWindow>(key, { count: 1, windowStart: now }, { ttl: this.RATE_LIMIT_WINDOW_SEC });
       return false;
     }
 
-    const timestamps = this.requestCounts.get(ip)!;
-    const recentRequests = timestamps.filter((t) => t > windowStart);
-
-    if (recentRequests.length >= this.RATE_LIMIT_REQUESTS) {
+    if (stored.count >= this.RATE_LIMIT_REQUESTS) {
       return true;
     }
 
-    recentRequests.push(now);
-    this.requestCounts.set(ip, recentRequests);
+    await cacheManager.set<RateWindow>(key, { count: stored.count + 1, windowStart: stored.windowStart }, { ttl: this.RATE_LIMIT_WINDOW_SEC });
     return false;
   }
 
-  /**
-   * Track request timestamps
-   */
-  private trackRequest(ip: string): void {
+  private isRateLimitedFallback(ip: string): boolean {
     const now = Date.now();
-    if (!this.requestCounts.has(ip)) {
-      this.requestCounts.set(ip, [now]);
-    } else {
-      this.requestCounts.get(ip)!.push(now);
+    const windowStart = now - this.RATE_LIMIT_WINDOW_MS;
+
+    const timestamps = this.fallbackCounts.get(ip) ?? [];
+    const recent = timestamps.filter((t) => t > windowStart);
+
+    if (recent.length >= this.RATE_LIMIT_REQUESTS) {
+      this.fallbackCounts.set(ip, recent);
+      return true;
     }
+
+    recent.push(now);
+    this.fallbackCounts.set(ip, recent);
+    return false;
   }
 
   /**

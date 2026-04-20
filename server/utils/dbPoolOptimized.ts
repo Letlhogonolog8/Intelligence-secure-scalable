@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { createLogger } from './logger';
 
 const logger = createLogger('db-pool');
@@ -14,6 +14,9 @@ class DatabasePool {
   private pool: Pool | null = null;
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly HEALTH_CHECK_INTERVAL = 30000;
+  private readonly MAX_HEALTH_CHECK_INTERVAL = 300000;
+  private consecutiveFailures = 0;
+  private healthCheckTimeout: NodeJS.Timeout | null = null;
 
   initialize(): void {
     if (this.pool) return;
@@ -51,17 +54,39 @@ class DatabasePool {
     logger.info('Database pool initialized', { config: { ...config, password: '***' } });
   }
 
-  private startHealthCheck(): void {
-    this.healthCheckInterval = setInterval(async () => {
+  private scheduleHealthCheck(delayMs: number): void {
+    if (this.healthCheckTimeout) clearTimeout(this.healthCheckTimeout);
+    this.healthCheckTimeout = setTimeout(async () => {
       try {
         await this.query('SELECT 1');
+        if (this.consecutiveFailures > 0) {
+          logger.info('Database connection restored');
+          this.consecutiveFailures = 0;
+        }
+        this.scheduleHealthCheck(this.HEALTH_CHECK_INTERVAL);
       } catch (error) {
-        logger.error('Database health check failed', error);
+        this.consecutiveFailures++;
+        const nextDelay = Math.min(
+          this.HEALTH_CHECK_INTERVAL * Math.pow(2, this.consecutiveFailures - 1),
+          this.MAX_HEALTH_CHECK_INTERVAL
+        );
+        if (this.consecutiveFailures === 1 || this.consecutiveFailures % 5 === 0) {
+          logger.warn('Database health check failed', {
+            consecutiveFailures: this.consecutiveFailures,
+            nextRetryMs: nextDelay,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        this.scheduleHealthCheck(nextDelay);
       }
-    }, this.HEALTH_CHECK_INTERVAL);
+    }, delayMs);
   }
 
-  async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  private startHealthCheck(): void {
+    this.scheduleHealthCheck(this.HEALTH_CHECK_INTERVAL);
+  }
+
+  async query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>> {
     if (!this.pool) throw new Error('Pool not initialized');
     const start = Date.now();
     try {
@@ -95,6 +120,10 @@ class DatabasePool {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
+    }
+    if (this.healthCheckTimeout) {
+      clearTimeout(this.healthCheckTimeout);
+      this.healthCheckTimeout = null;
     }
     if (this.pool) {
       await this.pool.end();

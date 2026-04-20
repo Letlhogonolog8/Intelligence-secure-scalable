@@ -15,18 +15,19 @@ const NgoDashboard: React.FC = () => {
   const { user, session } = useAuth();
   const { setActiveModule } = useAppStore();
   const { data: profile } = useUserProfile(user?.id);
+  const isNgo = profile?.role === "ngo";
   const resolvedRole = (profile?.role ?? "ngo") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
   const effectiveOrganizationId = organizationId ?? profile?.organizationId ?? null;
 
-  const { data: organization } = useLiveOrganization(effectiveOrganizationId, { staleTime: 15000, refetchInterval: 30000 });
-  const { data: teamMembers = [], isLoading: teamLoading } = useLiveUserProfiles({ organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 200 });
-  const { data: survivors = [], isLoading: survivorsLoading } = useLiveSurvivors({ staleTime: 15000, refetchInterval: 30000, limit: 200 });
-  const { data: programs = [], isLoading: programsLoading } = useLiveNgoPrograms({ organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 50 });
-  const { data: resources = [], isLoading: resourcesLoading } = useLiveResources({ staleTime: 15000, refetchInterval: 30000, limit: 200 });
-  const { data: coordination = [], isLoading: coordinationLoading } = useOrganizationCoordination({ staleTime: 15000, refetchInterval: 30000, limit: 50 });
-  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 10 });
-  const { data: escalations = [], isLoading: escalationsLoading } = useEscalationReviews({ staleTime: 10000, refetchInterval: 20000, limit: 20 });
+  const { data: organization } = useLiveOrganization(effectiveOrganizationId, { enabled: isNgo && Boolean(effectiveOrganizationId), staleTime: 15000, refetchInterval: 30000 });
+  const { data: teamMembers = [], isLoading: teamLoading } = useLiveUserProfiles({ enabled: isNgo && Boolean(effectiveOrganizationId), organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 200 });
+  const { data: survivors = [], isLoading: survivorsLoading } = useLiveSurvivors({ enabled: isNgo, staleTime: 15000, refetchInterval: 30000, limit: 200 });
+  const { data: programs = [], isLoading: programsLoading } = useLiveNgoPrograms({ enabled: isNgo && Boolean(effectiveOrganizationId), organizationId: effectiveOrganizationId, staleTime: 15000, refetchInterval: 30000, limit: 50 });
+  const { data: resources = [], isLoading: resourcesLoading } = useLiveResources({ enabled: isNgo, staleTime: 15000, refetchInterval: 30000, limit: 200 });
+  const { data: coordination = [], isLoading: coordinationLoading } = useOrganizationCoordination({ enabled: isNgo, staleTime: 15000, refetchInterval: 30000, limit: 50 });
+  const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ enabled: isNgo, staleTime: 10000, refetchInterval: 15000, limit: 10 });
+  const { data: escalations = [], isLoading: escalationsLoading } = useEscalationReviews({ enabled: isNgo, staleTime: 10000, refetchInterval: 20000, limit: 20 });
 
   const isLoadingData = teamLoading || survivorsLoading || programsLoading || resourcesLoading || coordinationLoading || alertsLoading || escalationsLoading;
 
@@ -60,6 +61,19 @@ const NgoDashboard: React.FC = () => {
     .map((entry) => entry.updatedAt)
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
+
+  if (profile && !isNgo) {
+    return (
+      <DashboardPage accent="cyan">
+        <EmptyState
+          title="NGO access required"
+          description="Your account does not have the required privileges to view the NGO operations hub."
+          actionLabel="Open dashboard"
+          onAction={() => setActiveModule("dashboard")}
+        />
+      </DashboardPage>
+    );
+  }
 
   return (
     <DashboardPage accent="cyan">

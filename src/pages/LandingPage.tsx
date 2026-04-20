@@ -453,14 +453,6 @@ const LandingPage: React.FC = () => {
                   "Purpose-built to coordinate GBV emergency response with accountable, AI-driven intelligence."
                 )}
               </p>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <p className="text-sm font-semibold text-white">What improves in this redesign</p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                  <li>- Faster action clarity for emergency and sign-in flows</li>
-                  <li>- Reduced visual clutter across core decision points</li>
-                  <li>- Better responsiveness for smaller screens and tablets</li>
-                </ul>
-              </div>
             </motion.div>
 
             <motion.div
@@ -530,7 +522,7 @@ const LandingPage: React.FC = () => {
 
         <footer className="border-t border-white/10 px-4 py-8 sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
-            <p>© 2026 AEGIS-AI Platform. All rights reserved.</p>
+            <p>ï¿½ 2026 AEGIS-AI Platform. All rights reserved.</p>
             <div className="flex flex-wrap gap-6">
               <button className="hover:text-white" onClick={() => handleNavClick("about")}>
                 Privacy

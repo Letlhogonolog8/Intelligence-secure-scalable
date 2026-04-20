@@ -10,7 +10,6 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { supabase } from '@/lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const CORRELATION_ID = crypto.randomUUID();
 
 interface APIError {
   message: string;
@@ -34,7 +33,6 @@ export class APIClient {
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        'X-Correlation-ID': CORRELATION_ID,
         'X-Client-Version': import.meta.env.VITE_DATADOG_VERSION || '1.0.0',
       },
     });
@@ -43,8 +41,9 @@ export class APIClient {
   }
 
   private setupInterceptors(): void {
-    // Request interceptor: Add auth token
+    // Request interceptor: Add auth token + per-request correlation ID
     this.client.interceptors.request.use(async (config) => {
+      config.headers['X-Correlation-ID'] = crypto.randomUUID();
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.access_token) {
