@@ -322,12 +322,21 @@ Chunks: 62 optimized bundles
 
 **Critical Variables (✅ Configured):**
 ```env
+<<<<<<< HEAD
 VITE_SUPABASE_URL=https://jtohnfeqztmiamqmaiod.supabase.co
 VITE_SUPABASE_KEY=sb_publishable_*** (configured)
 SUPABASE_SERVICE_ROLE_KEY=sb_secret_*** (configured)
 ENCRYPTION_KEY=*** (64 hex chars, valid)
 CHAT_ENCRYPTION_KEY=*** (64 hex chars, valid)
 JWT_SECRET=*** (configured)
+=======
+VITE_SUPABASE_URL=https://[YOUR-PROJECT-ID].supabase.co
+VITE_SUPABASE_KEY=[YOUR-ANON-KEY]
+SUPABASE_SERVICE_ROLE_KEY=[YOUR-SERVICE-ROLE-KEY]
+ENCRYPTION_KEY=[YOUR-ENCRYPTION-KEY]
+CHAT_ENCRYPTION_KEY=[YOUR-CHAT-ENCRYPTION-KEY]
+JWT_SECRET=[YOUR-JWT-SECRET]
+>>>>>>> 0c692bc (security: remove exposed secrets from documentation files)
 PORT=3001
 CORS_ORIGIN=https://intelligence-secure-scalable-1.onrender.com
 ```
@@ -352,8 +361,8 @@ CORS_ORIGIN=https://intelligence-secure-scalable-1.onrender.com
 
 3. **Optional Services** (Not configured)
    ```env
-   TWILIO_ACCOUNT_SID=[replace-with-twilio-account-sid]
-   TWILIO_AUTH_TOKEN=[replace-with-twilio-auth-token]
+   TWILIO_ACCOUNT_SID=[YOUR-TWILIO-ACCOUNT-SID]
+   TWILIO_AUTH_TOKEN=[YOUR-TWILIO-AUTH-TOKEN]
    TELKOM_API_KEY=your_api_key_here
    REDIS_URL=# Not set
    ```
