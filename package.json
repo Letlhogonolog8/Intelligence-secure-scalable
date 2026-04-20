@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:server": "tsx watch server/index.ts",
+    "dev:worker": "tsx watch server/worker.ts",
     "dev:client": "vite",
     "dev:ussd": "concurrently \"npm run dev:server\" \"ngrok http 3001\"",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"ngrok http 3001\"",
@@ -14,6 +15,7 @@
     "build:server": "tsc --project tsconfig.server.json && node -e \"const fs=require('fs');fs.mkdirSync('dist/server',{recursive:true});fs.writeFileSync('dist/server/package.json','{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "build:all": "npm run build:server && npm run build",
     "start": "node dist/server/index.js",
+    "start:worker": "node dist/server/worker.js",
     "lint": "eslint .",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.server.json",
     "preview": "vite preview",

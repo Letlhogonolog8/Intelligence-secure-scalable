@@ -22,84 +22,21 @@ export default defineConfig(() => ({
   },
   build: {
     target: 'es2020',
-    emptyOutDir: false,
+    emptyOutDir: true,
     minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: process.env.NODE_ENV === 'production',
         drop_debugger: true,
         pure_funcs: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug'] : [],
+        passes: 2,
+      },
+      mangle: {
+        safari10: true,
       },
     },
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) {
-            return undefined;
-          }
-
-          if (
-            id.includes("/react/") ||
-            id.includes("react-dom") ||
-            id.includes("scheduler")
-          ) {
-            return "react-core";
-          }
-
-          if (id.includes("react-router")) {
-            return "react-router";
-          }
-
-          if (id.includes("@tanstack/react-query")) {
-            return "react-query";
-          }
-
-          if (id.includes("@radix-ui")) {
-            return "radix-ui";
-          }
-
-          if (id.includes("lucide-react")) {
-            return "icons";
-          }
-
-          if (
-            id.includes("framer-motion") ||
-            id.includes("sonner") ||
-            id.includes("next-themes")
-          ) {
-            return "ui-animations";
-          }
-
-          if (id.includes("@supabase")) {
-            return "supabase";
-          }
-
-          if (id.includes("socket.io-client")) {
-            return "websocket";
-          }
-
-          if (id.includes("recharts")) {
-            return "charts";
-          }
-
-          if (
-            id.includes("react-hook-form") ||
-            id.includes("zod") ||
-            id.includes("@hookform")
-          ) {
-            return "forms";
-          }
-
-          if (id.includes("date-fns")) {
-            return "date-utils";
-          }
-
-          if (id.includes("i18next") || id.includes("react-i18next")) {
-            return "i18n";
-          }
-
-          return "vendor";
-        },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
@@ -114,9 +51,15 @@ export default defineConfig(() => ({
           return `assets/[ext]/[name]-[hash][extname]`;
         },
       },
+      treeshake: {
+        moduleSideEffects: false,
+        propertyReadSideEffects: false,
+      },
     },
-    chunkSizeWarningLimit: 500,
+    chunkSizeWarningLimit: 400,
     reportCompressedSize: false,
+    cssCodeSplit: true,
+    sourcemap: false,
   },
   plugins: [
     react(),

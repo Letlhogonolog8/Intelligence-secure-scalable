@@ -18,8 +18,16 @@ class DatabasePool {
   private consecutiveFailures = 0;
   private healthCheckTimeout: NodeJS.Timeout | null = null;
 
+  private hasRequiredConfiguration(): boolean {
+    return Boolean(process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD);
+  }
+
   initialize(): void {
     if (this.pool) return;
+    if (!this.hasRequiredConfiguration()) {
+      logger.warn('Direct PostgreSQL pool disabled: missing DB_NAME, DB_USER, or DB_PASSWORD');
+      return;
+    }
 
     const config = {
       host: process.env.DB_HOST || 'localhost',
@@ -87,7 +95,7 @@ class DatabasePool {
   }
 
   async query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>> {
-    if (!this.pool) throw new Error('Pool not initialized');
+    if (!this.pool) throw new Error('Pool not initialized. Configure DB_NAME, DB_USER, and DB_PASSWORD to enable direct PostgreSQL access.');
     const start = Date.now();
     try {
       const result = await this.pool.query<T>(text, params);

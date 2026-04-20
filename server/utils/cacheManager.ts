@@ -119,7 +119,18 @@ class CacheManager {
     if (!this.isAvailable()) return 0;
 
     try {
-      const keys = await this.client!.keys(pattern);
+      const keys: string[] = [];
+      let cursor = 0;
+
+      do {
+        const result = await this.client!.scan(cursor, {
+          MATCH: pattern,
+          COUNT: 100,
+        });
+        cursor = result.cursor;
+        keys.push(...result.keys);
+      } while (cursor !== 0);
+
       if (keys.length === 0) return 0;
       await this.client!.del(keys);
       return keys.length;

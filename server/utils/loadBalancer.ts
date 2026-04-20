@@ -264,7 +264,7 @@ export class LoadBalancer {
   /**
    * Shutdown load balancer
    */
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     this.stopHealthChecks();
     this.servers.clear();
     logger.info('Load balancer shutdown');

@@ -30,6 +30,7 @@ import { RiskScoringEngine } from './intelligence/riskScoring';
 import { GeoMatchingEngine } from './intelligence/geoMatching';
 import { dbPool } from './utils/dbPoolOptimized';
 import { cacheManager } from './utils/cacheManager';
+import { loadBalancer } from './utils/loadBalancer';
 import { 
   defaultLimiter, 
   escalationLimiter, 
@@ -53,6 +54,17 @@ const errorTracking = new ErrorTrackingService();
 async function initializeServices() {
   await cacheManager.initialize();
   dbPool.initialize();
+  
+  // Initialize load balancer if multiple instances configured
+  const instanceUrls = process.env.INSTANCE_URLS?.split(',').filter(Boolean) || [];
+  if (instanceUrls.length > 0) {
+    instanceUrls.forEach((url, idx) => {
+      loadBalancer.addServer(`instance-${idx}`, url.trim());
+    });
+    loadBalancer.startHealthChecks();
+    logger.info('Load balancer initialized', { instances: instanceUrls.length });
+  }
+  
   logger.info('Cache and database pool initialized');
 }
 
@@ -192,6 +204,10 @@ function isRedisConfigured(): boolean {
   return Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
 }
 
+function isNotificationWorkerEnabled(): boolean {
+  return process.env.NOTIFICATION_WORKER_ENABLED !== 'false';
+}
+
 function resolveTelkomCallbackUrl(): string {
   const explicitCallback = process.env.TELKOM_CALLBACK_URL?.trim();
   if (explicitCallback) {
@@ -288,6 +304,11 @@ async function runNotificationWorkerCycle(): Promise<void> {
 }
 
 function startNotificationWorker(): void {
+  if (!isNotificationWorkerEnabled()) {
+    logger.info('In-process notification worker disabled by configuration');
+    return;
+  }
+
   if (notificationWorkerInterval) {
     return;
   }
@@ -374,6 +395,7 @@ async function getReadinessStatus(): Promise<{
     callbackUrlConfigured: Boolean(resolveTelkomCallbackUrl()),
   };
   services.notificationWorker = {
+    enabled: isNotificationWorkerEnabled(),
     running: Boolean(notificationWorkerInterval),
     busy: notificationWorkerInFlight,
   };
@@ -415,7 +437,7 @@ app.use(cors({
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
       callback(null, true);
     } else {
-      console.warn(`CORS request from unauthorized origin: ${origin}`);
+      logger.warn('CORS request from unauthorized origin', { origin });
       callback(new Error('CORS policy violation'));
     }
   },
@@ -508,7 +530,7 @@ function verifyTelkomSignature(
       Buffer.from(signature)
     );
   } catch (error) {
-    console.error('Signature verification error:', error);
+    logger.error('Signature verification error', error);
     return false;
   }
 }
@@ -647,20 +669,20 @@ app.get('/api/auth/verify', async (req: Request, res: Response) => {
     const requestId = (req as AppRequest).id;
     const token = extractBearerToken(req);
     if (!token) {
-      console.warn(`[${requestId}] Auth verify: No token provided from ${req.ip}`);
+      logger.warn('Auth verify: No token provided', { ip: req.ip }, requestId);
       return res.status(401).json({ error: 'No token provided', requestId });
     }
 
     const user = await resolveAuthenticatedUser(token);
     if (!user) {
-      console.warn(`[${requestId}] Auth verify: Invalid token from ${req.ip}`);
+      logger.warn('Auth verify: Invalid token', { ip: req.ip }, requestId);
       return res.status(401).json({ error: 'Invalid token', requestId });
     }
 
     res.json({ user });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] Auth verify failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('Auth verify failed', error, {}, requestId);
     res.status(500).json({ error: 'Verification failed', requestId });
   }
 });
@@ -673,7 +695,7 @@ app.post('/api/auth/mfa/setup', requireAuth, mfaLimiter, validationMiddleware.mf
     res.json({ setup });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] MFA setup failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('MFA setup failed', error, {}, requestId);
     res.status(500).json({ error: 'MFA setup failed', requestId });
   }
 });
@@ -685,14 +707,14 @@ app.post('/api/auth/mfa/verify', requireAuth, mfaLimiter, validationMiddleware.m
     const { code } = req.body;
     const result = await mfaService.verifyUserMFA(userId, code);
     if (!result.valid) {
-      console.warn(`[${requestId}] MFA verification failed for user ${userId}`);
+      logger.warn('MFA verification failed', { userId }, requestId);
       res.status(401).json({ error: 'Invalid code', requestId });
       return;
     }
     res.json(result);
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] MFA verification error:`, error instanceof Error ? error.message : String(error));
+    logger.error('MFA verification error', error, {}, requestId);
     res.status(500).json({ error: 'Verification failed', requestId });
   }
 });
@@ -748,7 +770,7 @@ app.post('/api/cases/escalate', requireAuth, escalationLimiter, validationMiddle
     res.json({ message: 'Emergency escalation triggered', escalationId: escalation[0].id, requestId });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] Escalation failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('Escalation failed', error, {}, requestId);
     res.status(500).json({ error: 'Escalation failed', requestId });
   }
 });
@@ -768,7 +790,7 @@ app.get('/api/audit/logs', requireAuth, async (req: Request, res: Response) => {
     res.json(logs);
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] Failed to retrieve audit logs:`, error instanceof Error ? error.message : String(error));
+    logger.error('Failed to retrieve audit logs', error instanceof Error ? error : undefined, { requestId });
     res.status(500).json({ error: 'Failed to retrieve audit logs', requestId });
   }
 });
@@ -780,7 +802,7 @@ app.get('/api/audit/verify', requireAuth, async (req: Request, res: Response) =>
     res.json({ valid: isValid, message: isValid ? 'Audit log chain is intact' : 'Chain integrity compromised', requestId });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] Audit chain verification failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('Audit chain verification failed', error instanceof Error ? error : undefined, { requestId });
     res.status(500).json({ error: 'Verification failed', requestId });
   }
 });
@@ -935,7 +957,7 @@ app.post('/api/ussd/telkom/callback', validationMiddleware.ussdCallback, async (
       const telkomSecret = process.env.TELKOM_WEBHOOK_SECRET;
 
       if (!signature || !telkomSecret) {
-        console.error(`[${requestId}] Missing signature or webhook secret`);
+        logger.error('Missing signature or webhook secret', new Error('Missing credentials'), {}, requestId);
         return res.status(401).json({
           success: false,
           error: 'Signature verification failed',
@@ -944,7 +966,7 @@ app.post('/api/ussd/telkom/callback', validationMiddleware.ussdCallback, async (
       }
 
       if (!verifyTelkomSignature(req.body, signature, telkomSecret)) {
-        console.warn(`[${requestId}] Invalid signature from IP:`, req.ip);
+        logger.warn('Invalid signature from IP', { ip: req.ip }, requestId);
         
         await auditLogService.log({
           userId: 'system',
@@ -977,7 +999,7 @@ app.post('/api/ussd/telkom/callback', validationMiddleware.ussdCallback, async (
     });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] USSD Telkom callback failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('USSD Telkom callback failed', error, {}, requestId);
     res.status(500).json({
       success: false,
       error: 'Failed to process USSD callback',
@@ -1008,7 +1030,7 @@ app.post('/api/ussd/test', validationMiddleware.ussdTest, async (req: Request, r
     });
   } catch (error) {
     const requestId = (req as AppRequest).id;
-    console.error(`[${requestId}] USSD test failed:`, error instanceof Error ? error.message : String(error));
+    logger.error('USSD test failed', error, {}, requestId);
     res.status(500).json({
       success: false,
       error: 'Failed to process USSD request',
@@ -1073,7 +1095,7 @@ async function startServer(): Promise<void> {
           rateLimiting: rateLimitStatus.store === 'redis' ? 'Redis-backed' : 'In-memory',
           rateLimitingReason: rateLimitStatus.reason,
           sessionManagement: 'JWT with refresh tokens',
-          notificationWorker: 'Active',
+          notificationWorker: isNotificationWorkerEnabled() ? 'In-process' : 'External/disabled',
         },
       });
       resolve();
@@ -1104,6 +1126,13 @@ const gracefulShutdown = async (signal: string) => {
       logger.info('WebSocket connections closed');
     } catch (error) {
       logger.error('Error closing WebSocket', error);
+    }
+
+    try {
+      await loadBalancer.shutdown();
+      logger.info('Load balancer shutdown');
+    } catch (error) {
+      logger.error('Error shutting down load balancer', error);
     }
 
     try {

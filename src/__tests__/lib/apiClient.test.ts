@@ -33,6 +33,7 @@ vi.mock('@/lib/supabase', () => ({
 describe('APIClient', () => {
   let apiClient: APIClient;
   let assignSpy: ReturnType<typeof vi.fn>;
+  let requestInterceptor: (config: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,6 +44,9 @@ describe('APIClient', () => {
       configurable: true,
     });
     apiClient = new APIClient();
+    [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [
+      (config: Record<string, unknown>) => Promise<Record<string, unknown>>,
+    ];
   });
 
   describe('initialization', () => {
@@ -58,7 +62,7 @@ describe('APIClient', () => {
     it('should set required headers', () => {
       const createCall = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
       expect((createCall.headers as Record<string, unknown>)['Content-Type']).toBe('application/json');
-      expect((createCall.headers as Record<string, unknown>)['X-Correlation-ID']).toBeDefined();
+      expect((createCall.headers as Record<string, unknown>)['X-Client-Version']).toBeDefined();
     });
 
     it('should setup request and response interceptors', () => {
@@ -156,10 +160,8 @@ describe('APIClient', () => {
       const { supabase } = await import('@/lib/supabase');
       (supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: mockSession } });
 
-      const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
-      
       const config: Record<string, unknown> = { headers: {} };
-      await (requestInterceptor as (config: Record<string, unknown>) => Promise<void>)(config);
+      await requestInterceptor(config);
 
       expect((config.headers as Record<string, unknown>).Authorization).toBe('Bearer test-token-123');
     });
@@ -168,29 +170,34 @@ describe('APIClient', () => {
       const { supabase } = await import('@/lib/supabase');
       (supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null } });
 
-      const [requestInterceptor] = mockAxiosInstance.interceptors.request.use.mock.calls[0] as [(config: Record<string, unknown>) => Promise<void>];
-      
       const config: Record<string, unknown> = { headers: {} };
-      await (requestInterceptor as (config: Record<string, unknown>) => Promise<void>)(config);
+      await requestInterceptor(config);
 
       expect((config.headers as Record<string, unknown>).Authorization).toBeUndefined();
     });
   });
 
   describe('correlation ID', () => {
-    it('should include correlation ID in headers', () => {
-      const createCall = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
-      expect(((createCall.headers as Record<string, unknown>)['X-Correlation-ID'] as string)).toMatch(
+    it('should include correlation ID in request headers', async () => {
+      const config: Record<string, unknown> = { headers: {} };
+      await requestInterceptor(config);
+
+      expect(((config.headers as Record<string, unknown>)['X-Correlation-ID'] as string)).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       );
     });
 
-    it('should maintain same correlation ID across requests', () => {
-      const createCall1 = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
-      const createCall2 = ((axios.create as unknown) as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
-      
-      expect(((createCall1.headers as Record<string, unknown>)['X-Correlation-ID'] as string)).toBe(
-        ((createCall2.headers as Record<string, unknown>)['X-Correlation-ID'] as string)
+    it('should generate a fresh correlation ID for each request', async () => {
+      const firstConfig: Record<string, unknown> = { headers: {} };
+      const secondConfig: Record<string, unknown> = { headers: {} };
+
+      await requestInterceptor(firstConfig);
+      await requestInterceptor(secondConfig);
+
+      expect((firstConfig.headers as Record<string, unknown>)['X-Correlation-ID']).toBeDefined();
+      expect((secondConfig.headers as Record<string, unknown>)['X-Correlation-ID']).toBeDefined();
+      expect((firstConfig.headers as Record<string, unknown>)['X-Correlation-ID']).not.toBe(
+        (secondConfig.headers as Record<string, unknown>)['X-Correlation-ID']
       );
     });
   });

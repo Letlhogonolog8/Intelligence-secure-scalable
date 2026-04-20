@@ -11,6 +11,14 @@ import { supabase } from '@/lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+function generateCorrelationId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 interface APIError {
   message: string;
   status: number;
@@ -43,7 +51,8 @@ export class APIClient {
   private setupInterceptors(): void {
     // Request interceptor: Add auth token + per-request correlation ID
     this.client.interceptors.request.use(async (config) => {
-      config.headers['X-Correlation-ID'] = crypto.randomUUID();
+      config.headers = config.headers ?? {};
+      config.headers['X-Correlation-ID'] = generateCorrelationId();
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.access_token) {
