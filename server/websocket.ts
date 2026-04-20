@@ -5,6 +5,9 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient, RedisClientType } from 'redis';
 import crypto from 'crypto';
 import { cacheManager } from './utils/cacheManager';
+import { createLogger } from './utils/logger';
+
+const logger = createLogger('websocket');
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -77,7 +80,7 @@ export class WebSocketManager {
     const redisUrl = this.resolveRedisUrl();
 
     if (!redisUrl) {
-      console.warn('⚠️  Redis not configured for WebSocket scaling. Using local Socket.IO adapter.');
+      logger.warn('Redis not configured for WebSocket scaling. Using local Socket.IO adapter.');
       this.adapterEnabled = false;
       return;
     }
@@ -88,22 +91,22 @@ export class WebSocketManager {
 
       this.adapterPubClient.on('error', (error) => {
         this.adapterEnabled = false;
-        console.error('❌ WebSocket Redis pub client error:', error);
+        logger.error('WebSocket Redis pub client error', error instanceof Error ? error : undefined);
       });
 
       this.adapterSubClient.on('error', (error) => {
         this.adapterEnabled = false;
-        console.error('❌ WebSocket Redis sub client error:', error);
+        logger.error('WebSocket Redis sub client error', error instanceof Error ? error : undefined);
       });
 
       await Promise.all([this.adapterPubClient.connect(), this.adapterSubClient.connect()]);
       this.io.adapter(createAdapter(this.adapterPubClient, this.adapterSubClient));
       this.adapterEnabled = true;
 
-      console.log('✅ WebSocket Redis adapter enabled for multi-instance delivery');
+      logger.info('WebSocket Redis adapter enabled for multi-instance delivery');
     } catch (error) {
       this.adapterEnabled = false;
-      console.warn('⚠️  Failed to initialize WebSocket Redis adapter. Falling back to local delivery.', error);
+      logger.warn('Failed to initialize WebSocket Redis adapter. Falling back to local delivery.', { error: error instanceof Error ? error.message : String(error) });
       await this.closeAdapterClients();
     }
   }
@@ -188,7 +191,7 @@ export class WebSocketManager {
 
   private setupEventHandlers(): void {
     this.io.on('connection', (socket: AuthenticatedSocket) => {
-      console.log(`🔗 User connected: ${socket.userId} (Role: ${socket.userRole})`);
+      logger.info('User connected', { userId: socket.userId, role: socket.userRole });
 
       this.trackUserConnection(socket.userId!, socket.id);
       this.joinScopedRooms(socket);
@@ -206,7 +209,7 @@ export class WebSocketManager {
       });
 
       socket.on('error', (error: Error) => {
-        console.error(`❌ WebSocket error for ${socket.userId}:`, error.message);
+        logger.error('WebSocket socket error', undefined, { userId: socket.userId, error: error.message });
       });
     });
   }
@@ -302,13 +305,13 @@ export class WebSocketManager {
 
   private subscribeToCases(socket: AuthenticatedSocket, caseIds: string[]): void {
     caseIds.forEach((caseId) => socket.join(`case:${caseId}`));
-    console.log(`📋 User ${socket.userId} subscribed to ${caseIds.length} cases`);
+    logger.info('User subscribed to cases', { userId: socket.userId, count: caseIds.length });
   }
 
   private subscribeToAlerts(socket: AuthenticatedSocket): void {
     if (socket.userRole) socket.join(`alerts:${socket.userRole}`);
     if (socket.organizationId) socket.join(`alerts:${socket.organizationId}`);
-    console.log(`🔔 User ${socket.userId} subscribed to alerts`);
+    logger.info('User subscribed to alerts', { userId: socket.userId });
   }
 
   private trackUserConnection(userId: string, socketId: string): void {
@@ -339,7 +342,7 @@ export class WebSocketManager {
           this.connectedUsers.delete(socket.userId);
         }
       }
-      console.log(`❌ User disconnected: ${socket.userId}`);
+      logger.info('User disconnected', { userId: socket.userId });
     }
   }
 

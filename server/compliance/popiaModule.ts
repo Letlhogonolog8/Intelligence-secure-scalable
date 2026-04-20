@@ -12,6 +12,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('popia');
 
 export interface ConsentRecord {
   id: string;
@@ -65,7 +68,7 @@ export class POPIAComplianceModule {
 
     if (error) throw error;
 
-    console.log(`✅ Consent recorded for ${userId} - ${consentType}`);
+    logger.info('Consent recorded', { userId, consentType });
     return consentRecord;
   }
 
@@ -85,7 +88,7 @@ export class POPIAComplianceModule {
 
     if (error) throw error;
 
-    console.log(`🔕 Consent withdrawn for ${userId} - ${consentType}`);
+    logger.info('Consent withdrawn', { userId, consentType });
   }
 
   /**
@@ -125,7 +128,7 @@ export class POPIAComplianceModule {
     // Notify compliance officer
     await this.notifyComplianceOfficer('access_request', userId);
 
-    console.log(`📋 Access request submitted by ${userId}`);
+    logger.info('Access request submitted', { userId });
     return request;
   }
 
@@ -145,7 +148,7 @@ export class POPIAComplianceModule {
 
     if (error) throw error;
 
-    console.log(`🗑️ Deletion request submitted by ${userId}`);
+    logger.info('Deletion request submitted', { userId });
     return request;
   }
 
@@ -201,7 +204,7 @@ export class POPIAComplianceModule {
       metadata: { request_id: requestId },
     });
 
-    console.log(`✅ Deletion request ${requestId} processed`);
+    logger.info('Deletion request processed', { requestId });
   }
 
   /**
@@ -248,7 +251,7 @@ export class POPIAComplianceModule {
     await this.supabase.from('data_breaches').insert(breachReport);
 
     // Send notification to authorities (in production, integrate with DPA email)
-    console.log(`⚠️ Data breach reported: ${breachReport.id}`);
+    logger.warn('Data breach reported', { breachId: breachReport.id });
   }
 
   /**
@@ -295,6 +298,6 @@ export class POPIAComplianceModule {
     userId: string
   ): Promise<void> {
     // In production, send email to DPO
-    console.log(`📧 Compliance officer notified of ${eventType} from ${userId}`);
+    logger.info('Compliance officer notified', { eventType, userId });
   }
 }

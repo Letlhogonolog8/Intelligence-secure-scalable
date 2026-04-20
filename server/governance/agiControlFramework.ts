@@ -12,6 +12,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('agi-governance');
 
 export type DecisionType = 'risk_assessment' | 'escalation' | 'resource_allocation' | 'data_access' | 'deletion_request';
 export type DecisionAction = 'approve' | 'deny' | 'modify' | 'defer';
@@ -96,10 +99,10 @@ export class AGIControlFramework {
         await this.notifyReviewers(decisionRecord);
       }
 
-      console.log(`✅ Decision ${decisionRecord.id} submitted for review`);
+      logger.info('Decision submitted for review', { decisionId: decisionRecord.id });
       return decisionRecord;
     } catch (error) {
-      console.error('Failed to submit recommendation:', error);
+      logger.error('Failed to submit recommendation', error instanceof Error ? error : undefined);
       throw error;
     }
   }
@@ -191,7 +194,7 @@ export class AGIControlFramework {
         { reviewerId, decision, overridden: decision !== record.ai_recommendation.recommendation }
       );
 
-      console.log(`✅ Decision ${decisionId} reviewed by ${reviewerId}: ${decision}`);
+      logger.info('Decision reviewed', { decisionId, reviewerId, decision });
 
       return {
         ...record,
@@ -200,7 +203,7 @@ export class AGIControlFramework {
         status: newStatus,
       };
     } catch (error) {
-      console.error('Failed to review decision:', error);
+      logger.error('Failed to review decision', error instanceof Error ? error : undefined, { decisionId });
       throw error;
     }
   }
@@ -249,10 +252,10 @@ export class AGIControlFramework {
         { executorId, outcome }
       );
 
-      console.log(`✅ Decision ${decisionId} executed by ${executorId}`);
+      logger.info('Decision executed', { decisionId, executorId });
       return true;
     } catch (error) {
-      console.error('Failed to execute decision:', error);
+      logger.error('Failed to execute decision', error instanceof Error ? error : undefined, { decisionId });
       throw error;
     }
   }
@@ -276,7 +279,7 @@ export class AGIControlFramework {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Failed to get decision history:', error);
+      logger.error('Failed to get decision history', error instanceof Error ? error : undefined);
       return [];
     }
   }
@@ -303,7 +306,7 @@ export class AGIControlFramework {
         );
 
         if (expectedSignature !== record.human_review.signature) {
-          console.warn(`⚠️  Decision ${decisionId} signature mismatch`);
+          logger.warn('Decision signature mismatch', { decisionId });
           return false;
         }
       }
@@ -316,14 +319,14 @@ export class AGIControlFramework {
         .order('created_at', { ascending: true });
 
       if (!logs || logs.length === 0) {
-        console.warn(`⚠️  Decision ${decisionId} has no audit logs`);
+        logger.warn('Decision has no audit logs', { decisionId });
         return false;
       }
 
-      console.log(`✅ Decision ${decisionId} integrity verified`);
+      logger.info('Decision integrity verified', { decisionId });
       return true;
     } catch (error) {
-      console.error('Integrity verification failed:', error);
+      logger.error('Integrity verification failed', error instanceof Error ? error : undefined, { decisionId });
       return false;
     }
   }
@@ -419,7 +422,7 @@ ${record.executed_at ? '✓ Decision executed' : '⏳ Awaiting execution'}
 
       return report;
     } catch (error) {
-      console.error('Failed to generate report:', error);
+      logger.error('Failed to generate report', error instanceof Error ? error : undefined);
       throw error;
     }
   }
@@ -472,7 +475,7 @@ ${record.executed_at ? '✓ Decision executed' : '⏳ Awaiting execution'}
         created_at: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('Failed to log decision:', error);
+      logger.error('Failed to log decision', error instanceof Error ? error : undefined);
     }
   }
 
@@ -488,11 +491,11 @@ ${record.executed_at ? '✓ Decision executed' : '⏳ Awaiting execution'}
         .eq('is_active', true);
 
       if (reviewers && reviewers.length > 0) {
-        console.log(`📬 Notifying ${reviewers.length} reviewers of pending decision`);
+        logger.info('Notifying reviewers of pending decision', { count: reviewers.length, decisionId: record.id });
         // In production: send email notifications
       }
     } catch (error) {
-      console.error('Failed to notify reviewers:', error);
+      logger.error('Failed to notify reviewers', error instanceof Error ? error : undefined, { decisionId: record.id });
     }
   }
 

@@ -3,14 +3,13 @@ global:
   evaluation_interval: 15s
   external_labels:
     cluster: 'aegis-ai'
-    environment: 'production'
+    environment: 'development'
     service: 'aegis-platform'
 
 scrape_configs:
   - job_name: 'aegis-api'
     static_configs:
-      # Use service name in K8s, fallback to host.docker.internal for Docker Compose
-      - targets: ['aegis-api:3001']
+      - targets: ['host.docker.internal:3001']
     metrics_path: '/metrics'
     scrape_interval: 30s
     scrape_timeout: 10s

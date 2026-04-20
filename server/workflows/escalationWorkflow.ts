@@ -4,6 +4,9 @@ import { RiskAssessment, RiskScoringEngine } from '../intelligence/riskScoring';
 import { NotificationResult, TwilioNotificationService } from '../notifications/twilio';
 import { AuditLogService } from '../security/auditLog';
 import { EventBus } from '../events/eventEmitter';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('escalation-workflow');
 
 export interface EscalationCaseData {
   description?: string;
@@ -112,15 +115,15 @@ export class EscalationWorkflow {
       return winner as RiskAssessment;
     }
 
-    console.warn(`⚠️  ML risk assessment exceeded ${deadlineMs}ms for case ${request.caseId}. Using heuristic fallback.`);
+    logger.warn('ML risk assessment exceeded deadline, using heuristic fallback', { caseId: request.caseId, deadlineMs });
 
     // Fire-and-forget: let the full ML run finish in the background for logging
     mlPromise
       .then((fullResult) => {
-        console.log(`🔄 Background ML risk completed for case ${request.caseId}: ${fullResult.riskLevel} (score ${fullResult.riskScore})`);
+        logger.info('Background ML risk completed', { caseId: request.caseId, riskLevel: fullResult.riskLevel, riskScore: fullResult.riskScore });
       })
       .catch((err) => {
-        console.error(`❌ Background ML risk assessment failed for case ${request.caseId}:`, err);
+        logger.error('Background ML risk assessment failed', err instanceof Error ? err : undefined, { caseId: request.caseId });
       });
 
     return this.riskEngine.quickAssessRisk(request.caseData);
@@ -130,12 +133,12 @@ export class EscalationWorkflow {
     const startTime = Date.now();
     const escalationId = `esc_${Date.now()}`;
 
-    console.log(`🚨 Starting escalation workflow for case ${request.caseId}`);
+    logger.info('Starting escalation workflow', { caseId: request.caseId });
 
     try {
       const riskAssessment = await this.timedRiskAssessment(request);
 
-      console.log(`✅ Risk assessment: ${riskAssessment.riskLevel} (${riskAssessment.riskScore})`);
+      logger.info('Risk assessment complete', { caseId: request.caseId, riskLevel: riskAssessment.riskLevel, riskScore: riskAssessment.riskScore });
 
       if (!this.isEscalationRequired(riskAssessment)) {
         return {
@@ -159,7 +162,7 @@ export class EscalationWorkflow {
         request.caseData.type || 'gbv'
       );
 
-      console.log(`✅ Resources assigned: ${assignments.primary.resourceName}`);
+      logger.info('Resources assigned', { caseId: request.caseId, resource: assignments.primary.resourceName });
 
       const notifications = await this.sendNotifications(
         request.caseId,
@@ -168,7 +171,7 @@ export class EscalationWorkflow {
         request.caseData
       );
 
-      console.log(`✅ Notifications sent: ${notifications.length}`);
+      logger.info('Notifications sent', { caseId: request.caseId, count: notifications.length });
 
       await this.createEscalationEvent(
         request.caseId,
@@ -216,7 +219,7 @@ export class EscalationWorkflow {
         completionTime: Date.now() - startTime,
       };
     } catch (error) {
-      console.error('❌ Escalation workflow failed:', error);
+      logger.error('Escalation workflow failed', error instanceof Error ? error : undefined, { caseId: request.caseId });
 
       await this.auditLog.log({
         userId: request.triggeredBy,
@@ -363,7 +366,7 @@ export class EscalationWorkflow {
         });
       }
     } catch (error) {
-      console.error('Notification send error:', error);
+      logger.error('Notification send error', error instanceof Error ? error : undefined);
     }
 
     return notifications;
@@ -412,7 +415,7 @@ export class EscalationWorkflow {
 
       return this.normalizePhoneNumber(data?.phone);
     } catch (error) {
-      console.error(`Failed to resolve counselor phone for ${resourceId}:`, error);
+      logger.error('Failed to resolve counselor phone', error instanceof Error ? error : undefined, { resourceId });
       return undefined;
     }
   }
@@ -427,7 +430,7 @@ export class EscalationWorkflow {
 
       return this.normalizePhoneNumber(data?.phone);
     } catch (error) {
-      console.error(`Failed to resolve organization phone for ${resourceId}:`, error);
+      logger.error('Failed to resolve organization phone', error instanceof Error ? error : undefined, { resourceId });
       return undefined;
     }
   }
@@ -541,10 +544,10 @@ export class EscalationWorkflow {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Escalation ${escalationId} acknowledged by ${acknowledgedBy}`);
+      logger.info('Escalation acknowledged', { escalationId, acknowledgedBy });
       return true;
     } catch (error) {
-      console.error('Failed to acknowledge escalation:', error);
+      logger.error('Failed to acknowledge escalation', error instanceof Error ? error : undefined, { escalationId });
       return false;
     }
   }
@@ -575,10 +578,10 @@ export class EscalationWorkflow {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Escalation ${escalationId} resolved`);
+      logger.info('Escalation resolved', { escalationId });
       return true;
     } catch (error) {
-      console.error('Failed to resolve escalation:', error);
+      logger.error('Failed to resolve escalation', error instanceof Error ? error : undefined, { escalationId });
       return false;
     }
   }

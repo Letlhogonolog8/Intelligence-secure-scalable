@@ -8,6 +8,9 @@
 
 import { EventEmitter } from 'events';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('event-bus');
 
 export type EventType =
   | 'case:created'
@@ -84,9 +87,9 @@ export class EventBus {
     try {
       await this.persistEvent(event);
       this.emitter.emit(eventType, event);
-      console.log(`📤 Event emitted: ${eventType}`);
+      logger.info('Event emitted', { eventType });
     } catch (error) {
-      console.error(`❌ Failed to emit event ${eventType}:`, error);
+      logger.error(`Failed to emit event ${eventType}`, error instanceof Error ? error : undefined);
     }
   }
 
@@ -98,7 +101,7 @@ export class EventBus {
       try {
         await handler(event);
       } catch (error) {
-        console.error(`Error handling ${eventType}:`, error);
+        logger.error(`Error handling ${eventType}`, error instanceof Error ? error : undefined);
 
         if (event.metadata?.retryable) {
           this.scheduleRetry(event);
@@ -115,7 +118,7 @@ export class EventBus {
       try {
         await handler(event);
       } catch (error) {
-        console.error(`Error handling ${eventType} (one-time):`, error);
+        logger.error(`Error handling ${eventType} (one-time)`, error instanceof Error ? error : undefined);
       }
     });
   }
@@ -136,7 +139,7 @@ export class EventBus {
 
       if (error) throw error;
     } catch (err) {
-      console.error('Failed to persist event:', err);
+      logger.error('Failed to persist event', err instanceof Error ? err : undefined);
       throw err;
     }
   }
@@ -150,12 +153,12 @@ export class EventBus {
     const delay = baseDelay * Math.pow(2, attemptNumber - 1);
 
     if (attemptNumber > maxRetries) {
-      console.error(`❌ Event ${event.type} failed after ${maxRetries} retries`);
+      logger.error('Event exhausted retries', undefined, { eventType: event.type, maxRetries });
       return;
     }
 
     setTimeout(() => {
-      console.log(`🔄 Retrying event ${event.type} (attempt ${attemptNumber})`);
+      logger.info('Retrying event', { eventType: event.type, attempt: attemptNumber });
       this.emitter.emit(event.type, event);
     }, delay);
   }
@@ -199,7 +202,7 @@ export class EventBus {
       .lt('created_at', cutoffDate.toISOString());
 
     if (error) throw error;
-    console.log(`🧹 Cleaned up events older than ${daysToKeep} days`);
+    logger.info('Old events cleaned up', { daysToKeep });
   }
 
   /**

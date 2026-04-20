@@ -13,6 +13,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('gdpr');
 
 export interface GDPRRequest {
   id: string;
@@ -143,7 +146,7 @@ export class GDPRDataRightsEngine {
       },
     });
 
-    console.log(`✅ Rectification processed for ${userId}`);
+    logger.info('Rectification processed', { userId });
   }
 
   /**
@@ -209,9 +212,9 @@ export class GDPRDataRightsEngine {
         },
       });
 
-      console.log(`🗑️ Erasure completed for ${userId}`);
+      logger.info('Erasure completed', { userId });
     } catch (err) {
-      console.error('Erasure failed:', err);
+      logger.error('Erasure failed', err instanceof Error ? err : undefined, { userId });
       throw err;
     }
   }
@@ -263,7 +266,7 @@ export class GDPRDataRightsEngine {
       },
     });
 
-    console.log(`🛑 Processing restriction applied to ${userId}`);
+    logger.info('Processing restriction applied', { userId });
   }
 
   /**
@@ -285,7 +288,7 @@ export class GDPRDataRightsEngine {
       .update({ [field]: false })
       .eq('user_id', userId);
 
-    console.log(`✋ Objection recorded for ${userId} - ${processingType}`);
+    logger.info('Objection recorded', { userId, processingType });
   }
 
   /**

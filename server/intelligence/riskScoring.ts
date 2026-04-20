@@ -11,9 +11,13 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { CircuitBreaker } from '../utils/circuitBreaker';
 
 const HF_API_URL = 'https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest';
 const HF_EMOTION_URL = 'https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base';
+
+const hfSentimentBreaker = new CircuitBreaker('hf-sentiment', { failureThreshold: 3, resetTimeout: 30000 });
+const hfEmotionBreaker = new CircuitBreaker('hf-emotion', { failureThreshold: 3, resetTimeout: 30000 });
 
 interface EdgeInferenceResult {
   sentimentScore: number;
@@ -399,8 +403,14 @@ export class RiskScoringEngine {
     }
 
     const [sentimentResults, emotionResults] = await Promise.all([
-      queryHuggingFace(HF_API_URL, description),
-      queryHuggingFace(HF_EMOTION_URL, description),
+      hfSentimentBreaker.execute(
+        () => queryHuggingFace(HF_API_URL, description),
+        () => null
+      ),
+      hfEmotionBreaker.execute(
+        () => queryHuggingFace(HF_EMOTION_URL, description),
+        () => null
+      ),
     ]);
 
     const aiAvailable = sentimentResults !== null;
