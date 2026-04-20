@@ -352,8 +352,8 @@ CORS_ORIGIN=https://intelligence-secure-scalable-1.onrender.com
 
 3. **Optional Services** (Not configured)
    ```env
-   TWILIO_ACCOUNT_SID=AC15ca370c7208f430d95e2b3b9cfd518f
-   TWILIO_AUTH_TOKEN=18c7e69e9d8d821a73344b1234ed7baa
+   TWILIO_ACCOUNT_SID=[replace-with-twilio-account-sid]
+   TWILIO_AUTH_TOKEN=[replace-with-twilio-auth-token]
    TELKOM_API_KEY=your_api_key_here
    REDIS_URL=# Not set
    ```

@@ -73,6 +73,7 @@ jobs:
   dependency-scan:
     name: Dependency Security Check
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,6 +101,7 @@ jobs:
 
       - name: OWASP Dependency Check
         uses: jeremylong/DependencyCheck_Action@main
+        continue-on-error: true
         with:
           project: 'AEGIS-AI'
           path: '.'

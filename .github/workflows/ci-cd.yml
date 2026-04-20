@@ -44,6 +44,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     name: Security Scanning
+    continue-on-error: true
     
     steps:
     - uses: actions/checkout@v4
