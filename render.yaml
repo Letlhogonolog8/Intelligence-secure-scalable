@@ -25,13 +25,13 @@ services:
       - key: REFRESH_TOKEN_SECRET
         sync: false
       - key: CORS_ORIGIN
-        sync: false
+        value: https://aegis-ai-platform.vercel.app
       - key: BACKEND_PUBLIC_URL
-        sync: false
-      - key: TELKOM_API_KEY
-        sync: false
+        value: https://aegis-backend.onrender.com
       - key: TELKOM_API_URL
         value: https://api.telkom.co.za/ussd/v1
+      - key: TELKOM_API_KEY
+        sync: false
       - key: TELKOM_USSD_CODE
         sync: false
       - key: TELKOM_CALLBACK_URL
@@ -53,45 +53,18 @@ services:
       - key: NOTIFICATION_WORKER_ENABLED
         value: "false"
 
-  - type: worker
-    name: aegis-notification-worker
-    runtime: node
-    plan: starter
-    autoDeploy: true
-    buildCommand: npm ci && npm run build:server
-    startCommand: npm run start:worker
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: VITE_SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_PHONE_NUMBER
-        sync: false
-      - key: TWILIO_WHATSAPP_NUMBER
-        sync: false
-      - key: BACKEND_PUBLIC_URL
-        sync: false
-      - key: NOTIFICATION_WORKER_ENABLED
-        value: "true"
-      - key: NOTIFICATION_WORKER_INTERVAL_MS
-        value: "15000"
-      - key: NOTIFICATION_WORKER_BATCH_SIZE
-        value: "25"
-
   - type: web
-    name: intelligence-secure-scalable-1
+    name: aegis-frontend
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
         value: https://aegis-backend.onrender.com/api
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_KEY
+        sync: false
     routes:
       - type: rewrite
         source: /*
