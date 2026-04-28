@@ -96,6 +96,18 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     requiresMFA: true,
     requiresBiometric: true,
   },
+
+  chw: {
+    role: "chw",
+    allowSelfRegistration: false,
+    requiresApproval: true,
+    requiresCredentials: true,
+    allowedAuthMethods: ["credential"],
+    sessionTimeout: 480, // 8 hours
+    maxConcurrentSessions: 2,
+    requiresMFA: false,
+    requiresBiometric: false,
+  },
 };
 
 /**

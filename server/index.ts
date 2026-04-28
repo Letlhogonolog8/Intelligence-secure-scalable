@@ -944,6 +944,56 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/ussd', createUSSDRoutes(ussdGateway, offlineCache));
 
 // ============================================================================
+// AI SURVIVOR CHAT ENDPOINT
+// ============================================================================
+
+app.post('/api/ai/survivor-chat', defaultLimiter, async (req: Request, res: Response): Promise<void> => {
+  const requestId = (req as AppRequest).id;
+  try {
+    const { systemPrompt, messages } = req.body as {
+      systemPrompt?: string;
+      messages?: Array<{ role: string; content: string }>;
+    };
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({ error: 'messages array is required', requestId });
+      return;
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      const lastUser = messages.filter(m => m.role === 'user').at(-1)?.content ?? '';
+      const fallback = /danger|hurt|kill|die|attack|emergency/i.test(lastUser)
+        ? 'CRISIS ALERT: Please call Police: 10111 or Crisis Line: 0800 428 428 immediately. Dial *123*456# from any phone — no internet needed. You are not alone.'
+        : 'I hear you, and I\'m glad you reached out. You are safe here. Can you share a little more so I can help guide you?';
+      res.json({ content: fallback });
+      return;
+    }
+
+    const Anthropic = await import('@anthropic-ai/sdk');
+    const client = new Anthropic.default({ apiKey });
+
+    const validMessages = messages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .slice(-10)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system: systemPrompt ?? 'You are a compassionate, trauma-informed GBV support companion. Respond with empathy. If user is in immediate danger include CRISIS ALERT: and provide Police: 10111, Crisis line: 0800 428 428.',
+      messages: validMessages,
+    });
+
+    const content = response.content[0].type === 'text' ? response.content[0].text : '';
+    res.json({ content });
+  } catch (error) {
+    logger.error('AI survivor chat failed', error, {}, requestId);
+    res.json({ content: 'I\'m here with you. Can you tell me a little more about what\'s happening right now?' });
+  }
+});
+
+// ============================================================================
 // TELKOM USSD WEBHOOK
 // ============================================================================
 

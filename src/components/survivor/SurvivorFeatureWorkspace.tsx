@@ -1,4 +1,4 @@
-import React from "react";
+import { lazy, Suspense } from "react";
 import { MODULE_METADATA, ModuleType } from "@/data/aegisData";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { useSurvivorWorkspaceSummaries } from "@/hooks/survivor/usePersonalDashboardSummaries";
+
+const EvidenceVault = lazy(() => import("@/components/survivor/EvidenceVault"));
 
 interface SurvivorFeatureWorkspaceProps {
   module: Extract<
@@ -114,6 +116,35 @@ const SurvivorFeatureWorkspace: React.FC<SurvivorFeatureWorkspaceProps> = ({ mod
 
   const pulseHeadline = modulePulseSummary.activityCount > 0 ? modulePulseSummary.headline : pulseContent.emptyHeadline;
   const pulseMeta = modulePulseSummary.activityCount > 0 ? modulePulseSummary.meta : pulseContent.emptyMeta;
+
+  if (module === "document_vault") {
+    return (
+      <div className="min-h-screen bg-[#04060c] text-slate-50 px-6 py-8 relative overflow-hidden">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6 relative z-10">
+          <section className="rounded-2xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <p className={`text-xs font-bold uppercase tracking-[0.3em] ${metadata.colorClass}`}>Secure Vault</p>
+                <h1 className="text-3xl font-bold tracking-tight text-white">{metadata.title}</h1>
+                <p className="text-base text-slate-300 font-medium">{metadata.description}</p>
+              </div>
+              <Button
+                variant="outline"
+                className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white shrink-0"
+                onClick={() => setActiveModule("personal_dashboard")}
+              >
+                Back to Dashboard
+              </Button>
+            </div>
+          </section>
+
+          <Suspense fallback={<div className="h-64 rounded-2xl border border-white/10 bg-slate-950/60 animate-pulse" />}>
+            <EvidenceVault />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
 
   if (isAppointmentsModule && summaryContent) {
     return (

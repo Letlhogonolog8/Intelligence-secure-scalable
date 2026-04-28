@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationProvider";
 import { GlobalLoadingIndicator } from "@/components/GlobalLoadingIndicator";
+import { OfflineSyncIndicator } from "@/components/OfflineSyncIndicator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { hasSupabase } from "@/lib/env";
 import { queryClient } from "@/lib/queryClient";
@@ -40,6 +41,7 @@ const App = () => (
               </Alert>
             </div>
           )}
+          <OfflineSyncIndicator />
           <GlobalLoadingIndicator />
           <TooltipProvider>
             <Toaster />

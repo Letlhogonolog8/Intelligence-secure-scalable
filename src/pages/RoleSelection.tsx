@@ -138,6 +138,23 @@ const RoleSelection: React.FC = () => {
         ],
         hint: t("roles.loginOnly", "Login only with authorized credentials"),
       },
+      {
+        id: "chw" as UserRole,
+        label: t("roles.chw.title", "Community Health Worker"),
+        description: t(
+          "roles.chw.desc",
+          "Field workers conducting rural outreach, referrals, and survivor follow-up in last-mile communities."
+        ),
+        icon: <Heart className="h-6 w-6" />,
+        requiresAuth: true,
+        color: "from-emerald-700 to-teal-600",
+        badges: [
+          t("roles.adminApproval", "Admin approval"),
+          t("roles.credentialOnly", "Credential-only"),
+          t("roles.offlineCapable", "Offline capable"),
+        ],
+        hint: t("roles.loginOnly", "Login only with authorized credentials"),
+      },
     ],
     [t]
   );

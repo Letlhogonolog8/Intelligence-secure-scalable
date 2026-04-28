@@ -16,6 +16,7 @@ import { getOfflineQueueCount } from "@/lib/offlineCaseQueue";
 import { dedupeBy, formatRelativeDateTime, riskWeight } from "@/lib/dashboardMetrics";
 
 const VoiceIncidentReporter = lazy(() => import("@/components/survivor/VoiceIncidentReporter"));
+const SurvivorAIChat = lazy(() => import("@/components/survivor/SurvivorAIChat"));
 
 const SurvivorDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -32,6 +33,7 @@ const SurvivorDashboard: React.FC = () => {
   const { data: alertsFeed = [], isLoading: alertsLoading } = useAlertsFeed({ staleTime: 10000, refetchInterval: 15000, limit: 8 });
 
   const [showVoiceReporter, setShowVoiceReporter] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   const [panicMode, setPanicMode] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
   const [offlineQueue, setOfflineQueue] = useState(0);
@@ -266,6 +268,23 @@ const SurvivorDashboard: React.FC = () => {
           </Suspense>
         </section>
       ) : null}
+
+      {showAIChat ? (
+        <section className="animate-in fade-in slide-in-from-top-1 duration-300">
+          <Suspense fallback={<Skeleton className="h-[540px] w-full rounded-2xl bg-slate-800/40" />}>
+            <SurvivorAIChat embedded onClose={() => setShowAIChat(false)} />
+          </Suspense>
+        </section>
+      ) : (
+        <button
+          onClick={() => setShowAIChat(true)}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl shadow-blue-950/40 transition-all"
+          aria-label="Open AI support companion"
+        >
+          <MessageSquare className="h-4 w-4" />
+          AI Support
+        </button>
+      )}
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard title={t("survivor.secureAlerts", "Secure alerts")} description={t("survivor.alertDescription", "Localized signal monitoring for your registered zones, with critical items surfaced first.")}>

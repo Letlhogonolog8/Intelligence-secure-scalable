@@ -50,6 +50,47 @@ export default defineConfig(() => ({
           }
           return `assets/[ext]/[name]-[hash][extname]`;
         },
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@radix-ui')) {
+              return 'vendor-radix';
+            }
+            if (id.includes('framer-motion')) {
+              return 'vendor-animation';
+            }
+            if (id.includes('recharts') || id.includes('d3')) {
+              return 'vendor-charts';
+            }
+            if (id.includes('@supabase') || id.includes('supabase')) {
+              return 'vendor-supabase';
+            }
+            if (id.includes('@tanstack')) {
+              return 'vendor-query';
+            }
+            if (id.includes('socket.io') || id.includes('engine.io')) {
+              return 'vendor-socket';
+            }
+            if (id.includes('@xenova/transformers')) {
+              return 'vendor-ai';
+            }
+            if (id.includes('i18next') || id.includes('react-i18next')) {
+              return 'vendor-i18n';
+            }
+            return 'vendor-misc';
+          }
+          if (id.includes('src/components/admin')) {
+            return 'chunk-admin';
+          }
+          if (id.includes('src/components/dashboard')) {
+            return 'chunk-dashboard';
+          }
+          if (id.includes('src/components/governance') || id.includes('src/components/analytics')) {
+            return 'chunk-analytics';
+          }
+        },
       },
       treeshake: {
         moduleSideEffects: false,

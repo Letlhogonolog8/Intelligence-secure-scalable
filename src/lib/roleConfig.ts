@@ -12,7 +12,7 @@ import { ModuleType } from "@/data/aegisData";
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type UserRole = "admin" | "counselor" | "survivor" | "ngo" | "police" | "analyst";
+export type UserRole = "admin" | "counselor" | "survivor" | "ngo" | "police" | "analyst" | "chw";
 
 export type DashboardType = 
   | "survivor_dashboard"
@@ -20,7 +20,8 @@ export type DashboardType =
   | "admin_dashboard"
   | "ngo_dashboard"
   | "police_dashboard"
-  | "analyst_dashboard";
+  | "analyst_dashboard"
+  | "chw_dashboard";
 
 export interface RoleDefinition {
   id: UserRole;
@@ -123,6 +124,18 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     color: "text-indigo-500",
     backgroundColor: "bg-indigo-500/10",
   },
+
+  chw: {
+    id: "chw",
+    label: "Community Health Worker",
+    description: "Field worker conducting rural outreach, referrals, and survivor follow-up",
+    icon: "HeartIcon",
+    modules: ["dashboard", "survivor_support", "reporting"],
+    defaultModule: "dashboard",
+    dashboardType: "chw_dashboard",
+    color: "text-emerald-500",
+    backgroundColor: "bg-emerald-500/10",
+  },
 };
 
 // ============================================================================
@@ -206,6 +219,19 @@ export const PERMISSIONS: Record<UserRole, PermissionSet> = {
     canViewAuditLogs: false,
     organizationScoped: false,
     jurisdictionScoped: false,
+  },
+
+  chw: {
+    canViewAllData: false,
+    canViewOrgData: false,
+    canViewOwnData: true,
+    canCreateUsers: false,
+    canModifyRoles: false,
+    canAccessAnalytics: false,
+    canDeleteData: false,
+    canViewAuditLogs: false,
+    organizationScoped: true,
+    jurisdictionScoped: true,
   },
 };
 
@@ -327,6 +353,25 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     policy: "readonly",
     governance: "readonly",
   },
+
+  chw: {
+    dashboard: "full",
+    personal_dashboard: "none",
+    safety_plan: "none",
+    appointments: "none",
+    trusted_contacts: "none",
+    document_vault: "none",
+    support_requests: "none",
+    secure_messages: "none",
+    reporting: "limited",
+    admin_console: "none",
+    command_center: "none",
+    survivor_support: "limited",
+    prediction: "none",
+    justice: "none",
+    policy: "none",
+    governance: "none",
+  },
 };
 
 // ============================================================================
@@ -429,6 +474,23 @@ export const FEATURE_FLAGS: Record<UserRole, Record<string, boolean>> = {
     can_create_custom_reports: true,
     can_access_ml_models: true,
     can_run_predictions: true,
+  },
+
+  chw: {
+    can_create_users: false,
+    can_delete_users: false,
+    can_manage_roles: false,
+    can_view_audit_logs: false,
+    can_export_data: false,
+    can_configure_system: false,
+    can_manage_organizations: false,
+    can_override_access: false,
+    can_view_all_chats: false,
+    can_modify_policies: false,
+    can_log_field_visits: true,
+    can_create_referrals: true,
+    can_use_offline_mode: true,
+    can_view_survivor_codes: true,
   },
 };
 

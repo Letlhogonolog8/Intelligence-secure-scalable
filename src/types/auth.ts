@@ -3,7 +3,7 @@
  * Defines core authentication and authorization types for the system
  */
 
-export type UserRole = "admin" | "counselor" | "survivor" | "ngo" | "police" | "analyst";
+export type UserRole = "admin" | "counselor" | "survivor" | "ngo" | "police" | "analyst" | "chw";
 
 export type AuthMethod = "otp" | "credential" | "biometric";
 
