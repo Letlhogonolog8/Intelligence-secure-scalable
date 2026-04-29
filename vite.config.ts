@@ -23,18 +23,7 @@ export default defineConfig(() => ({
   build: {
     target: 'es2020',
     emptyOutDir: true,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: process.env.NODE_ENV === 'production',
-        drop_debugger: true,
-        pure_funcs: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug'] : [],
-        passes: 2,
-      },
-      mangle: {
-        safari10: true,
-      },
-    },
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         chunkFileNames: 'assets/js/[name]-[hash].js',
