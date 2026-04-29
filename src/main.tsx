@@ -31,8 +31,19 @@ void initDatadog()
 void cleanupLocalServiceWorkers()
 
 const bootstrap = async () => {
-  await initializeI18n()
-  createRoot(document.getElementById("root")!).render(<App />)
+  try {
+    await initializeI18n()
+  } catch {
+    // i18n failure is non-fatal — render without translations
+  }
+  const rootEl = document.getElementById("root")
+  if (!rootEl) return
+  createRoot(rootEl).render(<App />)
 }
 
-void bootstrap()
+bootstrap().catch(() => {
+  const rootEl = document.getElementById("root")
+  if (rootEl) {
+    rootEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#0a0f1e;color:#fff;padding:2rem;text-align:center"><div><h1 style="font-size:1.5rem;margin-bottom:1rem">AEGIS-AI Platform</h1><p style="color:#94a3b8">Loading failed. Please refresh the page.</p><button onclick="location.reload()" style="margin-top:1rem;padding:.5rem 1.5rem;background:#7c3aed;color:#fff;border:none;border-radius:.375rem;cursor:pointer">Retry</button></div></div>'
+  }
+})

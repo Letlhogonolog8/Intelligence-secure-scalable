@@ -25,8 +25,8 @@ const Admin = lazy(() => import("./pages/Admin"));
 const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
 
 const App = () => (
+  <ErrorBoundary>
   <ThemeProvider defaultTheme="light">
-    <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <OrganizationProvider>
@@ -64,8 +64,8 @@ const App = () => (
           </OrganizationProvider>
         </AuthProvider>
       </QueryClientProvider>
-    </ErrorBoundary>
   </ThemeProvider>
+  </ErrorBoundary>
 );
 
 export default App;
