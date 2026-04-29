@@ -81,10 +81,6 @@ export default defineConfig(() => ({
           }
         },
       },
-      treeshake: {
-        moduleSideEffects: false,
-        propertyReadSideEffects: false,
-      },
     },
     chunkSizeWarningLimit: 400,
     reportCompressedSize: false,
@@ -156,7 +152,7 @@ export default defineConfig(() => ({
       },
       devOptions: { enabled: false },
     }),
-  ].filter(Boolean),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

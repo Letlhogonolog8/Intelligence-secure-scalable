@@ -6,29 +6,26 @@ import { initLogger } from "@/lib/logger"
 import { initDatadog } from "@/lib/datadog"
 import { initializeI18n } from "@/i18n"
 
-const cleanupLocalServiceWorkers = async () => {
-  if (!("serviceWorker" in navigator)) {
-    return
-  }
-
-  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname)
-  if (!isLocalHost) {
-    return
-  }
+const cleanupStaleServiceWorkers = async () => {
+  if (!("serviceWorker" in navigator)) return
 
   const registrations = await navigator.serviceWorker.getRegistrations()
-  await Promise.all(registrations.map((registration) => registration.unregister()))
+  for (const reg of registrations) {
+    if (reg.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" })
+    }
+  }
 
   if ("caches" in window) {
     const cacheKeys = await caches.keys()
-    const staleCacheKeys = cacheKeys.filter((key) => /workbox|supabase|pwa/i.test(key))
-    await Promise.all(staleCacheKeys.map((key) => caches.delete(key)))
+    const stale = cacheKeys.filter((key) => /workbox-precache/i.test(key))
+    await Promise.all(stale.map((key) => caches.delete(key)))
   }
 }
 
 initLogger()
 void initDatadog()
-void cleanupLocalServiceWorkers()
+void cleanupStaleServiceWorkers()
 
 const bootstrap = async () => {
   try {

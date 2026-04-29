@@ -26,45 +26,45 @@ const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
 
 const App = () => (
   <ErrorBoundary>
-  <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="light">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <OrganizationProvider>
-          {!hasSupabase && (
-            <div className="px-4 pt-4">
-              <Alert variant="warning">
-                <AlertTitle>Supabase not configured</AlertTitle>
-                <AlertDescription>
-                  Add VITE_SUPABASE_URL and VITE_SUPABASE_KEY to your .env file to enable
-                  authentication.
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
-          <OfflineSyncIndicator />
-          <GlobalLoadingIndicator />
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
-                <Routes>
-                  <Route path="/" element={<LandingPage />} />
-                  <Route path="/auth" element={<RoleSelection />} />
-                  <Route path="/auth/verify" element={<AuthenticationFlow />} />
-                  <Route path="/auth/initialize" element={<ProfileInitialization />} />
-                  <Route path="/app" element={<Index />} />
-                  <Route path="/admin" element={<Admin />} />
-                  <Route path="/impact" element={<ImpactDashboard />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
-          </TooltipProvider>
+            {!hasSupabase && (
+              <div className="px-4 pt-4">
+                <Alert variant="warning">
+                  <AlertTitle>Supabase not configured</AlertTitle>
+                  <AlertDescription>
+                    Add VITE_SUPABASE_URL and VITE_SUPABASE_KEY to your .env file to enable
+                    authentication.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+            <OfflineSyncIndicator />
+            <GlobalLoadingIndicator />
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
+                  <Routes>
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/auth" element={<RoleSelection />} />
+                    <Route path="/auth/verify" element={<AuthenticationFlow />} />
+                    <Route path="/auth/initialize" element={<ProfileInitialization />} />
+                    <Route path="/app" element={<Index />} />
+                    <Route path="/admin" element={<Admin />} />
+                    <Route path="/impact" element={<ImpactDashboard />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </TooltipProvider>
           </OrganizationProvider>
         </AuthProvider>
       </QueryClientProvider>
-  </ThemeProvider>
+    </ThemeProvider>
   </ErrorBoundary>
 );
 
