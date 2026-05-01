@@ -5,6 +5,11 @@ import en from "./locales/en";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
+  { code: "sw", label: "Swahili", nativeLabel: "Kiswahili" },
+  { code: "fr", label: "French", nativeLabel: "Français" },
+  { code: "am", label: "Amharic", nativeLabel: "አማርኛ" },
+  { code: "yo", label: "Yoruba", nativeLabel: "Yorùbá" },
+  { code: "ha", label: "Hausa", nativeLabel: "Hausa" },
   { code: "zu", label: "isiZulu", nativeLabel: "isiZulu" },
   { code: "af", label: "Afrikaans", nativeLabel: "Afrikaans" },
   { code: "xh", label: "isiXhosa", nativeLabel: "isiXhosa" },
@@ -28,6 +33,16 @@ const loadLanguageResource = async (language: SupportedLanguage): Promise<Transl
   switch (language) {
     case "en":
       return en;
+    case "sw":
+      return (await import("./locales/sw")).default as TranslationResource;
+    case "fr":
+      return (await import("./locales/fr")).default as TranslationResource;
+    case "am":
+      return (await import("./locales/am")).default as TranslationResource;
+    case "yo":
+      return (await import("./locales/yo")).default as TranslationResource;
+    case "ha":
+      return (await import("./locales/ha")).default as TranslationResource;
     case "zu":
       return (await import("./locales/zu")).default as TranslationResource;
     case "af":

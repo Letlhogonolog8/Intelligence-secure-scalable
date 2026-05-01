@@ -160,7 +160,8 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
   };
 
   const toggleListening = () => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) return;
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SR) return;
 
     if (isListening) {
       recognitionRef.current?.stop();
@@ -168,7 +169,6 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
       return;
     }
 
-    const SR = (window.SpeechRecognition || window.webkitSpeechRecognition) as typeof SpeechRecognition;
     const rec = new SR();
     rec.lang = "en-ZA";
     rec.interimResults = false;

@@ -25,9 +25,9 @@ services:
       - key: REFRESH_TOKEN_SECRET
         sync: false
       - key: CORS_ORIGIN
-        value: https://aegis-ai-platform.vercel.app
+        sync: false
       - key: BACKEND_PUBLIC_URL
-        value: https://aegis-backend.onrender.com
+        value: https://aegis-backend-zhv3.onrender.com
       - key: TELKOM_API_URL
         value: https://api.telkom.co.za/ussd/v1
       - key: TELKOM_API_KEY
@@ -50,6 +50,24 @@ services:
         sync: false
       - key: TWILIO_WHATSAPP_NUMBER
         sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: DATADOG_API_KEY
+        sync: false
       - key: NOTIFICATION_WORKER_ENABLED
         value: "false"
 
@@ -60,7 +78,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://aegis-backend.onrender.com/api
+        value: https://aegis-backend-zhv3.onrender.com/api
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_KEY

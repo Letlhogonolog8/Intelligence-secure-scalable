@@ -21,6 +21,7 @@ AEGIS-AI is a single-repository, full-stack TypeScript application with a React/
 **Language**: TypeScript (frontend + backend)  
 **Runtime**: Node.js (Dockerfiles use `node:20-alpine`)  
 **Build System**: Vite + TypeScript compiler (`tsc`)  
+**Package name**: `aegis-ai` (`package.json`)  
 **Package Manager**: `npm` (package-lock.json present)
 
 ## Dependencies

@@ -14,6 +14,8 @@ dist-ssr
 
 # CRITICAL: Environment variables - NEVER commit
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 .env.production.local
@@ -22,6 +24,32 @@ dist-ssr
 *.pem
 *.p12
 .vault-token
+
+# Build / run artefacts that shouldn't be tracked
+build-after.log
+build.manual.log
+test-after.log
+test.log
+test.manual.log
+typecheck*.log
+lint*.log
+tsc-app*.log
+tsc-server*.log
+*.tsbuildinfo
+vitest.config.ts.timestamp-*
+
+# Compiled output of TS scripts (the .ts source is the source of truth)
+scripts/*.js
+scripts/*.js.map
+scripts/*.d.ts
+scripts/*.d.ts.map
+!scripts/*.cjs
+!scripts/*.mjs
+
+# Supabase CLI scratch
+supabase/.temp/
+.zenflow/
+.zencoder/
 
 # Editor directories and files
 .vscode/*
@@ -47,3 +75,6 @@ admin-auth-desktop-stable.png
 admin-auth-desktop.png
 admin-auth-mobile.png
 admin-console-authenticated.png
+.vercel
+
+.env

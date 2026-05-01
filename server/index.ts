@@ -21,6 +21,7 @@ import createUSSDRoutes from './routes/ussdRoutes';
 import { createEscalationRoutes } from './routes/escalationRoutes';
 import { createIntelligenceRoutes } from './routes/intelligenceRoutes';
 import { validationMiddleware } from './middleware/validation';
+import { idempotency } from './middleware/idempotency';
 import whatsappRoutes from './routes/whatsappRoutes';
 import { createLogger } from './utils/logger';
 import { metricsHandler, httpRequestDuration, httpRequestsTotal } from './utils/prometheus';
@@ -42,6 +43,7 @@ import {
 } from './middleware/rateLimiting';
 import { ErrorTrackingService, setupGlobalErrorHandlers } from './observability/errorTracking';
 import { closeDatadog, initializeDatadog, trackTiming } from './utils/datadog';
+import { SupabaseTimeouts, withTimeout as withSupabaseTimeout } from './utils/supabaseTimeout';
 import { ADMIN_DASHBOARD_CONFIG } from './config/adminDashboardConfig';
 import { IntrusionDetectionSystem } from './security/intrusionDetection';
 
@@ -123,8 +125,13 @@ function validateEnvironment(): void {
 validateEnvironment();
 
 const app: Express = express();
+// Render / nginx / cloudflare put the client IP in X-Forwarded-For.
+// 1 = trust the first proxy hop (Render edge). Required so express-rate-limit
+// and req.ip work without ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:8080').split(',').map(o => o.trim());
 
 type AuthenticatedUser = {
@@ -303,6 +310,69 @@ async function runNotificationWorkerCycle(): Promise<void> {
   }
 }
 
+// ----- Audit-chain integrity verification scheduler ----------------------
+let auditChainInterval: ReturnType<typeof setInterval> | null = null;
+
+function isAuditChainCronEnabled(): boolean {
+  // Default: enabled in production. Single replica should run it (the
+  // worker pod is the natural home; APIs skip it when WORKER_ENABLED=false
+  // is the marker, see runAuditChainCheck below).
+  if (process.env.AUDIT_CHAIN_CRON_ENABLED === 'false') return false;
+  if (process.env.AUDIT_CHAIN_CRON_ENABLED === 'true') return true;
+  return process.env.NODE_ENV === 'production';
+}
+
+async function runAuditChainCheck(): Promise<void> {
+  try {
+    const start = Date.now();
+    const valid = await auditLogService.verifyChain();
+    const duration = Date.now() - start;
+
+    if (valid) {
+      logger.info('Audit chain verification succeeded', { durationMs: duration });
+    } else {
+      logger.error('Audit chain verification FAILED — possible tampering', new Error('audit_chain_invalid'), {
+        durationMs: duration,
+      });
+      errorTracking.captureMessage('Audit chain integrity violation', 'fatal');
+    }
+  } catch (error) {
+    logger.error('Audit chain verification crashed', error);
+  }
+}
+
+function startAuditChainCron(): void {
+  if (!isAuditChainCronEnabled()) {
+    logger.info('Audit-chain cron disabled by configuration');
+    return;
+  }
+
+  if (auditChainInterval) return;
+
+  // Default: every 6 hours. Override with AUDIT_CHAIN_CRON_INTERVAL_MS.
+  const intervalMs = Math.max(
+    60_000,
+    Number(process.env.AUDIT_CHAIN_CRON_INTERVAL_MS || 6 * 60 * 60 * 1000)
+  );
+
+  auditChainInterval = setInterval(() => {
+    void runAuditChainCheck();
+  }, intervalMs);
+  auditChainInterval.unref?.();
+
+  // First check after 30s so we don't block boot.
+  setTimeout(() => void runAuditChainCheck(), 30_000).unref?.();
+
+  logger.info('Audit-chain cron started', { intervalMs });
+}
+
+function stopAuditChainCron(): void {
+  if (auditChainInterval) {
+    clearInterval(auditChainInterval);
+    auditChainInterval = null;
+  }
+}
+
 function startNotificationWorker(): void {
   if (!isNotificationWorkerEnabled()) {
     logger.info('In-process notification worker disabled by configuration');
@@ -404,20 +474,76 @@ async function getReadinessStatus(): Promise<{
 }
 
 app.use(compression());
+
+// Build an explicit allowlist for connect-src instead of allowing all https:/wss:.
+// Includes Supabase project + Datadog + Sentry + the platform's own backend.
+function buildConnectSrcAllowlist(): string[] {
+  const list: string[] = ["'self'"];
+
+  const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
+  if (supabaseUrl) {
+    list.push(supabaseUrl);
+    try {
+      const url = new URL(supabaseUrl);
+      list.push(`wss://${url.host}`);
+    } catch {
+      // ignore
+    }
+  }
+
+  const backendUrl = process.env.BACKEND_PUBLIC_URL?.trim();
+  if (backendUrl) {
+    list.push(backendUrl);
+    try {
+      const url = new URL(backendUrl);
+      list.push(`wss://${url.host}`);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Datadog ingest endpoints
+  if (process.env.DATADOG_ENABLED === 'true' || process.env.VITE_DATADOG_ENABLED === 'true') {
+    list.push(
+      'https://browser-intake-datadoghq.com',
+      'https://browser-intake-datadoghq.eu',
+      'https://rum.browser-intake-datadoghq.com',
+      'https://logs.browser-intake-datadoghq.com',
+      'https://http-intake.logs.datadoghq.com'
+    );
+  }
+
+  // Sentry ingest
+  if (process.env.SENTRY_DSN) {
+    try {
+      const dsn = new URL(process.env.SENTRY_DSN);
+      list.push(`${dsn.protocol}//${dsn.host}`);
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(new Set(list));
+}
+
+const cspReportUri = process.env.CSP_REPORT_URI || '/api/csp-report';
+
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "https:", "data:"],
-        connectSrc: ["'self'", "https:", "wss:"],
+        styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'https:', 'data:'],
+        connectSrc: buildConnectSrcAllowlist(),
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+        reportUri: [cspReportUri],
       },
     },
     hsts: {
@@ -447,8 +573,32 @@ app.use(cors({
   maxAge: 3600,
   optionsSuccessStatus: 200,
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// Default body parsers: tight by default. High-payload routes (USSD callbacks,
+// admin imports) opt into a larger limit explicitly via dedicated middleware.
+app.use(express.json({ limit: '256kb' }));
+app.use(express.urlencoded({ limit: '256kb', extended: true }));
+
+// CSP violation reports are sent as application/csp-report or
+// application/reports+json. Cap the payload tightly and never block on it.
+app.post(
+  '/api/csp-report',
+  express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '32kb' }),
+  (req: Request, res: Response) => {
+    try {
+      const requestId = (req as AppRequest).id;
+      logger.warn('CSP violation report', {
+        report: req.body,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        requestId,
+      });
+      errorTracking.captureMessage('CSP violation report', 'warning');
+    } catch {
+      // never fail the report endpoint
+    }
+    res.status(204).end();
+  }
+);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const requestId = uuid();
@@ -544,11 +694,21 @@ function extractBearerToken(req: Request): string | undefined {
   return authHeader.slice('Bearer '.length).trim() || undefined;
 }
 
-const AUTH_CACHE_TTL_SECONDS = 30;
+// Unified auth cache TTL. WebSocketManager uses the same key so REST and
+// socket auth see the same view. Override with AUTH_CACHE_TTL_SECONDS env var.
+const AUTH_CACHE_TTL_SECONDS = Math.max(
+  10,
+  Number(process.env.AUTH_CACHE_TTL_SECONDS || 60)
+);
+const AUTH_REVOKE_CHANNEL = 'auth:revoke';
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 async function resolveAuthenticatedUser(token: string): Promise<AuthenticatedUser | null> {
   const redisClient = getRedisClient();
-  const cacheKey = `auth:user:${crypto.createHash('sha256').update(token).digest('hex')}`;
+  const cacheKey = `auth:user:${hashToken(token)}`;
 
   if (redisClient?.isOpen) {
     try {
@@ -561,20 +721,39 @@ async function resolveAuthenticatedUser(token: string): Promise<AuthenticatedUse
     }
   }
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-
-  if (error || !user) {
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'];
+  try {
+    const result = await withSupabaseTimeout(
+      supabase.auth.getUser(token),
+      SupabaseTimeouts.auth,
+      'auth.getUser'
+    );
+    if (result.error || !result.data.user) {
+      return null;
+    }
+    user = result.data.user;
+  } catch (error) {
+    logger.warn('Auth resolution failed', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, organization_id')
-    .eq('id', user.id)
-    .maybeSingle();
+  let profile: { role?: string; organization_id?: string } | null = null;
+  try {
+    const profileResult = await withSupabaseTimeout(
+      supabase
+        .from('profiles')
+        .select('role, organization_id')
+        .eq('id', user.id)
+        .maybeSingle(),
+      SupabaseTimeouts.read,
+      'profiles.maybeSingle'
+    );
+    profile = profileResult.data;
+  } catch {
+    // Profile lookup failure is non-fatal: we still authenticate the user
+    // but their role-derived permissions are absent until next request.
+    profile = null;
+  }
 
   const authUser: AuthenticatedUser = {
     id: user.id,
@@ -719,23 +898,27 @@ app.post('/api/auth/mfa/verify', requireAuth, mfaLimiter, validationMiddleware.m
   }
 });
 
-app.post('/api/cases/escalate', requireAuth, escalationLimiter, validationMiddleware.escalate, async (req: Request, res: Response) => {
+app.post('/api/cases/escalate', requireAuth, escalationLimiter, idempotency({ scope: 'escalate', ttlSeconds: 24 * 60 * 60 }), validationMiddleware.escalate, async (req: Request, res: Response) => {
   try {
     const requestId = (req as AppRequest).id;
     const authenticatedUserId = (req as AppRequest).user!.id;
     const { caseId, severity, reason } = req.body;
 
-    const { data: escalation, error } = await supabase
-      .from('escalation_events')
-      .insert({
-        case_id: caseId,
-        severity,
-        reason,
-        user_id: authenticatedUserId,
-        status: 'triggered',
-        triggered_at: new Date().toISOString(),
-      })
-      .select();
+    const { data: escalation, error } = await withSupabaseTimeout(
+      supabase
+        .from('escalation_events')
+        .insert({
+          case_id: caseId,
+          severity,
+          reason,
+          user_id: authenticatedUserId,
+          status: 'triggered',
+          triggered_at: new Date().toISOString(),
+        })
+        .select(),
+      SupabaseTimeouts.write,
+      'escalation_events.insert'
+    );
 
     if (error) throw error;
 
@@ -917,6 +1100,33 @@ app.post('/api/auth/logout', requireAuth, async (req: Request, res: Response) =>
   try {
     const requestId = (req as AppRequest).id;
     const userId = (req as AppRequest).user?.id;
+    const token = extractBearerToken(req);
+    const redisClient = getRedisClient();
+
+    // Invalidate caches across the cluster so subsequent calls hit Supabase
+    // and fail closed if the underlying session has been revoked.
+    if (token && redisClient?.isOpen) {
+      const tokenHash = hashToken(token);
+      try {
+        await redisClient.del(`auth:user:${tokenHash}`);
+      } catch (error) {
+        logger.warn('Failed to delete REST auth cache on logout', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      try {
+        // The WebSocket cache uses a 16-char prefix of the same hash; broadcast
+        // a revoke event so listening instances drop their views immediately.
+        await redisClient.publish(
+          AUTH_REVOKE_CHANNEL,
+          JSON.stringify({ tokenHash, userId, at: new Date().toISOString() })
+        );
+      } catch (error) {
+        logger.warn('Failed to publish auth revoke event', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     await auditLogService.log({
       userId: userId || 'anonymous',
@@ -938,16 +1148,21 @@ app.post('/api/auth/logout', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+// Per-feature parsers with larger limits where the payload genuinely needs it.
+// (Default app-wide limit is 256kb — see body parser registration above.)
+const ussdJsonParser = express.json({ limit: '64kb' });
+const aiChatJsonParser = express.json({ limit: '128kb' });
+
 app.use('/api/escalation', createEscalationRoutes(supabase, escalationWorkflow, auditLogService, wsManager));
 app.use('/api/intelligence', createIntelligenceRoutes(supabase, auditLogService));
 app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/ussd', createUSSDRoutes(ussdGateway, offlineCache));
+app.use('/api/ussd', ussdJsonParser, createUSSDRoutes(ussdGateway, offlineCache));
 
 // ============================================================================
 // AI SURVIVOR CHAT ENDPOINT
 // ============================================================================
 
-app.post('/api/ai/survivor-chat', defaultLimiter, async (req: Request, res: Response): Promise<void> => {
+app.post('/api/ai/survivor-chat', aiChatJsonParser, defaultLimiter, async (req: Request, res: Response): Promise<void> => {
   const requestId = (req as AppRequest).id;
   try {
     const { systemPrompt, messages } = req.body as {
@@ -1119,6 +1334,7 @@ async function startServer(): Promise<void> {
   await rateLimitingInitialization;
   await wsManager.initializeScaling();
   startNotificationWorker();
+  startAuditChainCron();
 
   await new Promise<void>((resolve, reject) => {
     const handleError = (error: Error) => {
@@ -1127,13 +1343,16 @@ async function startServer(): Promise<void> {
     };
 
     server.once('error', handleError);
-    server.listen(PORT, () => {
+    // Explicit IPv4 wildcard bind: Render's port scanner cannot detect the
+    // service if Node binds only to the IPv6 :: address.
+    server.listen(Number(PORT), HOST, () => {
       server.off('error', handleError);
       const protocol = server instanceof https.Server ? 'HTTPS' : 'HTTP';
       const websocketStatus = wsManager.getHealthStatus();
       const rateLimitStatus = getRateLimitStoreStatus();
       logger.info('AEGIS-AI server startup', {
         port: PORT,
+        host: HOST,
         protocol,
         environment: process.env.NODE_ENV,
         features: {
@@ -1163,6 +1382,13 @@ const gracefulShutdown = async (signal: string) => {
 
   server.close(async () => {
     logger.info('HTTP server closed');
+
+    try {
+      stopAuditChainCron();
+      logger.info('Audit-chain cron stopped');
+    } catch (error) {
+      logger.error('Error stopping audit-chain cron', error);
+    }
 
     try {
       await stopNotificationWorker();

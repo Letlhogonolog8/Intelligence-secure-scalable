@@ -234,6 +234,33 @@ const ADMIN_SIDEBAR: RoleSpecificSidebarConfig = {
   mobileCollapsedByDefault: true,
 };
 
+const CHW_SIDEBAR: RoleSpecificSidebarConfig = {
+  role: "chw",
+  sections: [
+    {
+      id: "field",
+      title: "Field Operations",
+      modules: ["dashboard", "survivor_support"],
+      collapsible: false,
+    },
+    {
+      id: "reporting",
+      title: "Referrals & Reporting",
+      modules: ["reporting"],
+      collapsible: true,
+      defaultExpanded: true,
+    },
+  ],
+  quickActions: ["survivor_support", "reporting"],
+  allowSearch: true,
+  allowFavorites: true,
+  allowRecents: true,
+  maxRecentItems: 4,
+  maxFavoriteItems: 3,
+  collapsedByDefault: false,
+  mobileCollapsedByDefault: true,
+};
+
 const ROLE_SIDEBAR_MAP: Record<UserRole, RoleSpecificSidebarConfig> = {
   survivor: SURVIVOR_SIDEBAR,
   counselor: COUNSELOR_SIDEBAR,
@@ -241,6 +268,7 @@ const ROLE_SIDEBAR_MAP: Record<UserRole, RoleSpecificSidebarConfig> = {
   police: POLICE_SIDEBAR,
   analyst: ANALYST_SIDEBAR,
   admin: ADMIN_SIDEBAR,
+  chw: CHW_SIDEBAR,
 };
 
 /**

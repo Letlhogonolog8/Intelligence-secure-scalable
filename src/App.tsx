@@ -23,6 +23,7 @@ const AuthenticationFlow = lazy(() => import("./pages/AuthenticationFlow"));
 const ProfileInitialization = lazy(() => import("./pages/ProfileInitialization"));
 const Admin = lazy(() => import("./pages/Admin"));
 const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
+const SilentSosDemo = lazy(() => import("./pages/SilentSosDemo"));
 
 const App = () => (
   <ErrorBoundary>
@@ -56,6 +57,7 @@ const App = () => (
                     <Route path="/app" element={<Index />} />
                     <Route path="/admin" element={<Admin />} />
                     <Route path="/impact" element={<ImpactDashboard />} />
+                    <Route path="/demo/silent-sos" element={<SilentSosDemo />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>

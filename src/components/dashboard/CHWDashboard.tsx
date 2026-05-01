@@ -77,7 +77,7 @@ const CHWDashboard: React.FC = () => {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [visitForm, setVisitForm] = useState({ location: "", survivorsReached: "", outcome: "" });
 
-  const { data: stats, isLoading } = useQuery({
+  const { data: _stats, isLoading } = useQuery({
     queryKey: ["chw-stats", user?.id],
     queryFn: () => fetchCHWStats(user?.id ?? ""),
     enabled: !!user?.id,

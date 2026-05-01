@@ -6,13 +6,18 @@ vi.unmock('@supabase/supabase-js');
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+// Run only when a dedicated Supabase test project is configured. The CI
+// workflow .github/workflows/integration-tests.yml sets these from
+// GitHub secrets prefixed with INTEGRATION_*.
+const shouldRun = Boolean(SUPABASE_URL && SUPABASE_KEY);
+
 interface TestUser {
   id: string;
   email: string;
   role: string;
 }
 
-describe.skip('Row Level Security (RLS) Policies', () => {
+describe.skipIf(!shouldRun)('Row Level Security (RLS) Policies', () => {
   let adminClient: SupabaseClient;
   let userClient: SupabaseClient;
   let testUsers: { counselor1: TestUser; counselor2: TestUser; survivor: TestUser };

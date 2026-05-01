@@ -1,0 +1,70 @@
+# Integration tests — RLS + edge functions
+# -----------------------------------------------------------------
+# Runs the integration suites that depend on a *real* Supabase project.
+# Triggers manually (workflow_dispatch) or on a nightly schedule, NOT on
+# every PR (so a broken test Supabase project does not block development).
+#
+# Required GitHub secrets (configure under Settings -> Secrets -> Actions):
+#   - INTEGRATION_SUPABASE_URL          # https://<ref>.supabase.co
+#   - INTEGRATION_SUPABASE_ANON_KEY     # client anon key
+#   - INTEGRATION_SUPABASE_SERVICE_KEY  # service-role key (read/write)
+#
+# These should point to a DEDICATED Supabase project — never the production
+# one. Spin up a free-tier project under the AEGIS-AI org named
+# `aegis-integration-tests`, run the migrations against it, and store the
+# values above.
+
+name: integration-tests
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily
+
+concurrency:
+  group: integration-tests
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.INTEGRATION_SUPABASE_URL }}
+      VITE_SUPABASE_KEY: ${{ secrets.INTEGRATION_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.INTEGRATION_SUPABASE_SERVICE_KEY }}
+      RUN_INTEGRATION_TESTS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sanity-check that the integration env vars are set
+        run: |
+          if [[ -z "${VITE_SUPABASE_URL}" || -z "${SUPABASE_SERVICE_ROLE_KEY}" ]]; then
+            echo "::error::Integration secrets not configured. See .github/workflows/integration-tests.yml header."
+            exit 1
+          fi
+
+      - name: Run RLS integration tests
+        run: npx vitest run src/lib/__tests__/rls.integration.test.ts --reporter=verbose
+
+      - name: Run edge-function integration tests
+        run: npx vitest run src/lib/__tests__/edge-function.integration.test.ts --reporter=verbose
+
+      - name: Upload junit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          path: |
+            test-results/
+            coverage/

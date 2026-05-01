@@ -452,6 +452,16 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
         "organizationName",
       ],
     },
+    chw: {
+      label: "Community Health Worker",
+      fields: [
+        "firstName",
+        "lastName",
+        "phoneNumber",
+        "title",
+        "organizationName",
+      ],
+    },
   };
 
   const roleInfo = activeRole ? roleSpecificFields[activeRole] : roleSpecificFields.survivor;

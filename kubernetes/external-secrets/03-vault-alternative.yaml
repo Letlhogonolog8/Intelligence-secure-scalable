@@ -1,0 +1,45 @@
+# Alternative: HashiCorp Vault backend.
+# Use this instead of the AWS files (01- and 02-) if you run Vault.
+#
+# Pre-requisites:
+#   - Vault server reachable at https://vault.aegis-ai.co.za
+#   - Kubernetes auth enabled (`vault auth enable kubernetes`)
+#   - Policy `aegis-prod` granting read on `kv/data/aegis/production`
+#   - Role `aegis-prod` bound to the `aegis-api` ServiceAccount in `aegis`
+#     namespace.
+
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: aegis-vault
+  namespace: aegis
+spec:
+  provider:
+    vault:
+      server: https://vault.aegis-ai.co.za
+      path: kv
+      version: v2
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: aegis-prod
+          serviceAccountRef:
+            name: aegis-api
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: aegis-secrets
+  namespace: aegis
+spec:
+  refreshInterval: 30m
+  secretStoreRef:
+    name: aegis-vault
+    kind: SecretStore
+  target:
+    name: aegis-secrets
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  dataFrom:
+    - extract:
+        key: aegis/production

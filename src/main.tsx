@@ -1,10 +1,18 @@
 
+import * as React from "react"
 import { createRoot } from "react-dom/client"
+import * as ReactDOM from "react-dom"
 import App from "./App.tsx"
 import "./index.css"
 import { initLogger } from "@/lib/logger"
 import { initDatadog } from "@/lib/datadog"
 import { initializeI18n } from "@/i18n"
+
+if (import.meta.env.DEV) {
+  void import("@axe-core/react").then((axe) => {
+    axe.default(React, ReactDOM, 1000)
+  })
+}
 
 const cleanupStaleServiceWorkers = async () => {
   if (!("serviceWorker" in navigator)) return

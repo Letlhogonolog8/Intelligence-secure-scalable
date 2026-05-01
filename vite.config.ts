@@ -39,10 +39,18 @@ export default defineConfig(() => ({
           }
           return `assets/[ext]/[name]-[hash][extname]`;
         },
-        manualChunks: (id) => {
+        manualChunks: (id): string | undefined => {
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'vendor-react';
+            // React core split off from router/query so the critical first
+            // paint can be cached independently of routing logic.
+            if (id.includes('/react/') || id.includes('/react-dom/')) {
+              return 'vendor-react-core';
+            }
+            if (id.includes('react-router')) {
+              return 'vendor-react-router';
+            }
+            if (id.includes('react-hook-form') || id.includes('@hookform/')) {
+              return 'vendor-forms';
             }
             if (id.includes('@radix-ui')) {
               return 'vendor-radix';
@@ -50,10 +58,10 @@ export default defineConfig(() => ({
             if (id.includes('framer-motion')) {
               return 'vendor-animation';
             }
-            if (id.includes('recharts') || id.includes('d3')) {
+            if (id.includes('recharts') || id.includes('victory') || id.includes('/d3-')) {
               return 'vendor-charts';
             }
-            if (id.includes('@supabase') || id.includes('supabase')) {
+            if (id.includes('@supabase') || id.includes('supabase-js')) {
               return 'vendor-supabase';
             }
             if (id.includes('@tanstack')) {
@@ -63,22 +71,44 @@ export default defineConfig(() => ({
               return 'vendor-socket';
             }
             if (id.includes('@xenova/transformers')) {
-              return 'vendor-ai';
+              return 'vendor-ai-transformers';
+            }
+            if (id.includes('@datadog/')) {
+              return 'vendor-datadog';
+            }
+            if (id.includes('@sentry/')) {
+              return 'vendor-sentry';
             }
             if (id.includes('i18next') || id.includes('react-i18next')) {
               return 'vendor-i18n';
             }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('date-fns')) {
+              return 'vendor-date';
+            }
+            if (id.includes('zod') || id.includes('joi')) {
+              return 'vendor-validation';
+            }
             return 'vendor-misc';
           }
+          // App-level chunks. Survivor / dashboard / analytics are kept as
+          // siblings (no cross-chunk import cycles) so Vite + Rollup can
+          // tree-shake aggressively without hoisting shared code.
           if (id.includes('src/components/admin')) {
             return 'chunk-admin';
           }
           if (id.includes('src/components/dashboard')) {
             return 'chunk-dashboard';
           }
-          if (id.includes('src/components/governance') || id.includes('src/components/analytics')) {
+          if (
+            id.includes('src/components/governance') ||
+            id.includes('src/components/analytics')
+          ) {
             return 'chunk-analytics';
           }
+          return undefined;
         },
       },
     },

@@ -381,6 +381,31 @@ export class WebSocketManager {
     return this.connectedUsers.size;
   }
 
+  /**
+   * Cluster-wide unique user count.
+   * Uses Socket.IO server-side rooms; each user joins `user:<id>` so we can
+   * ask the adapter for the room set across all instances.
+   */
+  public async getClusterConnectedUserCount(): Promise<number> {
+    try {
+      const sockets = await this.io.fetchSockets();
+      const userIds = new Set<string>();
+      for (const socket of sockets) {
+        for (const room of socket.rooms) {
+          if (typeof room === 'string' && room.startsWith('user:')) {
+            userIds.add(room);
+          }
+        }
+      }
+      return userIds.size;
+    } catch (error) {
+      logger.warn('Failed to fetch cluster-wide user count, falling back to local', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return this.connectedUsers.size;
+    }
+  }
+
   public getHealthStatus() {
     return {
       adapter: this.adapterEnabled ? 'redis' : 'local',
@@ -388,6 +413,7 @@ export class WebSocketManager {
       redisConfigured: Boolean(this.resolveRedisUrl()),
       socketCount: this.io.engine.clientsCount,
       userCount: this.connectedUsers.size,
+      userCountScope: this.adapterEnabled ? 'instance' : 'instance-only',
       batchQueueSize: this.messageBatch.length,
     };
   }

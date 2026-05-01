@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-worker
+  namespace: aegis
+  labels:
+    app: aegis-worker
+    component: notification-worker
+    version: v1
+spec:
+  # Single-replica by design: the in-process scheduler does not coordinate
+  # across pods. To run more than one replica, introduce a Redis-based lock or
+  # migrate to BullMQ workers. See RUNBOOK.md → "Notification queue".
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: aegis-worker
+  template:
+    metadata:
+      labels:
+        app: aegis-worker
+        component: notification-worker
+        version: v1
+    spec:
+      serviceAccountName: aegis-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: aegis-api:latest
+          imagePullPolicy: Always
+          command: ["node", "dist/server/worker.js"]
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NOTIFICATION_WORKER_ENABLED
+              value: "true"
+            - name: NOTIFICATION_WORKER_INTERVAL_MS
+              value: "15000"
+            - name: NOTIFICATION_WORKER_BATCH_SIZE
+              value: "25"
+          envFrom:
+            - configMapRef:
+                name: aegis-config
+            - secretRef:
+                name: aegis-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "process.exit(0)"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

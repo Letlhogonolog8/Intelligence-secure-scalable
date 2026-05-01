@@ -280,25 +280,28 @@ fi
 # ============================================================================
 section "8. DOCUMENTATION"
 
-# Check deployment guide
-if [ -f DEPLOYMENT_GUIDE.md ]; then
-  check_pass "DEPLOYMENT_GUIDE.md exists"
+if [ -f DEPLOYMENT.md ]; then
+  check_pass "DEPLOYMENT.md exists"
 else
-  check_fail "DEPLOYMENT_GUIDE.md missing"
+  check_fail "DEPLOYMENT.md missing"
 fi
 
-# Check audit report
-if [ -f SYSTEM_AUDIT_REPORT.md ]; then
-  check_pass "SYSTEM_AUDIT_REPORT.md exists"
+if [ -f RUNBOOK.md ]; then
+  check_pass "RUNBOOK.md exists"
 else
-  check_warn "SYSTEM_AUDIT_REPORT.md not found"
+  check_warn "RUNBOOK.md not found"
 fi
 
-# Check Phase 1 guide
-if [ -f PHASE1_IMPLEMENTATION_GUIDE.md ]; then
-  check_pass "PHASE1_IMPLEMENTATION_GUIDE.md exists"
+if [ -f OPERATOR_PLAYBOOK.md ]; then
+  check_pass "OPERATOR_PLAYBOOK.md exists"
 else
-  check_warn "PHASE1_IMPLEMENTATION_GUIDE.md not found"
+  check_warn "OPERATOR_PLAYBOOK.md not found"
+fi
+
+if [ -f SECURITY.md ]; then
+  check_pass "SECURITY.md exists"
+else
+  check_warn "SECURITY.md not found"
 fi
 
 # ============================================================================

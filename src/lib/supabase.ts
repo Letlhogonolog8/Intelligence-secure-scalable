@@ -72,6 +72,17 @@ export type Database = {
         language: string | null
         created_at: string | null
       }>
+      evidence_vault: TableDefinition<{
+        id: string
+        survivor_id: string | null
+        file_name: string
+        file_size: number
+        mime_type: string
+        storage_path: string
+        access_code: string
+        is_anonymous: boolean
+        uploaded_at: string
+      }>
       escalation_events: TableDefinition<{
         id: string
         case_id: string | null

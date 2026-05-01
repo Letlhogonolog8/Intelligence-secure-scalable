@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 1) Block accidental commits of secret-bearing files
+node scripts/scan-secrets.cjs || exit 1
+
+# 2) Run lint-staged + typecheck (existing pre-commit script)
+npm run pre-commit

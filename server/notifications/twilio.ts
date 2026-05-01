@@ -140,7 +140,7 @@ Check app for details.
     return this.sendSMS(ngoContactPhoneNumber, messageTemplate, 'assignment', caseId);
   }
 
-  private async sendSMS(
+  public async sendSMS(
     phoneNumber: string,
     message: string,
     messageType: string,

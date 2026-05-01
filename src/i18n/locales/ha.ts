@@ -1,0 +1,126 @@
+const ha = {
+  nav: {
+    command: "Umarni",
+    assurance: "Tawakkali",
+    operations: "Ayyuka",
+    about: "Game da",
+    signIn: "Shiga",
+    initializeProfile: "Faras da bayanan martaba",
+    emergency: "Gaggawa",
+  },
+  landing: {
+    tagline: "National Response Grid",
+    hero: "Tsara tsaro na amsa gaggawa ga zaluncin jinsi (GBV)",
+    subhero:
+      "AEGIS-AI yana haɗa sabis na goyan baya, 'yan sanda, da dabarun siyasa tare da ayyuka masu tsari, ƙimar nan take, da gwamnatin da ke da alhakin kadara.",
+    reportIncident: "Bayar da Rahoto",
+    getHelp: "Samu Taimako Yanzu",
+    stats: {
+      ops: "AYYUKAN GAGGAWA 24/7",
+      encryption: "MUTALA TSARIN AES-256",
+      compliance: "DOKAR POPIA",
+    },
+    capabilities: "Muhimman iyawa",
+    capabilitiesSubtitle: "Layers masu aiki don tsaro, gaggawa, da aminci.",
+    features: {
+      security: {
+        title: "Tsaro Na Matakin Umarni",
+        desc: "Samun damar zero-trust, bayanan bincike masu tsari, jihohin POPIA.",
+      },
+      ai: {
+        title: "Tsare Tsare Haɗarin AI",
+        desc: "Fifiko na lokaci-na-gaskiya tare da NLP da nazarin haɗari mai canji.",
+      },
+      emergency: {
+        title: "Amsar Gaggawa",
+        desc: "Faɗakarwa masu muhimmanci zuwa 'yan sanda, NGO, da mashawarta cikin daƙiƙu.",
+      },
+      survivor: {
+        title: "Layer Na Tsaro Ga Mai Rijiya",
+        desc: "Tsarin wurin matattu, vaults na martaba, samun da ya dace da rauni.",
+      },
+    },
+    cta: {
+      title: "Kunna ayyukan amsa da aka yarda da su",
+      subtitle: "An gina don daidaita gwajin gaggawa na GBV tare da AI mai alhakin kadara.",
+      button: "Buɗe Wuri Na Amsa",
+    },
+  },
+  roles: {
+    selectTitle: "Zaɓi rangon ku",
+    selectSubtitle: "Tabbatar da matsayi yana tabbatar da kowane mai amfani yana samun kwat da kawai abubuwan da ya dace.",
+    selectRole: "Zaɓi matsayi",
+    survivor: {
+      title: "Mai Rijiya",
+      desc: "Kai tsaye zuwa hadi da sarrafa al'amurin da ke da tsaro.",
+    },
+    counselor: {
+      title: "Mashawarci",
+      desc: "Masu ba da lafiya masu daida al'amura da shirin shiga tsakani.",
+    },
+    ngo: {
+      title: "Wakilin NGO",
+      desc: "Kungiyoyi masu haɗin gwiwa don sabunta magana da tsare-tsare.",
+    },
+    police: {
+      title: "Dan sanda",
+      desc: "Jami'an kiyaye haƙƙoɗi tare da samun bayanin bincike.",
+    },
+    analyst: {
+      title: "Mai Nazarin Bayanai",
+      desc: "Ƙungiyoyin da ke bibiyar yanayi da ingancin manufofi.",
+    },
+    admin: {
+      title: "Admin",
+      desc: "Masu mallakar tsarin da ke amintattu gwamnati, masu amfani, da kaidar dokoki.",
+    },
+    openAccess: "Buɗe dama",
+    restricted: "An takaita",
+    authRequired: "Ana buƙatar tantancewa",
+    loginOnly: "Shiga kawai da takaddun shaida masu izini",
+    openRegistration: "Bukatar rajista a buɗe",
+    registrationAvailable: "Rajista da shiga suna nan",
+    selfRegistration: "Rajista kai",
+    credentialLogin: "Shiga da takaddun shaida",
+    adminApproval: "An'amincewar admin",
+    credentialOnly: "Takaddun shaida kawai",
+    restrictedAccess: "An takaita samun dama",
+    orgScoped: "Iyaka na kungiya",
+    auditLogging: "Rajista na bincike",
+    chooseRole: "Zaɓi matsayi don ganin matakan tsaro.",
+    credentialRequired: "Ana buƙatar takaddun shaida",
+    securityLevel: "Matakin Tsaro",
+    standard: "Na yau da kullun",
+    high: "Babba",
+  },
+  common: {
+    loading: "Ana loda...",
+    error: "Wani abu ya tafi kuskure",
+    retry: "Sake gwadawa",
+    back: "Baya",
+    backToLanding: "Komawa gida",
+    submit: "Aika",
+    cancel: "Soke",
+    save: "Ajiye",
+    close: "Rufe",
+  },
+  survivor: {
+    welcome: "Barka da zuwa",
+    secureEnv: "Muhallin AI Mai Tsaro",
+    profileActive:
+      "Martabar AEGIS mai tsaro na ku tana aiki. Samu goyan baya mai tausayi, bi ci gaba, kuma haɗu da taimakon nan take.",
+    getHelp: "Samu Taimako",
+    startChat: "Fara Tattaunawa",
+    voiceReport: "Rahoto da Murya",
+    voiceReportSub: "Fadi rahotonku kowace harshe — babu buƙatar rubutu",
+    caseTracker: "Mai bibiyan Al'amari",
+    aiPulse: "Lafiya ta AI",
+    wellbeingIndex: "Alama Larus",
+    secureAlerts: "Faɗakarwu Masu Tsaro",
+    healingLibrary: "Tushen Adana",
+    peerSupport: "Goyon baya daga mazoya",
+    ussdAccess: "Umurnin Goyon Baya Na USSD",
+  },
+};
+
+export default ha;

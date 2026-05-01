@@ -384,10 +384,60 @@ Deno.serve(async (req: Request) => {
     const responseLanguageName = LANGUAGE_LABELS[responseLanguage] ?? "English";
 
     if (request_type === "delete_data") {
-        // Simple mock for now, can be expanded
-        return new Response(JSON.stringify({ success: true, message: "Data deletion request received" }), {
+      const { error: edgeDelErr } = await supabase
+        .from("survivor_chat_messages")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (edgeDelErr) {
+        console.error("delete_data survivor_chat_messages:", edgeDelErr);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Could not delete encrypted chat history. Ensure the latest database migration is applied.",
+          }),
+          {
+            status: 200,
             headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) },
+          },
+        );
+      }
+
+      const { data: survivorRow } = await supabase
+        .from("survivors")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (survivorRow?.id) {
+        const { error: rpcErr } = await supabase.rpc("delete_survivor_data", {
+          p_survivor_id: survivorRow.id,
+          p_keep_audit_trail: false,
         });
+        if (rpcErr) {
+          console.warn("delete_survivor_data RPC:", rpcErr);
+        }
+      }
+
+      const { error: logErr } = await supabase.from("data_deletion_requests").insert({
+        user_id: user.id,
+        survivor_id: survivorRow?.id ?? null,
+        status: "completed",
+        reason: "self_service_survivor_chat_edge",
+        processed_at: new Date().toISOString(),
+      });
+      if (logErr) {
+        console.warn("data_deletion_requests log:", logErr);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message:
+            "Your AEGIS edge chat history has been deleted. Linked survivor profile data was queued for erasure where applicable.",
+        }),
+        { headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) } },
+      );
     }
 
     if (!message) {

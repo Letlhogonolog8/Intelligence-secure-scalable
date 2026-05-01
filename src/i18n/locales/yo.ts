@@ -1,0 +1,126 @@
+const yo = {
+  nav: {
+    command: "Àṣẹ",
+    assurance: "Ìdánilójú",
+    operations: "Iṣẹ́",
+    about: "Nípa",
+    signIn: "Wọlé",
+    initializeProfile: "Bẹ̀rẹ̀ Àpọn",
+    emergency: "Ìpalára",
+  },
+  landing: {
+    tagline: "Nẹtiwọ́ọ̀kì Agbára-Òde Orílẹ̀",
+    hero: "Àtìlẹyìn ààbò fún ìdáhùn àjìjọ sí GBV",
+    subhero:
+      "AEGIS-AI ń sopọ̀ ọ̀nà ìrànwọ́ fún àwọn tí ó lọ síwájú, ọlọ́pàá, àti ọgbọ́n òfin pẹ̀lú iṣẹ́ tí a fi ọ̀rọ̀ ààbò sí, gbígbé ní àkókò àti ìjọba tí a lè kọ",
+    reportIncident: "Ṣàfihàn Ìṣẹ̀lẹ̀",
+    getHelp: "Gba Ìrànwọ́ Nísinsin",
+    stats: {
+      ops: "IṢẸ́ ÀJÌJỌ 24/7",
+      encryption: "ÀÀBÒ AES-256",
+      compliance: "Ìbámu pẹ̀lú POPIA",
+    },
+    capabilities: "Àǹfààní Pàtàkì",
+    capabilitiesSubtitle: "Ìpele tí a kọ fún ààbò, yára, àti ìgbàgbọ́.",
+    features: {
+      security: {
+        title: "Ààbò Ìpele Àṣẹ",
+        desc: "Àwọlé tí kò sí ẹlẹ́rí, àkọsílẹ̀ tí a fi ààbò sí, ìjọba tí o bá POPIA mu.",
+      },
+      ai: {
+        title: "Àtúnṣe Ẹ̀rọ Ìmọ̀ AI",
+        desc: "Àkọ́kọ́ ní àkókò pẹ̀lú NLP àti ùwọ̀n ẹ̀rọ tí ń yí padà.",
+      },
+      emergency: {
+        title: "Ìdáhùn Àjìjọ",
+        desc: "Ìkìlọ̀ tí á gbé sí ọlọ́pàá, NGO, àti àwọn amọja ní àáké.",
+      },
+      survivor: {
+        title: "Ìpele Ààbò Olùdásílẹ̀",
+        desc: "Ààbò ibi tí a fipamọ́, àwọn apò àpọ̀n, àwọlé tí ó rọrun fún ẹni tí ó pa.",
+      },
+    },
+    cta: {
+      title: "Mú àwọn ìlọsíwájú ìdáhùn tí a gbẹ́kẹ̀lé",
+      subtitle: "A kọ láti bá ìdáhùn GBV àjìjọ mu pẹ̀lú ọgbọ́n AI tí a lè rí i.",
+      button: "Ṣí Kọ́nsọ́ọ̀lì Ìdáhùn",
+    },
+  },
+  roles: {
+    selectTitle: "Yan ipò rẹ",
+    selectSubtitle: "Ìmúdúró nípa ipò ń dáàbò bó ti yẹ kí olùmúlò kọ̀ ẹ̀kúnrẹ́rẹ́ àti dátà.",
+    selectRole: "Yan ipò",
+    survivor: {
+      title: "Olùdásílẹ̀",
+      desc: "Àwọlé tààrà sí orísun àti ìdárí ṣẹlẹ̀ tí a da mọ́.",
+    },
+    counselor: {
+      title: "Olùdámọ̀ràn",
+      desc: "Àwọn oògùn ń bá ṣẹlẹ̀ àti ètò ìfihàn mu.",
+    },
+    ngo: {
+      title: "Olùdápọ̀ NGO",
+      desc: "Àjọ tí ń fíranṣẹ àti ààbò ran àwọn ènìyàn lọ́wọ́.",
+    },
+    police: {
+      title: "Ọlọ́pàá",
+      desc: "Àwọn oníṣọ́ òfin pẹ̀lú àwọlé ọgbọ́n àyẹ̀wò.",
+    },
+    analyst: {
+      title: "Olùtúnbọ̀ Dátà",
+      desc: "Ẹgbẹ́ tí ń wo àṣà àti èrè òfin.",
+    },
+    admin: {
+      title: "Alákòóso",
+      desc: "Àwọn olùdámọ̀ràn ẹ̀rọ — ìjọba, àwọn olùmúlò, àti ìbámu.",
+    },
+    openAccess: "Àwọlé sílẹ̀",
+    restricted: "A dènà",
+    authRequired: "Ìfọwọ́sí nílò",
+    loginOnly: "Wọlé pẹ̀lú àwọn àmì ìdánimọ̀̀ tí a fọwọ́ sí",
+    openRegistration: "Ìforúkọsílẹ̀ sílẹ̀",
+    registrationAvailable: "Ìforúkọsílẹ̀ àti ìwọlé wà",
+    selfRegistration: "Ìforúkọsílẹ̀ fún ara ẹni",
+    credentialLogin: "Ìwọlé pẹ̀lú àwọn àmì",
+    adminApproval: "Ìfọwọ́ sí alákòóso",
+    credentialOnly: "Àwọn àmì nìkan",
+    restrictedAccess: "Àwọlé tí a dènà",
+    orgScoped: "Nínú àjọ",
+    auditLogging: "Àkọsílẹ̀ àyẹ̀wò",
+    chooseRole: "Yan ipò láti wo ìpele ààbò.",
+    credentialRequired: "Àwọn àmì nílò",
+    securityLevel: "Ìpele Ààbò",
+    standard: "Àádántó",
+    high: "Gíga",
+  },
+  common: {
+    loading: "Ń kóọ̀...",
+    error: "Nkankan ò yan",
+    retry: "Gbìyànjú sí i",
+    back: "Padà",
+    backToLanding: "Padà sí ojú ọ̀nà",
+    submit: "Ránṣẹ́",
+    cancel: "Fagilé",
+    save: "Fipamọ́",
+    close: "Pa",
+  },
+  survivor: {
+    welcome: "Káàbọ̀ sílẹ̀",
+    secureEnv: "Àyíká AI Tí A Dá Mọ́",
+    profileActive:
+      "Àpọ̀n AEGIS rẹ ń ṣiṣẹ́. Gba ìrànwọ́ tí ó jẹ́ kí ẹni tí ó pa máa dùn, tọ̀ ṣiṣẹ́ rẹ, í sì so pẹ̀lú ìrànwọ́.",
+    getHelp: "Gba Ìrànwọ́",
+    startChat: "Bẹ̀rẹ̀ Ìfọ̀rọ̀wérọ̀",
+    voiceReport: "Ìjábọ̀ Ohùn",
+    voiceReportSub: "Sọ̀rọ̀ nípa ìjábọ̀ rẹ ní èdè kankan — kò sí ní kọ̀wé",
+    caseTracker: "Olùtọ̀ Ìpo Ṣẹlẹ̀",
+    aiPulse: "Èsì Ìlera AI",
+    wellbeingIndex: "Ìwọ̀n Ìlera",
+    secureAlerts: "Ìkìlọ̀ Tí A Dá Mọ́",
+    healingLibrary: "Ilé-ìwé Ìdàgbàsókè",
+    peerSupport: "Ìrànwọ́ Ọ̀dọ̀",
+    ussdAccess: "Àṣẹ USSD Títẹ̀sí",
+  },
+};
+
+export default yo;
