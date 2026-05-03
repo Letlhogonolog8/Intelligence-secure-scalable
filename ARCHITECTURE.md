@@ -50,14 +50,14 @@ flowchart TB
 
 ## Key runtime paths
 
-| Path | Role |
-|------|------|
-| `POST /api/ussd/test` | Local USSD smoke (`npm run ussd:local`) |
-| `POST /api/ussd/telkom/callback` | Production Telkom-signed webhook |
-| `GET/POST /api/whatsapp/*` | Meta WhatsApp Business webhooks |
-| `POST` survivor chat (edge) | `supabase/functions/aegis-survivor-chat` — Groq + encrypted persistence in `survivor_chat_messages` |
-| `server/intelligence/riskScoring.ts` | Severity: Hugging Face + Xenova + heuristics |
-| `server/routes/whatsappRoutes.ts` | Anthropic Haiku triage; sessions in **Redis** when `REDIS_URL` / `REDIS_HOST` set |
+| Path                                 | Role                                                                                                |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `POST /api/ussd/test`                | Local USSD smoke (`npm run ussd:local`)                                                             |
+| `POST /api/ussd/telkom/callback`     | Production Telkom-signed webhook                                                                    |
+| `GET/POST /api/whatsapp/*`           | Meta WhatsApp Business webhooks                                                                     |
+| `POST` survivor chat (edge)          | `supabase/functions/aegis-survivor-chat` — Groq + encrypted persistence in `survivor_chat_messages` |
+| `server/intelligence/riskScoring.ts` | Severity: Hugging Face + Xenova + heuristics                                                        |
+| `server/routes/whatsappRoutes.ts`    | Anthropic Haiku triage; sessions in **Redis** when `REDIS_URL` / `REDIS_HOST` set                   |
 
 ## Data stores
 
@@ -77,7 +77,7 @@ flowchart TB
 
 ## Related docs
 
-- `AGENTS.md` — repo map and commands  
-- `DEPLOYMENT.md` — canonical targets  
-- `SECURITY.md` — secrets and compliance checklist  
-- `RUNBOOK.md` / `OPERATOR_PLAYBOOK.md` — operations  
+- `AGENTS.md` — repo map and commands
+- `DEPLOYMENT.md` — canonical targets
+- `SECURITY.md` — secrets and compliance checklist
+- `RUNBOOK.md` / `OPERATOR_PLAYBOOK.md` — operations

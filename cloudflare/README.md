@@ -6,10 +6,10 @@ rules in front of the API. It is the canonical implementation of the
 
 ## Layout
 
-| File | Purpose |
-|---|---|
-| `waf-rules.tf` | Custom rules, rate limits, managed ruleset overrides |
-| `apply.sh` | Convenience wrapper around `terraform init/plan/apply` |
+| File           | Purpose                                                |
+| -------------- | ------------------------------------------------------ |
+| `waf-rules.tf` | Custom rules, rate limits, managed ruleset overrides   |
+| `apply.sh`     | Convenience wrapper around `terraform init/plan/apply` |
 
 ## Quick start
 
@@ -33,35 +33,35 @@ terraform apply
 
 ## What gets provisioned
 
-| Layer | Rule |
-|---|---|
-| Custom (firewall) | Block sanctioned countries (opt-in) |
-| Custom (firewall) | Managed challenge for higher-risk countries (opt-in) |
-| Custom (firewall) | Block scanners hitting `/admin`, `/.env`, `/.git/` |
+| Layer             | Rule                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| Custom (firewall) | Block sanctioned countries (opt-in)                                                           |
+| Custom (firewall) | Managed challenge for higher-risk countries (opt-in)                                          |
+| Custom (firewall) | Block scanners hitting `/admin`, `/.env`, `/.git/`                                            |
 | Custom (firewall) | Block mutating `/api/*` with no `Origin`/`Referer` (excludes USSD/Twilio webhooks/CSP report) |
-| Custom (firewall) | Bot challenge on `/api/auth/*` when bot score < 30 |
-| Rate limit | `/api/auth/*` — 10/min/IP |
-| Rate limit | `/api/ussd` — 60/min/IP |
-| Rate limit | `/api/*` — 600/min/IP |
-| Managed | Cloudflare Managed Ruleset (DDoS, common exploits) |
-| Managed | OWASP Core Ruleset (CRS) |
+| Custom (firewall) | Bot challenge on `/api/auth/*` when bot score < 30                                            |
+| Rate limit        | `/api/auth/*` — 10/min/IP                                                                     |
+| Rate limit        | `/api/ussd` — 60/min/IP                                                                       |
+| Rate limit        | `/api/*` — 600/min/IP                                                                         |
+| Managed           | Cloudflare Managed Ruleset (DDoS, common exploits)                                            |
+| Managed           | OWASP Core Ruleset (CRS)                                                                      |
 
 ## If you do not use Terraform
 
 The same rules can be applied via the dashboard:
 
-* Cloudflare → **Security → WAF**
-  * **Custom rules** tab → recreate the four entries above
-  * **Rate limiting rules** tab → recreate the three entries above
-  * **Managed rules** tab → enable Cloudflare Managed Ruleset + OWASP Core Ruleset
-* Cloudflare → **Security → Bots** → enable Bot Fight Mode (free) or Super Bot
+- Cloudflare → **Security → WAF**
+  - **Custom rules** tab → recreate the four entries above
+  - **Rate limiting rules** tab → recreate the three entries above
+  - **Managed rules** tab → enable Cloudflare Managed Ruleset + OWASP Core Ruleset
+- Cloudflare → **Security → Bots** → enable Bot Fight Mode (free) or Super Bot
   Fight Mode (Pro)
 
 The Terraform path is preferred because it:
 
-* keeps the rules in version control,
-* lets you replay them on a new zone (staging vs production),
-* prevents drift between operators.
+- keeps the rules in version control,
+- lets you replay them on a new zone (staging vs production),
+- prevents drift between operators.
 
 ## After applying
 

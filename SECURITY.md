@@ -30,26 +30,26 @@ only for known-safe placeholders.
 
 ### Storage
 
-| Environment | Secret store |
-|---|---|
-| Local development | `.env.local` (gitignored), copied from `.env.example` |
-| Render (staging) | Render → Environment Group, all values marked `sync: false` |
-| Render (production) | same, separate environment group |
-| Kubernetes | `Secret/aegis-secrets` (see `kubernetes/02-configmap-secrets.yaml`); production should use ExternalSecrets / sealed-secrets pointing at AWS Secrets Manager or HashiCorp Vault |
-| GitHub Actions | Repository or Environment secrets, never hardcoded in workflows |
+| Environment         | Secret store                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Local development   | `.env.local` (gitignored), copied from `.env.example`                                                                                                                          |
+| Render (staging)    | Render → Environment Group, all values marked `sync: false`                                                                                                                    |
+| Render (production) | same, separate environment group                                                                                                                                               |
+| Kubernetes          | `Secret/aegis-secrets` (see `kubernetes/02-configmap-secrets.yaml`); production should use ExternalSecrets / sealed-secrets pointing at AWS Secrets Manager or HashiCorp Vault |
+| GitHub Actions      | Repository or Environment secrets, never hardcoded in workflows                                                                                                                |
 
 ### Rotation cadence
 
-| Secret | Rotation | Notes |
-|---|---|---|
-| `SUPABASE_SERVICE_ROLE_KEY` | Quarterly + on suspected compromise | Regenerate in Supabase Dashboard → Settings → API |
-| `VITE_SUPABASE_KEY` (anon) | Quarterly | Public, but rotate alongside the service role key |
-| `ENCRYPTION_KEY` / `CHAT_ENCRYPTION_KEY` | Every 6 months | Coordinated key rotation procedure required; new key encrypts new data, old key remains accessible until re-encryption finishes |
-| `JWT_SECRET` / `REFRESH_TOKEN_SECRET` | Every 6 months | Rotation invalidates active sessions |
-| `TELKOM_WEBHOOK_SECRET` | On supplier change + every 12 months | |
-| `TWILIO_AUTH_TOKEN` | Every 6 months + on suspected compromise | |
-| `METRICS_TOKEN` | Quarterly | |
-| Database password (`DB_PASSWORD`) | Every 90 days | If running self-managed Postgres |
+| Secret                                   | Rotation                                 | Notes                                                                                                                           |
+| ---------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_SERVICE_ROLE_KEY`              | Quarterly + on suspected compromise      | Regenerate in Supabase Dashboard → Settings → API                                                                               |
+| `VITE_SUPABASE_KEY` (anon)               | Quarterly                                | Public, but rotate alongside the service role key                                                                               |
+| `ENCRYPTION_KEY` / `CHAT_ENCRYPTION_KEY` | Every 6 months                           | Coordinated key rotation procedure required; new key encrypts new data, old key remains accessible until re-encryption finishes |
+| `JWT_SECRET` / `REFRESH_TOKEN_SECRET`    | Every 6 months                           | Rotation invalidates active sessions                                                                                            |
+| `TELKOM_WEBHOOK_SECRET`                  | On supplier change + every 12 months     |                                                                                                                                 |
+| `TWILIO_AUTH_TOKEN`                      | Every 6 months + on suspected compromise |                                                                                                                                 |
+| `METRICS_TOKEN`                          | Quarterly                                |                                                                                                                                 |
+| Database password (`DB_PASSWORD`)        | Every 90 days                            | If running self-managed Postgres                                                                                                |
 
 ### What to do if a secret is leaked
 

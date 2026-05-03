@@ -5,7 +5,6 @@ production-readiness audit into concrete, sequenced steps with
 verifications. Work top-to-bottom: items 1, 2 and 4 are pre-launch
 blockers; the rest can be done in parallel with the launch.
 
-
 | #   | Item                                          | Pre-launch?                   | Owner          | Est. effort     |
 | --- | --------------------------------------------- | ----------------------------- | -------------- | --------------- |
 | 1   | Rotate every credential in `.env`             | yes                           | Platform owner | 2–3 h           |
@@ -16,7 +15,6 @@ blockers; the rest can be done in parallel with the launch.
 | 6   | Migrate the notification worker to BullMQ     | post-launch                   | Backend team   | 1–2 sprints     |
 | 7   | Supabase PITR + off-site backups + DR drill   | yes (PITR), quarterly (drill) | Platform owner | 4 h + recurring |
 | 8   | Un-skip RLS / edge-function integration tests | yes (CI)                      | Backend team   | 2 h             |
-
 
 There is also a **pre-flight check** at the bottom of this document
 (`scripts/check-env.cjs`) you should run before every deploy.
@@ -65,58 +63,60 @@ re-authenticate).
 
 1. Supabase Dashboard → your project → **Settings → API**.
 2. Under **Project API keys**, click **Reset** next to:
-  - `anon` (this becomes the new `VITE_SUPABASE_KEY`)
-  - `service_role` (this becomes the new `SUPABASE_SERVICE_ROLE_KEY`)
+
+- `anon` (this becomes the new `VITE_SUPABASE_KEY`)
+- `service_role` (this becomes the new `SUPABASE_SERVICE_ROLE_KEY`)
+
 3. Under **JWT Settings**, click **Generate a new JWT secret**.
-  *Effect: every existing access token is immediately invalid; users
-   will be logged out.* Plan a maintenance window or do this just before
+   _Effect: every existing access token is immediately invalid; users
+   will be logged out._ Plan a maintenance window or do this just before
    step 1.6 below.
 4. Copy each new value into your secret manager (entry name: `aegis/production`).
 5. **Confirm old keys are dead**: in a clean shell,
-  ```bash
-   curl -H "apikey: <OLD_ANON_KEY>" https://<ref>.supabase.co/rest/v1/profiles
-   # expected: {"message":"Invalid API key"}
-  ```
+
+```bash
+ curl -H "apikey: <OLD_ANON_KEY>" https://<ref>.supabase.co/rest/v1/profiles
+ # expected: {"message":"Invalid API key"}
+```
 
 #### Supabase — database password
 
 1. Supabase Dashboard → **Settings → Database → Connection string**.
 2. Click **Reset database password**, copy the new value as
-  `DB_PASSWORD`. Update the value in your secret manager.
+   `DB_PASSWORD`. Update the value in your secret manager.
 3. Restart any service that holds long-lived Postgres connections (the
-  API). In Kubernetes:
+   API). In Kubernetes:
 
 #### Twilio — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
 
 1. Twilio Console → **Account → API keys & tokens**.
 2. Under **Auth tokens**, click **Create new** to generate a secondary
-  token, then **Promote** it. Wait until production is using the new
+   token, then **Promote** it. Wait until production is using the new
    token, then **Revoke** the old one.
 3. The Account SID does not change; copy the new auth token into your
-  secret manager as `TWILIO_AUTH_TOKEN`.
+   secret manager as `TWILIO_AUTH_TOKEN`.
 4. Verify by sending a synthetic SMS via the staging API and confirming
-  the message lands in Twilio's logs with the new SID-prefixed message
+   the message lands in Twilio's logs with the new SID-prefixed message
    ID.
 
 #### Telkom — `TELKOM_API_KEY`, `TELKOM_WEBHOOK_SECRET`
 
 1. Log in to the Telkom developer portal (`https://developer.telkom.co.za`).
 2. Open the AEGIS-AI app → **API keys** → click **Rotate**. Copy the new
-  key into your secret manager as `TELKOM_API_KEY`.
+   key into your secret manager as `TELKOM_API_KEY`.
 3. The `TELKOM_WEBHOOK_SECRET` is **AEGIS-side**, not Telkom-side. Use the
-  value generated in step 1.1, but you must re-share it with Telkom so
+   value generated in step 1.1, but you must re-share it with Telkom so
    they sign incoming webhook requests with the same secret. Telkom
    typically expects this via an HMAC `X-Telkom-Signature` header — see
    `server/routes/telkomWebhook.ts` for the current verification logic.
 4. Verify by sending a signed test webhook from Telkom's portal and
-  confirming `200 OK` from `/api/telkom-webhook`. A `401` means the
+   confirming `200 OK` from `/api/telkom-webhook`. A `401` means the
    secrets are out of sync.
 
 #### JWT, refresh, encryption, metrics, webhook secrets
 
 All of these are AEGIS-minted. You already generated them in step 1.1.
 Push them into your secret manager:
-
 
 | Variable                | Source                 |
 | ----------------------- | ---------------------- |
@@ -127,9 +127,8 @@ Push them into your secret manager:
 | `METRICS_TOKEN`         | `generate-keys` output |
 | `TELKOM_WEBHOOK_SECRET` | `generate-keys` output |
 
-
 > ⚠️ `**ENCRYPTION_KEY` and `CHAT_ENCRYPTION_KEY` need a re-encryption
-> migration if any data was already encrypted with the old keys.** If
+> migration if any data was already encrypted with the old keys.\*\* If
 > this is a fresh deployment, skip ahead. If you have existing data,
 > open `server/security/encryptionService.ts` and follow the
 > `rotateActiveKey()` procedure (it dual-decrypts during the rotation
@@ -138,12 +137,12 @@ Push them into your secret manager:
 ### 1.3 Push the new values into your platform
 
 - **Render**: Dashboard → service → **Environment** → bulk-edit, paste
-the lines.
+  the lines.
 - **Kubernetes** (preferred, see Section 4): values are read from AWS
-Secrets Manager / Vault via External Secrets Operator. Update the
-upstream secret only.
+  Secrets Manager / Vault via External Secrets Operator. Update the
+  upstream secret only.
 - **Docker Compose**: edit `/etc/aegis-ai/aegis-ai.env`, then
-`docker compose -f docker-compose.prod.yml up -d`.
+  `docker compose -f docker-compose.prod.yml up -d`.
 
 ### 1.4 Verify
 
@@ -169,7 +168,6 @@ Add an entry to `SECURITY.md` → "Rotation cadence" with date, operator,
 and which secrets were rotated. Set a calendar reminder for the next
 rotation:
 
-
 | Secret                       | Cadence   |
 | ---------------------------- | --------- |
 | Encryption / chat-encryption | annual    |
@@ -178,7 +176,6 @@ rotation:
 | DB password                  | annual    |
 | Telkom API key               | annual    |
 | Webhook secrets              | annual    |
-
 
 ### 1.6 Forced re-authentication
 
@@ -197,7 +194,6 @@ legally required.
 
 ### 2.1 Decide the values
 
-
 | Variable                     | Source                                                                                                                                                                                                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_POPIA_REGISTRATION_ID` | The Information Regulator's portal at [https://inforegulator.org.za/](https://inforegulator.org.za/) issues a registration ID once your responsible party / DPO is registered. Format is typically `IR-YYYY-NNNNNN`. |
@@ -205,14 +201,13 @@ legally required.
 | `VITE_DPO_EMAIL`             | A monitored mailbox; do **not** use a personal alias. Suggested: `dpo@aegis-ai.co.za`.                                                                                                                               |
 | `VITE_DPO_PHONE`             | Direct number, including country code, e.g. `+27 11 555 0100`.                                                                                                                                                       |
 
-
 ### 2.2 Register if you have not
 
 1. Go to [https://inforegulator.org.za/](https://inforegulator.org.za/).
 2. Complete the **Section 55** registration of an Information Officer /
-  DPO (free, but takes 4–8 weeks).
+   DPO (free, but takes 4–8 weeks).
 3. While the registration is pending, set
-  `VITE_POPIA_REGISTRATION_ID="PENDING-<applicant-reference>"` so the
+   `VITE_POPIA_REGISTRATION_ID="PENDING-<applicant-reference>"` so the
    UI does not render an empty placeholder.
 
 ### 2.3 Apply the values
@@ -222,11 +217,11 @@ so they must be set in the **frontend** build step, not just at API
 runtime.
 
 - **GitHub Actions**: add the four variables as repository secrets and
-reference them in `.github/workflows/ci-cd.yml` under
-`frontend-image` build step → `build-args`. The `Dockerfile.frontend.nginx`
-already accepts them.
+  reference them in `.github/workflows/ci-cd.yml` under
+  `frontend-image` build step → `build-args`. The `Dockerfile.frontend.nginx`
+  already accepts them.
 - **Local Vite build**: put them in `.env.production.local` (which is
-git-ignored).
+  git-ignored).
 
 ### 2.4 Verify
 
@@ -259,21 +254,25 @@ alternatives.
 ### 3.1 Path A — Cloudflare (recommended, fastest)
 
 1. **Add the domain** to Cloudflare:
-  - Dashboard → **Add a Site** → enter `aegis-ai.co.za`.
-  - Copy the two NS records Cloudflare gives you and update your
+
+- Dashboard → **Add a Site** → enter `aegis-ai.co.za`.
+- Copy the two NS records Cloudflare gives you and update your
   registrar (Hetzner, GoDaddy, …).
-  - Wait for the zone status to flip to **Active** (5 min – 24 h).
+- Wait for the zone status to flip to **Active** (5 min – 24 h).
+
 2. **Proxy the API**:
-  - **DNS** tab → ensure the `api` record (CNAME or A) is set to
-   **Proxied** (orange cloud).
+
+- **DNS** tab → ensure the `api` record (CNAME or A) is set to
+  **Proxied** (orange cloud).
+
 3. **Apply the WAF rules**: this repo ships
-  `cloudflare/waf-rules.tf` with the canonical rule set. Run:
+   `cloudflare/waf-rules.tf` with the canonical rule set. Run:
    This creates: custom firewall rules (admin-path block, scanner
-   block, Origin/Referer requirement on mutating `/api/`*, bot
-   challenge on `/api/auth/`*), three rate-limit rules, and enables
+   block, Origin/Referer requirement on mutating `/api/`_, bot
+   challenge on `/api/auth/`_), three rate-limit rules, and enables
    Cloudflare Managed + OWASP Core rulesets.
 4. **Lock down the origin**: edit your ingress / load balancer to only
-  accept connections from Cloudflare IPs. Cloudflare publishes the
+   accept connections from Cloudflare IPs. Cloudflare publishes the
    list at [https://www.cloudflare.com/ips/](https://www.cloudflare.com/ips/). Example NGINX:
    For Kubernetes, add a `NetworkPolicy` that only permits ingress
    from those CIDRs.
@@ -281,19 +280,21 @@ alternatives.
 ### 3.2 Path B — AWS WAF
 
 1. **WebACL**: AWS Console → **WAF & Shield → Web ACLs → Create
-  web ACL** in the same region as your ALB.
+   web ACL** in the same region as your ALB.
 2. **Managed rule groups** to add:
-  - AWS-AWSManagedRulesCommonRuleSet
-  - AWS-AWSManagedRulesAmazonIpReputationList
-  - AWS-AWSManagedRulesKnownBadInputsRuleSet
+
+- AWS-AWSManagedRulesCommonRuleSet
+- AWS-AWSManagedRulesAmazonIpReputationList
+- AWS-AWSManagedRulesKnownBadInputsRuleSet
+
 3. **Custom rules**: replicate the four custom rules from
-  `cloudflare/waf-rules.tf` (admin path block, scanner block,
+   `cloudflare/waf-rules.tf` (admin path block, scanner block,
    Origin/Referer requirement, auth bot challenge). Use AWS WAF's
    "Rate-based" rules for the three rate-limit rules.
 4. **Associate** the WebACL with the ALB / API Gateway that fronts
-  the API.
+   the API.
 5. **Enable logging** to a Kinesis Firehose → S3 bucket; ingest into
-  Datadog or Athena.
+   Datadog or Athena.
 
 ### 3.3 Path C — Google Cloud Armor
 
@@ -305,14 +306,14 @@ alternatives.
 ### 3.4 Verify (any path)
 
 - Run a synthetic from a country in `blocked_countries` (use a VPN); the
-WAF should return `403`.
+  WAF should return `403`.
 - Loop `/api/auth/login` 11×/min from one IP — expect blocks after the
-10th attempt.
+  10th attempt.
 - Send `GET /admin` — expect `403`.
 - Pull the WAF event log; confirm rules fire.
 - Confirm the in-app rate limiter (Redis-based) only kicks in for
-authenticated users — the WAF should be catching unauthenticated
-abuse before it reaches the API.
+  authenticated users — the WAF should be catching unauthenticated
+  abuse before it reaches the API.
 
 ---
 
@@ -426,39 +427,41 @@ even if you have not finished items 1–4.
 ### 5.1 Procurement
 
 1. Use `[docs/PENTEST_RFP.md](docs/PENTEST_RFP.md)` — it is
-  pre-scoped to AEGIS-AI's architecture (USSD, Twilio, Supabase RLS,
+   pre-scoped to AEGIS-AI's architecture (USSD, Twilio, Supabase RLS,
    Kubernetes RBAC, Cloudflare WAF, encrypted-at-rest fields).
 2. Send to **at least three** vendors. Suggested South-African options:
-  - MWR / SensePost
-  - Cyanre / DDPro
-  - Galix
-  - Performanta
-   International: NCC Group, Bishop Fox, Trail of Bits.
+
+- MWR / SensePost
+- Cyanre / DDPro
+- Galix
+- Performanta
+  International: NCC Group, Bishop Fox, Trail of Bits.
+
 3. Insist on CREST or OSCP-credentialled testers. Reject CV-light
-  responses.
+   responses.
 4. Sign NDA + Statement of Work. Set fee ≤ R 250 000 for a 5-day
-  grey-box engagement; budget a re-test (≤ R 60 000) into the SoW.
+   grey-box engagement; budget a re-test (≤ R 60 000) into the SoW.
 
 ### 5.2 Pre-test prep
 
 Before the test starts:
 
 - Provision a dedicated **staging** environment that mirrors prod
-(same SKUs, same WAF). The tester will touch this — never prod.
+  (same SKUs, same WAF). The tester will touch this — never prod.
 - Issue test accounts for each role (counsellor, CHW, admin, super-admin,
-survivor) and document the credentials in the tester's secure share.
+  survivor) and document the credentials in the tester's secure share.
 - Provide a code drop: tag the commit they will test (`pentest-2026-Q2`),
-generate a Git bundle, and ship it under NDA.
+  generate a Git bundle, and ship it under NDA.
 - Share `SECURITY.md`, `RUNBOOK.md`, `DEPLOYMENT.md`, and the threat
-model.
+  model.
 - Pre-create a Slack channel `#pentest-2026Q2` with the tester for fast
-back-and-forth.
+  back-and-forth.
 
 ### 5.3 During the test
 
 - Daily 15-minute stand-up with the tester.
 - Engineering on-call available for "this looks like an outage, am I
-causing it?" questions.
+  causing it?" questions.
 - Audit-log retention bumped to ≥ 90 days for the duration.
 
 ### 5.4 After the test
@@ -466,7 +469,7 @@ causing it?" questions.
 - Triage findings within 5 business days. CVSS ≥ 7 fixed before launch.
 - Schedule the contracted re-test 2–3 weeks after report delivery.
 - On clean re-test, vendor issues a **Letter of Attestation** — file it
-in the compliance pack.
+  in the compliance pack.
 
 ---
 
@@ -483,17 +486,20 @@ the operator-facing rollout.
 1. Set `USE_BULLMQ_NOTIFICATIONS=true` in **staging** secret manager.
 2. Pick up `server/queue/bullmqDispatcher.ts` (already on main).
 3. Engineering implements the dual-write step (insert into
-  `notification_queue` AND call `enqueueNotificationJob()`) — see
+   `notification_queue` AND call `enqueueNotificationJob()`) — see
    `docs/BULLMQ_MIGRATION.md` Phase 1.
 4. Deploy. Watch:
-  - Twilio delivery success rate (Datadog dashboard `Notifications`)
-  - Redis `aegis:notifications` queue depth (Grafana panel — add via
+
+- Twilio delivery success rate (Datadog dashboard `Notifications`)
+- Redis `aegis:notifications` queue depth (Grafana panel — add via
   `kubectl apply -f config/grafana/dashboards/bullmq.json`)
-  - Audit-log gap detector (already running in cron).
+- Audit-log gap detector (already running in cron).
+
 5. Acceptance criteria:
-  - No duplicate sends over 7 days.
-  - Job failure rate < 1%.
-  - P99 send latency unchanged or improved.
+
+- No duplicate sends over 7 days.
+- Job failure rate < 1%.
+- P99 send latency unchanged or improved.
 
 ### 6.2 Phase 2 — single-source
 
@@ -501,14 +507,14 @@ the operator-facing rollout.
 2. Set `BULLMQ_NOTIFICATION_CONCURRENCY=10` per replica.
 3. Add an HPA targeting CPU on the worker Deployment.
 4. Stop polling: in `TwilioNotificationService.processPendingNotifications`,
-  short-circuit when `USE_BULLMQ_NOTIFICATIONS=true`.
+   short-circuit when `USE_BULLMQ_NOTIFICATIONS=true`.
 
 ### 6.3 Phase 3 — full cutover (production)
 
 1. Set `USE_BULLMQ_NOTIFICATIONS=true` in production secret manager.
 2. Deploy. Watch the dashboards for 24 hours.
 3. After 1 week of clean signal, remove the polling-loop branch from
-  `server/worker.ts`. Squash-merge.
+   `server/worker.ts`. Squash-merge.
 
 ### 6.4 Rollback (any phase)
 
@@ -526,7 +532,7 @@ Recovery) and no off-site copy. Both must be in place before launch.
 
 1. Supabase Dashboard → your project → **Settings → Database → Backups**.
 2. Toggle **Point-in-Time Recovery** ON. PITR is a **paid** add-on
-  (≈ $40/mo at the time of writing); confirm billing.
+   (≈ $40/mo at the time of writing); confirm billing.
 3. Set **PITR retention** to **14 days** (default 7).
 
 ### 7.2 Schedule logical off-site backups
@@ -571,7 +577,7 @@ Attach the JSON report to your quarterly compliance pack.
 ### 7.4 Verify
 
 - Restore a backup to a fresh Supabase project today (do not skip this —
-untested backups are not backups). The DR drill script enforces this.
+  untested backups are not backups). The DR drill script enforces this.
 - Confirm the audit-log integrity chain still verifies after restore.
 - Confirm encrypted-at-rest fields decrypt with the rotated keys.
 
@@ -588,23 +594,26 @@ This change is already on disk:
 
 - `src/lib/__tests__/rls.integration.test.ts` — uses `describe.skipIf(!shouldRun)`.
 - `src/lib/__tests__/edge-function.integration.test.ts` — already used
-the same pattern.
+  the same pattern.
 
 ### 8.1 Provision the test Supabase project
 
 1. Supabase Dashboard → **New project** → name `aegis-integration-tests`,
-  region: same as production, plan: **Free**.
+   region: same as production, plan: **Free**.
 2. Run the migrations against it:
-  ```bash
-   supabase link --project-ref <integration-ref>
-   supabase db push
-  ```
+
+```bash
+ supabase link --project-ref <integration-ref>
+ supabase db push
+```
+
 3. Seed minimum fixture data (the integration tests create what they
-  need; nothing extra required).
+   need; nothing extra required).
 4. Capture the three secrets:
-  - `INTEGRATION_SUPABASE_URL`
-  - `INTEGRATION_SUPABASE_ANON_KEY`
-  - `INTEGRATION_SUPABASE_SERVICE_KEY`
+
+- `INTEGRATION_SUPABASE_URL`
+- `INTEGRATION_SUPABASE_ANON_KEY`
+- `INTEGRATION_SUPABASE_SERVICE_KEY`
 
 ### 8.2 Wire into CI
 
@@ -686,4 +695,3 @@ Copy this into your project tracker and tick off each row:
 [ ] 8. Integration test Supabase project live, GH secrets configured,
        integration-tests workflow green
 ```
-

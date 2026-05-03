@@ -63,6 +63,34 @@ export default defineConfig(() => ({
             if (id.includes("@xenova/transformers")) {
               return "vendor-ai-transformers";
             }
+            // framer-motion is ~120 kB minified; isolating it keeps the
+            // main entry chunk small and lets the SW cache it once for
+            // every route that uses motion.
+            if (id.includes("framer-motion")) {
+              return "vendor-motion";
+            }
+            // Radix UI primitives are large and shared across most pages.
+            // A dedicated chunk dedupes them and is heavily long-tail
+            // cacheable.
+            if (id.includes("@radix-ui")) {
+              return "vendor-radix";
+            }
+            // Lucide icon set is tree-shaken per-icon, but the shared
+            // runtime (createLucideIcon) benefits from its own chunk.
+            if (id.includes("lucide-react")) {
+              return "vendor-icons";
+            }
+            // i18n bundle (i18next + detector + react bindings) — only
+            // needed when language switcher mounts. Carving it out
+            // shaves ~40 kB from the eager main entry.
+            if (id.includes("i18next") || id.includes("react-i18next")) {
+              return "vendor-i18n";
+            }
+            // Markdown / syntax highlighting are only used by support
+            // surfaces, never on landing.
+            if (id.includes("highlight.js") || id.includes("/marked/")) {
+              return "vendor-markdown";
+            }
             // Everything else: let Rollup decide. A catch-all bucket
             // causes circular init errors between chunks that share
             // transitive dependencies (the old "vendor-misc" crash).

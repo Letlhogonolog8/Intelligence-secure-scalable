@@ -1,19 +1,19 @@
 # Silent SOS — ESP32-C3 + BLE (competition edge story)
 
-Low-cost **physical panic path** alongside USSD / WhatsApp / web. Elevate AI Africa judging emphasises *AI and robotics* — this firmware is the **robotics / edge** artefact: a wearable microcontroller, not a second chatbot.
+Low-cost **physical panic path** alongside USSD / WhatsApp / web. Elevate AI Africa judging emphasises _AI and robotics_ — this firmware is the **robotics / edge** artefact: a wearable microcontroller, not a second chatbot.
 
 ## BOM (~USD 5–8)
 
-| Part | Notes |
-|------|--------|
-| Seeed XIAO ESP32-C3 (or equivalent) | BLE 5.0, USB-C |
-| Tactile switch | Normally open, wired to GPIO |
-| Jumper wires | |
-| Lanyard enclosure | Optional 3D print |
+| Part                                | Notes                        |
+| ----------------------------------- | ---------------------------- |
+| Seeed XIAO ESP32-C3 (or equivalent) | BLE 5.0, USB-C               |
+| Tactile switch                      | Normally open, wired to GPIO |
+| Jumper wires                        |                              |
+| Lanyard enclosure                   | Optional 3D print            |
 
 ## Wiring
 
-- **Button:** one leg to **GPIO9** (D9 on XIAO), other to **GND**.  
+- **Button:** one leg to **GPIO9** (D9 on XIAO), other to **GND**.
 - Firmware uses `INPUT_PULLUP` — press = LOW.
 
 ## Behaviour

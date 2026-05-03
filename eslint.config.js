@@ -5,7 +5,18 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "dev-dist", "coverage", "test-results", "node_modules", ".vercel", "playwright-report", ".playwright-mcp"] },
+  {
+    ignores: [
+      "dist",
+      "dev-dist",
+      "coverage",
+      "test-results",
+      "node_modules",
+      ".vercel",
+      "playwright-report",
+      ".playwright-mcp",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -48,5 +59,5 @@ export default tseslint.config(
     rules: {
       "react-refresh/only-export-components": "off",
     },
-  }
+  },
 );

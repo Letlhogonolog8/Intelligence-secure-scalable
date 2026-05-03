@@ -8,14 +8,14 @@ drift.
 
 ## Target matrix
 
-| Environment | Frontend | Backend | Worker | Notes |
-|---|---|---|---|---|
-| Local dev | Vite (`npm run dev`) | tsx (`npm run dev`) | not run | `.env.local` |
-| Local container parity | `Dockerfile.frontend.nginx` | `Dockerfile.backend` | `Dockerfile.backend` (worker.js) | `docker-compose.prod.yml` |
-| Staging / competition demo | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`** | `render.yaml` (single source of truth) |
-| Production | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`** | Set production env vars in Render dashboard |
-| Kubernetes | reference only | reference only | reference only | `kubernetes/*.yaml` retained for future self-hosting |
-| Railway | not used | not used | not used | `railway.toml` retained for the Ele-vate AI competition demo only |
+| Environment                | Frontend                             | Backend                      | Worker                           | Notes                                                             |
+| -------------------------- | ------------------------------------ | ---------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| Local dev                  | Vite (`npm run dev`)                 | tsx (`npm run dev`)          | not run                          | `.env.local`                                                      |
+| Local container parity     | `Dockerfile.frontend.nginx`          | `Dockerfile.backend`         | `Dockerfile.backend` (worker.js) | `docker-compose.prod.yml`                                         |
+| Staging / competition demo | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`**      | `render.yaml` (single source of truth)                            |
+| Production                 | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`**      | Set production env vars in Render dashboard                       |
+| Kubernetes                 | reference only                       | reference only               | reference only                   | `kubernetes/*.yaml` retained for future self-hosting              |
+| Railway                    | not used                             | not used                     | not used                         | `railway.toml` retained for the Ele-vate AI competition demo only |
 
 ## Frontend container
 

@@ -6,14 +6,14 @@ target).
 
 ## Service map
 
-| Service | Where | Health check |
-|---|---|---|
-| API | Render `aegis-backend` / K8s Deployment `aegis-api` | `GET /health/ready` |
-| Frontend | Render static site `aegis-frontend` / K8s Deployment `aegis-frontend` (nginx) | `GET /` |
-| Notification worker | Render separate service / K8s Deployment `aegis-worker` | logs only — no HTTP probe |
-| Supabase | Managed | Supabase status page |
-| Redis | Render Redis / K8s `redis-service` | TCP probe |
-| Postgres (cache only) | K8s `postgres-service` | `pg_isready` |
+| Service               | Where                                                                         | Health check              |
+| --------------------- | ----------------------------------------------------------------------------- | ------------------------- |
+| API                   | Render `aegis-backend` / K8s Deployment `aegis-api`                           | `GET /health/ready`       |
+| Frontend              | Render static site `aegis-frontend` / K8s Deployment `aegis-frontend` (nginx) | `GET /`                   |
+| Notification worker   | Render separate service / K8s Deployment `aegis-worker`                       | logs only — no HTTP probe |
+| Supabase              | Managed                                                                       | Supabase status page      |
+| Redis                 | Render Redis / K8s `redis-service`                                            | TCP probe                 |
+| Postgres (cache only) | K8s `postgres-service`                                                        | `pg_isready`              |
 
 > ⚠ The notification worker is the **only** component that may run
 > `NOTIFICATION_WORKER_ENABLED=true`. API replicas must keep it `false` to
@@ -54,7 +54,7 @@ Only `aegis-worker` should report `true`.
 
 If users see HTTP 409 on `/api/cases/escalate`:
 
-1. Confirm the client is *not* reusing the same key for two distinct user
+1. Confirm the client is _not_ reusing the same key for two distinct user
    actions. (`Idempotency-Key` should be regenerated for each escalation.)
 2. Check Redis: `KEYS idem:escalate:*` to inspect cached reservations.
 3. Replays beyond 24 hours fall through naturally.
@@ -160,10 +160,10 @@ kubectl exec -n aegis deployment/aegis-worker -- node -e "console.log('worker al
 
 ## Escalation contacts
 
-| Role | Channel |
-|---|---|
-| On-call engineer | PagerDuty: `aegis-api` |
-| Security lead | `security@aegis-ai.co.za` |
-| Data Protection Officer | `dpo@aegis-ai.co.za` |
-| Twilio account | Twilio support → reference SID `${TWILIO_ACCOUNT_SID}` |
-| Supabase | Supabase support — share project ref only |
+| Role                    | Channel                                                |
+| ----------------------- | ------------------------------------------------------ |
+| On-call engineer        | PagerDuty: `aegis-api`                                 |
+| Security lead           | `security@aegis-ai.co.za`                              |
+| Data Protection Officer | `dpo@aegis-ai.co.za`                                   |
+| Twilio account          | Twilio support → reference SID `${TWILIO_ACCOUNT_SID}` |
+| Supabase                | Supabase support — share project ref only              |

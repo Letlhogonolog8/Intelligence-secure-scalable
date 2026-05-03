@@ -16,7 +16,8 @@ import {
 const buildCorsHeaders = (origin: string | null) => ({
   "Access-Control-Allow-Origin": origin ?? "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, apikey, x-client-info",
   Vary: "Origin",
 });
 
@@ -72,7 +73,55 @@ LANGUAGES SUPPORTED: English (en), isiZulu (zu), Afrikaans (af), isiXhosa (xh), 
 
 const textEncoder = new TextEncoder();
 
-const withRetry = async <T,>(operation: () => Promise<T>, retries = 2): Promise<T> => {
+// Decode base64 (or hex) chat-encryption key into raw bytes. The function
+// previously referenced `base64ToBytes` without defining it, which caused
+// `encryptMessage()` to throw and silently fall back to *plaintext*
+// persistence — a POPIA violation. Restored here using the same shape as
+// the other Supabase edge functions (register_survivor / ussd-handler /
+// create_username_user) so the encoding pipeline is consistent.
+const base64ToBytes = (value: string): Uint8Array => {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const hexToBytes = (value: string): Uint8Array => {
+  const normalized = value.length % 2 === 0 ? value : `0${value}`;
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    bytes[i / 2] = parseInt(normalized.slice(i, i + 2), 16);
+  }
+  return bytes;
+};
+
+// Accept either base64 (preferred) or 64-char hex AES-256 keys. Returns
+// null when the supplied value cannot be decoded into a 32-byte key, so
+// the caller can refuse to persist the message rather than silently
+// downgrading to plaintext.
+const decodeChatEncryptionKey = (value: string): Uint8Array | null => {
+  if (!value) return null;
+
+  if (/^[0-9a-fA-F]{64}$/.test(value)) {
+    return hexToBytes(value);
+  }
+
+  try {
+    const decoded = base64ToBytes(value);
+    if (decoded.length === 32) return decoded;
+  } catch {
+    /* fall through */
+  }
+
+  return null;
+};
+
+const withRetry = async <T>(
+  operation: () => Promise<T>,
+  retries = 2,
+): Promise<T> => {
   let attempt = 0;
   while (true) {
     try {
@@ -87,23 +136,59 @@ const withRetry = async <T,>(operation: () => Promise<T>, retries = 2): Promise<
   }
 };
 
-async function analyzeRiskLevel(message: string): Promise<{ level: string; score: number }> {
+async function analyzeRiskLevel(
+  message: string,
+): Promise<{ level: string; score: number }> {
   const riskIndicators = {
-    critical: ["kill", "suicide", "harm myself", "end my life", "immediate danger", "about to", "right now", "overdose", "jump", "hang myself"],
-    high: ["threatened", "hit me", "attacked", "scared", "can't escape", "trapped", "nowhere to go", "knife", "gun", "weapon", "abuser nearby"],
-    medium: ["worried", "unsafe", "escalating", "abusing", "controlling", "afraid", "losing hope", "isolate"],
+    critical: [
+      "kill",
+      "suicide",
+      "harm myself",
+      "end my life",
+      "immediate danger",
+      "about to",
+      "right now",
+      "overdose",
+      "jump",
+      "hang myself",
+    ],
+    high: [
+      "threatened",
+      "hit me",
+      "attacked",
+      "scared",
+      "can't escape",
+      "trapped",
+      "nowhere to go",
+      "knife",
+      "gun",
+      "weapon",
+      "abuser nearby",
+    ],
+    medium: [
+      "worried",
+      "unsafe",
+      "escalating",
+      "abusing",
+      "controlling",
+      "afraid",
+      "losing hope",
+      "isolate",
+    ],
   };
 
   const messageLower = message.toLowerCase();
 
   for (const indicator of riskIndicators.critical) {
-    if (messageLower.includes(indicator)) return { level: "critical", score: 0.9 };
+    if (messageLower.includes(indicator))
+      return { level: "critical", score: 0.9 };
   }
   for (const indicator of riskIndicators.high) {
     if (messageLower.includes(indicator)) return { level: "high", score: 0.7 };
   }
   for (const indicator of riskIndicators.medium) {
-    if (messageLower.includes(indicator)) return { level: "medium", score: 0.5 };
+    if (messageLower.includes(indicator))
+      return { level: "medium", score: 0.5 };
   }
 
   return { level: "low", score: 0.2 };
@@ -128,13 +213,20 @@ async function detectEmotion(message: string): Promise<string> {
   return "neutral";
 }
 
-function generateSuggestedActions(riskLevel: string, language: string): string[] {
+function generateSuggestedActions(
+  riskLevel: string,
+  language: string,
+): string[] {
+  // South African crisis numerics are first-class: 10111 (police),
+  // 0800 428 428 (24/7 GBV Command Centre crisis line), 112 (any mobile).
+  // The previous "(911)" string was a North-American leftover and is
+  // explicitly unsafe for the people this platform exists to serve.
   const english: Record<string, string[]> = {
     critical: [
-      "Call emergency services (911)",
-      "Tell a trusted person",
-      "Go to a safe location",
-      "Reach out to a crisis counselor",
+      "Call Police on 10111 (or 112 from any mobile)",
+      "Call the GBV Crisis Line on 0800 428 428 (free, 24/7)",
+      "Tell a trusted person right now",
+      "Go to the nearest safe location",
       "Create a safety plan now",
     ],
     high: [
@@ -257,10 +349,11 @@ function generateSuggestedActions(riskLevel: string, language: string): string[]
 function generateResources(riskLevel: string, language: string): string[] {
   const english: Record<string, string[]> = {
     critical: [
-      "🚨 Emergency services: 112 or local emergency number",
+      "🚨 Police: 10111 (or 112 from any mobile)",
+      "📞 GBV Crisis Line: 0800 428 428 (free, 24/7)",
+      "📱 USSD without internet: *123*456#",
       "🏥 Nearest hospital emergency unit",
-      "🛡️ Trusted crisis support center",
-      "📱 Contact a trusted person immediately",
+      "🛡️ Trusted crisis support centre",
     ],
     high: [
       "👥 Counseling services available 24/7",
@@ -308,31 +401,49 @@ function generateResources(riskLevel: string, language: string): string[] {
   return selected[riskLevel] || selected.low;
 }
 
-async function encryptMessage(message: string, key: string): Promise<string> {
+// Encrypt the survivor message with AES-256-GCM. Returns null when the
+// key is invalid or the underlying WebCrypto call fails so the caller
+// can refuse to persist the message instead of silently storing
+// plaintext (the previous behaviour was a POPIA-grade leak).
+async function encryptMessage(
+  message: string,
+  key: string,
+): Promise<string | null> {
+  const keyBytes = decodeChatEncryptionKey(key);
+  if (!keyBytes) {
+    console.error(
+      "Chat encryption key invalid or missing — refusing to persist message in plaintext.",
+    );
+    return null;
+  }
+
   try {
-    const keyBytes = base64ToBytes(key);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const algorithm = { name: "AES-GCM", iv };
-    
+
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       keyBytes,
       algorithm,
       false,
-      ["encrypt"]
+      ["encrypt"],
     );
-    
+
     const messageBytes = textEncoder.encode(message);
-    const encrypted = await crypto.subtle.encrypt(algorithm, cryptoKey, messageBytes);
-    
+    const encrypted = await crypto.subtle.encrypt(
+      algorithm,
+      cryptoKey,
+      messageBytes,
+    );
+
     const combined = new Uint8Array(iv.length + encrypted.byteLength);
     combined.set(iv);
     combined.set(new Uint8Array(encrypted), iv.length);
-    
+
     return btoa(String.fromCharCode(...combined));
-  } catch {
-    console.warn("Encryption failed, storing plaintext");
-    return message;
+  } catch (err) {
+    console.error("Survivor chat encryption failed:", err);
+    return null;
   }
 }
 
@@ -345,13 +456,21 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+    const supabaseServiceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+      Deno.env.get("SERVICE_ROLE_KEY") ??
+      "";
     const groqApiKey = Deno.env.get("GROQ_API_KEY") ?? "";
     const groqModel = Deno.env.get("GROQ_MODEL") ?? "llama-3.1-8b-instant";
     const chatEncryptionKey = Deno.env.get("CHAT_ENCRYPTION_KEY") ?? "";
     const retentionDays = Number(Deno.env.get("CHAT_RETENTION_DAYS") ?? "90");
 
-    if (!supabaseUrl || !supabaseServiceRoleKey || !groqApiKey || !chatEncryptionKey) {
+    if (
+      !supabaseUrl ||
+      !supabaseServiceRoleKey ||
+      !groqApiKey ||
+      !chatEncryptionKey
+    ) {
       throw new Error("Missing server configuration (environment variables)");
     }
 
@@ -363,7 +482,10 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get("authorization") ?? "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (!token) throw new Error("Missing Authorization token");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Invalid token");
 
     const body: RequestBody = await req.json();
@@ -378,9 +500,10 @@ Deno.serve(async (req: Request) => {
 
     const messageLanguage = inferLanguageFromMessage(message ?? "");
     const selectedLanguage = normalizeLanguageCode(requestedLanguage);
-    const responseLanguage = selectedLanguage === "en" && messageLanguage !== "en"
-      ? messageLanguage
-      : selectedLanguage;
+    const responseLanguage =
+      selectedLanguage === "en" && messageLanguage !== "en"
+        ? messageLanguage
+        : selectedLanguage;
     const responseLanguageName = LANGUAGE_LABELS[responseLanguage] ?? "English";
 
     if (request_type === "delete_data") {
@@ -394,11 +517,15 @@ Deno.serve(async (req: Request) => {
         return new Response(
           JSON.stringify({
             success: false,
-            error: "Could not delete encrypted chat history. Ensure the latest database migration is applied.",
+            error:
+              "Could not delete encrypted chat history. Ensure the latest database migration is applied.",
           }),
           {
             status: 200,
-            headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) },
+            headers: {
+              "Content-Type": "application/json",
+              ...buildCorsHeaders(origin),
+            },
           },
         );
       }
@@ -419,13 +546,15 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const { error: logErr } = await supabase.from("data_deletion_requests").insert({
-        user_id: user.id,
-        survivor_id: survivorRow?.id ?? null,
-        status: "completed",
-        reason: "self_service_survivor_chat_edge",
-        processed_at: new Date().toISOString(),
-      });
+      const { error: logErr } = await supabase
+        .from("data_deletion_requests")
+        .insert({
+          user_id: user.id,
+          survivor_id: survivorRow?.id ?? null,
+          status: "completed",
+          reason: "self_service_survivor_chat_edge",
+          processed_at: new Date().toISOString(),
+        });
       if (logErr) {
         console.warn("data_deletion_requests log:", logErr);
       }
@@ -436,16 +565,22 @@ Deno.serve(async (req: Request) => {
           message:
             "Your AEGIS edge chat history has been deleted. Linked survivor profile data was queued for erasure where applicable.",
         }),
-        { headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) } },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...buildCorsHeaders(origin),
+          },
+        },
       );
     }
 
     if (!message) {
-        throw new Error("Message is required");
+      throw new Error("Message is required");
     }
 
     // 1. Analyze Risk & Emotion
-    const { level: riskLevel, score: riskScore } = await analyzeRiskLevel(message);
+    const { level: riskLevel, score: riskScore } =
+      await analyzeRiskLevel(message);
     const emotion = await detectEmotion(message);
 
     const shouldUseGreeting = isGreetingMessage(message);
@@ -464,22 +599,25 @@ Deno.serve(async (req: Request) => {
           messages: [
             {
               role: "system",
-              content: `${SYSTEM_PROMPT}\n\nLANGUAGE REQUIREMENT: Respond in ${responseLanguageName} (${responseLanguage}) and keep the full response in that language unless the user explicitly asks to switch. Keep the response concise, clear, and natural. Do not repeat phrases or lines. Do not echo or paraphrase the user's message verbatim.`
+              content: `${SYSTEM_PROMPT}\n\nLANGUAGE REQUIREMENT: Respond in ${responseLanguageName} (${responseLanguage}) and keep the full response in that language unless the user explicitly asks to switch. Keep the response concise, clear, and natural. Do not repeat phrases or lines. Do not echo or paraphrase the user's message verbatim.`,
             },
             ...conversation_history,
-            { role: "user", content: message }
+            { role: "user", content: message },
           ],
           temperature: 0.2,
           max_tokens: 420,
         };
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${groqApiKey}`,
+        const res = await fetch(
+          "https://api.groq.com/openai/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${groqApiKey}`,
+            },
+            body: JSON.stringify(payload),
           },
-          body: JSON.stringify(payload),
-        });
+        );
         if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
         const data = await res.json();
         return data?.choices?.[0]?.message?.content;
@@ -493,23 +631,35 @@ Deno.serve(async (req: Request) => {
         isMismatchedLanguageResponse(finalResponseText, responseLanguage) ||
         isEchoingUserInput(finalResponseText, message)
       ) {
-        finalResponseText = getFallbackSupportResponse(responseLanguage, riskLevel, message);
+        finalResponseText = getFallbackSupportResponse(
+          responseLanguage,
+          riskLevel,
+          message,
+        );
       }
 
-      if (previousAssistantMessage && isNearDuplicateResponse(finalResponseText, previousAssistantMessage)) {
-        finalResponseText = getFallbackSupportResponse(responseLanguage, riskLevel, message);
+      if (
+        previousAssistantMessage &&
+        isNearDuplicateResponse(finalResponseText, previousAssistantMessage)
+      ) {
+        finalResponseText = getFallbackSupportResponse(
+          responseLanguage,
+          riskLevel,
+          message,
+        );
       }
     }
 
-    // 3. Encrypt message content
+    // 3. Encrypt message content. If encryption fails we deliberately
+    //    skip persistence — survivors must never have raw trauma content
+    //    written in plaintext, even when a configuration error breaks
+    //    AES-GCM. Live response continues regardless.
     const encryptedMessage = await encryptMessage(message, chatEncryptionKey);
-    
-    // Store conversation securely
     const newSessionId = session_id || `session-${user.id}-${Date.now()}`;
-    try {
-      await supabase
-        .from("survivor_chat_messages")
-        .insert({
+
+    if (encryptedMessage) {
+      try {
+        await supabase.from("survivor_chat_messages").insert({
           session_id: newSessionId,
           user_id: user.id,
           message_encrypted: encryptedMessage,
@@ -517,15 +667,21 @@ Deno.serve(async (req: Request) => {
           risk_level: riskLevel,
           emotion_detected: emotion,
           created_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000).toISOString(),
+          expires_at: new Date(
+            Date.now() + retentionDays * 24 * 60 * 60 * 1000,
+          ).toISOString(),
         });
-    } catch (storageError) {
-      console.warn("Failed to store message:", storageError);
+      } catch (storageError) {
+        console.warn("Failed to store message:", storageError);
+      }
     }
 
-    const suggestedActions = generateSuggestedActions(riskLevel, responseLanguage);
+    const suggestedActions = generateSuggestedActions(
+      riskLevel,
+      responseLanguage,
+    );
     const resources = generateResources(riskLevel, responseLanguage);
-    
+
     // Return response in the format the frontend expects
     return new Response(
       JSON.stringify({
@@ -537,20 +693,27 @@ Deno.serve(async (req: Request) => {
           emotion_detected: emotion,
           suggested_actions: suggestedActions,
           resources: resources,
-          safety_alert: riskLevel === 'critical'
+          safety_alert: riskLevel === "critical",
         },
         session_id: newSessionId,
-        language: responseLanguage
+        language: responseLanguage,
       }),
-      { headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) } }
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...buildCorsHeaders(origin),
+        },
+      },
     );
-
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat Error:", message);
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 200,
-      headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) },
+      headers: {
+        "Content-Type": "application/json",
+        ...buildCorsHeaders(origin),
+      },
     });
   }
 });

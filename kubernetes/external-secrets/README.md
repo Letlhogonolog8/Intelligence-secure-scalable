@@ -7,10 +7,10 @@ Secrets Manager **or** HashiCorp Vault), pulled into the cluster by the
 
 ## Choose one backend
 
-| Backend | Files to apply |
-|---|---|
+| Backend             | Files to apply                                               |
+| ------------------- | ------------------------------------------------------------ |
 | AWS Secrets Manager | `01-secret-store-aws.yaml` + `02-external-secret-aegis.yaml` |
-| HashiCorp Vault | `03-vault-alternative.yaml` only |
+| HashiCorp Vault     | `03-vault-alternative.yaml` only                             |
 
 Do **not** apply both — they each create a `SecretStore` named
 `aegis-aws-secrets` / `aegis-vault` and an `ExternalSecret` called
