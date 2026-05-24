@@ -1,7 +1,7 @@
-import { createClient, RedisClientType } from 'redis';
-import { createLogger } from './logger';
+import { createClient, RedisClientType } from "redis";
+import { createLogger } from "./logger";
 
-const logger = createLogger('cache-manager');
+const logger = createLogger("cache-manager");
 
 interface CacheOptions {
   ttl?: number;
@@ -18,26 +18,52 @@ class CacheManager {
 
     const redisUrl = this.getRedisUrl();
     if (!redisUrl) {
-      logger.warn('Redis not configured, caching disabled');
+      logger.warn("Redis not configured, caching disabled");
+      return;
+    }
+
+    const isDev = process.env.NODE_ENV !== "production";
+    const forceConnect = process.env.REDIS_FORCE_CONNECT === "true";
+    if (isDev && !forceConnect) {
+      logger.info(
+        "Redis skipped in development (set REDIS_FORCE_CONNECT=true to enable)",
+      );
       return;
     }
 
     try {
-      this.client = createClient({ url: redisUrl });
+      this.client = createClient({
+        url: redisUrl,
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries >= 5) {
+              logger.warn(
+                "Redis max reconnect attempts reached, disabling cache",
+              );
+              this.client = null;
+              this.connected = false;
+              return false;
+            }
+            return Math.min(retries * 500, 3000);
+          },
+        },
+      });
 
-      this.client.on('error', (err) => {
-        logger.error('Redis client error', err);
+      this.client.on("error", (err) => {
+        if (this.connected) {
+          logger.error("Redis client error", err);
+        }
         this.connected = false;
       });
 
-      this.client.on('connect', () => {
-        logger.info('Redis cache connected');
+      this.client.on("connect", () => {
+        logger.info("Redis cache connected");
         this.connected = true;
       });
 
       await this.client.connect();
     } catch (error) {
-      logger.error('Failed to initialize Redis cache', error);
+      logger.error("Failed to initialize Redis cache", error);
       this.client = null;
     }
   }
@@ -50,12 +76,16 @@ class CacheManager {
       const value = await this.client!.get(fullKey);
       return value ? JSON.parse(value) : null;
     } catch (error) {
-      logger.error('Cache get failed', error, { key });
+      logger.error("Cache get failed", error, { key });
       return null;
     }
   }
 
-  async set<T>(key: string, value: T, options?: CacheOptions): Promise<boolean> {
+  async set<T>(
+    key: string,
+    value: T,
+    options?: CacheOptions,
+  ): Promise<boolean> {
     if (!this.isAvailable()) return false;
 
     try {
@@ -64,7 +94,7 @@ class CacheManager {
       await this.client!.setEx(fullKey, ttl, JSON.stringify(value));
       return true;
     } catch (error) {
-      logger.error('Cache set failed', error, { key });
+      logger.error("Cache set failed", error, { key });
       return false;
     }
   }
@@ -77,7 +107,7 @@ class CacheManager {
       await this.client!.del(fullKey);
       return true;
     } catch (error) {
-      logger.error('Cache delete failed', error, { key });
+      logger.error("Cache delete failed", error, { key });
       return false;
     }
   }
@@ -86,22 +116,25 @@ class CacheManager {
     if (!this.isAvailable()) return keys.map(() => null);
 
     try {
-      const fullKeys = keys.map(k => this.buildKey(k, options?.prefix));
+      const fullKeys = keys.map((k) => this.buildKey(k, options?.prefix));
       const values = await this.client!.mGet(fullKeys);
-      return values.map(v => v ? JSON.parse(v) : null);
+      return values.map((v) => (v ? JSON.parse(v) : null));
     } catch (error) {
-      logger.error('Cache mget failed', error);
+      logger.error("Cache mget failed", error);
       return keys.map(() => null);
     }
   }
 
-  async mset<T>(entries: Array<{ key: string; value: T }>, options?: CacheOptions): Promise<boolean> {
+  async mset<T>(
+    entries: Array<{ key: string; value: T }>,
+    options?: CacheOptions,
+  ): Promise<boolean> {
     if (!this.isAvailable()) return false;
 
     try {
       const ttl = options?.ttl || this.DEFAULT_TTL;
       const pipeline = this.client!.multi();
-      
+
       entries.forEach(({ key, value }) => {
         const fullKey = this.buildKey(key, options?.prefix);
         pipeline.setEx(fullKey, ttl, JSON.stringify(value));
@@ -110,7 +143,7 @@ class CacheManager {
       await pipeline.exec();
       return true;
     } catch (error) {
-      logger.error('Cache mset failed', error);
+      logger.error("Cache mset failed", error);
       return false;
     }
   }
@@ -135,7 +168,7 @@ class CacheManager {
       await this.client!.del(keys);
       return keys.length;
     } catch (error) {
-      logger.error('Cache invalidate pattern failed', error, { pattern });
+      logger.error("Cache invalidate pattern failed", error, { pattern });
       return 0;
     }
   }
@@ -152,9 +185,11 @@ class CacheManager {
     if (process.env.REDIS_URL) return process.env.REDIS_URL;
     if (!process.env.REDIS_HOST) return null;
 
-    const protocol = process.env.REDIS_TLS === 'true' ? 'rediss' : 'redis';
-    const credentials = process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : '';
-    const port = process.env.REDIS_PORT || '6379';
+    const protocol = process.env.REDIS_TLS === "true" ? "rediss" : "redis";
+    const credentials = process.env.REDIS_PASSWORD
+      ? `:${process.env.REDIS_PASSWORD}@`
+      : "";
+    const port = process.env.REDIS_PORT || "6379";
 
     return `${protocol}://${credentials}${process.env.REDIS_HOST}:${port}`;
   }
@@ -164,7 +199,7 @@ class CacheManager {
       await this.client.quit();
       this.client = null;
       this.connected = false;
-      logger.info('Redis cache closed');
+      logger.info("Redis cache closed");
     }
   }
 }

@@ -1,13 +1,13 @@
-import { Server as HTTPServer } from 'http';
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { SupabaseClient } from '@supabase/supabase-js';
-import { createAdapter } from '@socket.io/redis-adapter';
-import { createClient, RedisClientType } from 'redis';
-import crypto from 'crypto';
-import { cacheManager } from './utils/cacheManager';
-import { createLogger } from './utils/logger';
+import { Server as HTTPServer } from "http";
+import { Server as SocketIOServer, Socket } from "socket.io";
+import { SupabaseClient } from "@supabase/supabase-js";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient, RedisClientType } from "redis";
+import crypto from "crypto";
+import { cacheManager } from "./utils/cacheManager";
+import { createLogger } from "./utils/logger";
 
-const logger = createLogger('websocket');
+const logger = createLogger("websocket");
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -42,8 +42,8 @@ export class WebSocketManager {
 
   constructor(httpServer: HTTPServer, supabase: SupabaseClient) {
     this.supabase = supabase;
-    const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8080')
-      .split(',')
+    const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:8080")
+      .split(",")
       .map((o) => o.trim())
       .filter(Boolean);
 
@@ -53,12 +53,12 @@ export class WebSocketManager {
           if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
           } else {
-            callback(new Error('WebSocket CORS policy violation'));
+            callback(new Error("WebSocket CORS policy violation"));
           }
         },
         credentials: true,
       },
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       pingInterval: 25000,
       pingTimeout: 20000,
       maxHttpBufferSize: 1e6,
@@ -80,33 +80,78 @@ export class WebSocketManager {
     const redisUrl = this.resolveRedisUrl();
 
     if (!redisUrl) {
-      logger.warn('Redis not configured for WebSocket scaling. Using local Socket.IO adapter.');
+      logger.warn(
+        "Redis not configured for WebSocket scaling. Using local Socket.IO adapter.",
+      );
       this.adapterEnabled = false;
       return;
     }
 
+    const isDev = process.env.NODE_ENV !== "production";
+    const forceConnect = process.env.REDIS_FORCE_CONNECT === "true";
+    if (isDev && !forceConnect) {
+      logger.info(
+        "WebSocket Redis adapter skipped in development (set REDIS_FORCE_CONNECT=true to enable)",
+      );
+      this.adapterEnabled = false;
+      return;
+    }
+
+    const reconnectStrategy = (retries: number): number | false => {
+      if (retries >= 5) {
+        logger.warn(
+          "WebSocket Redis max reconnect attempts reached, disabling adapter",
+        );
+        this.adapterEnabled = false;
+        return false;
+      }
+      return Math.min(retries * 500, 3000);
+    };
+
     try {
-      this.adapterPubClient = createClient({ url: redisUrl });
-      this.adapterSubClient = this.adapterPubClient.duplicate();
-
-      this.adapterPubClient.on('error', (error) => {
-        this.adapterEnabled = false;
-        logger.error('WebSocket Redis pub client error', error instanceof Error ? error : undefined);
+      this.adapterPubClient = createClient({
+        url: redisUrl,
+        socket: { reconnectStrategy },
+      });
+      this.adapterSubClient = createClient({
+        url: redisUrl,
+        socket: { reconnectStrategy },
       });
 
-      this.adapterSubClient.on('error', (error) => {
+      this.adapterPubClient.on("error", (error) => {
         this.adapterEnabled = false;
-        logger.error('WebSocket Redis sub client error', error instanceof Error ? error : undefined);
+        logger.error(
+          "WebSocket Redis pub client error",
+          error instanceof Error ? error : undefined,
+        );
       });
 
-      await Promise.all([this.adapterPubClient.connect(), this.adapterSubClient.connect()]);
-      this.io.adapter(createAdapter(this.adapterPubClient, this.adapterSubClient));
+      this.adapterSubClient.on("error", (error) => {
+        this.adapterEnabled = false;
+        logger.error(
+          "WebSocket Redis sub client error",
+          error instanceof Error ? error : undefined,
+        );
+      });
+
+      await Promise.all([
+        this.adapterPubClient.connect(),
+        this.adapterSubClient.connect(),
+      ]);
+      this.io.adapter(
+        createAdapter(this.adapterPubClient, this.adapterSubClient),
+      );
       this.adapterEnabled = true;
 
-      logger.info('WebSocket Redis adapter enabled for multi-instance delivery');
+      logger.info(
+        "WebSocket Redis adapter enabled for multi-instance delivery",
+      );
     } catch (error) {
       this.adapterEnabled = false;
-      logger.warn('Failed to initialize WebSocket Redis adapter. Falling back to local delivery.', { error: error instanceof Error ? error.message : String(error) });
+      logger.warn(
+        "Failed to initialize WebSocket Redis adapter. Falling back to local delivery.",
+        { error: error instanceof Error ? error.message : String(error) },
+      );
       await this.closeAdapterClients();
     }
   }
@@ -126,7 +171,11 @@ export class WebSocketManager {
   }
 
   private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex').substring(0, 16);
+    return crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex")
+      .substring(0, 16);
   }
 
   // ---------------------------------------------------------------------------
@@ -139,7 +188,7 @@ export class WebSocketManager {
         const token = socket.handshake.auth.token;
 
         if (!token) {
-          return next(new Error('Authentication error: No token provided'));
+          return next(new Error("Authentication error: No token provided"));
         }
 
         const cached = await this.getCachedAuth(token);
@@ -156,15 +205,15 @@ export class WebSocketManager {
         } = await this.supabase.auth.getUser(token);
 
         if (error || !user) {
-          return next(new Error('Authentication error: Invalid token'));
+          return next(new Error("Authentication error: Invalid token"));
         }
 
         socket.userId = user.id;
 
         const { data: profile } = await this.supabase
-          .from('profiles')
-          .select('role, organization_id')
-          .eq('id', user.id)
+          .from("profiles")
+          .select("role, organization_id")
+          .eq("id", user.id)
           .maybeSingle();
 
         if (profile) {
@@ -180,7 +229,7 @@ export class WebSocketManager {
 
         next();
       } catch (_err) {
-        next(new Error('WebSocket authentication failed'));
+        next(new Error("WebSocket authentication failed"));
       }
     });
   }
@@ -190,26 +239,32 @@ export class WebSocketManager {
   // ---------------------------------------------------------------------------
 
   private setupEventHandlers(): void {
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
-      logger.info('User connected', { userId: socket.userId, role: socket.userRole });
+    this.io.on("connection", (socket: AuthenticatedSocket) => {
+      logger.info("User connected", {
+        userId: socket.userId,
+        role: socket.userRole,
+      });
 
       this.trackUserConnection(socket.userId!, socket.id);
       this.joinScopedRooms(socket);
 
-      socket.on('subscribe:cases', (data: { caseIds: string[] }) => {
+      socket.on("subscribe:cases", (data: { caseIds: string[] }) => {
         this.subscribeToCases(socket, data.caseIds);
       });
 
-      socket.on('subscribe:alerts', () => {
+      socket.on("subscribe:alerts", () => {
         this.subscribeToAlerts(socket);
       });
 
-      socket.on('disconnect', () => {
+      socket.on("disconnect", () => {
         this.handleDisconnect(socket);
       });
 
-      socket.on('error', (error: Error) => {
-        logger.error('WebSocket socket error', undefined, { userId: socket.userId, error: error.message });
+      socket.on("error", (error: Error) => {
+        logger.error("WebSocket socket error", undefined, {
+          userId: socket.userId,
+          error: error.message,
+        });
       });
     });
   }
@@ -232,20 +287,24 @@ export class WebSocketManager {
 
     const grouped = new Map<string, MessageBatch[]>();
     batch.forEach((msg) => {
-      const key = `${msg.event}:${msg.rooms.join(',')}`;
+      const key = `${msg.event}:${msg.rooms.join(",")}`;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(msg);
     });
 
     grouped.forEach((messages, key) => {
-      const [event, roomsStr] = key.split(':');
-      const rooms = roomsStr.split(',');
+      const [event, roomsStr] = key.split(":");
+      const rooms = roomsStr.split(",");
 
       if (messages.length === 1) {
-        rooms.forEach((room) => this.io.to(room).emit(event, messages[0].payload));
+        rooms.forEach((room) =>
+          this.io.to(room).emit(event, messages[0].payload),
+        );
       } else {
         const payloads = messages.map((m) => m.payload);
-        rooms.forEach((room) => this.io.to(room).emit(`${event}:batch`, payloads));
+        rooms.forEach((room) =>
+          this.io.to(room).emit(`${event}:batch`, payloads),
+        );
       }
     });
   }
@@ -254,46 +313,74 @@ export class WebSocketManager {
   // Broadcast helpers
   // ---------------------------------------------------------------------------
 
-  private emitToRoles(event: string, payload: Record<string, unknown>, targetRoles: string[]): void {
-    const rooms = targetRoles.flatMap((role) => [`role:${role}`, `alerts:${role}`]);
+  private emitToRoles(
+    event: string,
+    payload: Record<string, unknown>,
+    targetRoles: string[],
+  ): void {
+    const rooms = targetRoles.flatMap((role) => [
+      `role:${role}`,
+      `alerts:${role}`,
+    ]);
     this.messageBatch.push({ event, payload, rooms, timestamp: Date.now() });
   }
 
-  public broadcastCaseUpdate(caseId: string, update: Record<string, unknown>): void {
+  public broadcastCaseUpdate(
+    caseId: string,
+    update: Record<string, unknown>,
+  ): void {
     this.messageBatch.push({
-      event: 'case:updated',
+      event: "case:updated",
       payload: { caseId, timestamp: new Date().toISOString(), ...update },
       rooms: [`case:${caseId}`],
       timestamp: Date.now(),
     });
   }
 
-  public broadcastAlert(alert: Record<string, unknown>, targetRoles: string[]): void {
-    const rooms = targetRoles.flatMap((role) => [`role:${role}`, `alerts:${role}`]);
+  public broadcastAlert(
+    alert: Record<string, unknown>,
+    targetRoles: string[],
+  ): void {
+    const rooms = targetRoles.flatMap((role) => [
+      `role:${role}`,
+      `alerts:${role}`,
+    ]);
     this.messageBatch.push({
-      event: 'alert:new',
+      event: "alert:new",
       payload: { timestamp: new Date().toISOString(), ...alert },
       rooms,
       timestamp: Date.now(),
     });
   }
 
-  public broadcastEmergencyEscalation(escalation: Record<string, unknown>): void {
-    this.emitToRoles('emergency:escalation', {
-      timestamp: new Date().toISOString(),
-      ...escalation,
-    }, ['police', 'admin']);
+  public broadcastEmergencyEscalation(
+    escalation: Record<string, unknown>,
+  ): void {
+    this.emitToRoles(
+      "emergency:escalation",
+      {
+        timestamp: new Date().toISOString(),
+        ...escalation,
+      },
+      ["police", "admin"],
+    );
   }
 
-  public notifyCounselorAssignment(counselorId: string, assignment: Record<string, unknown>): void {
-    this.io.to(`user:${counselorId}`).emit('assignment:new', {
+  public notifyCounselorAssignment(
+    counselorId: string,
+    assignment: Record<string, unknown>,
+  ): void {
+    this.io.to(`user:${counselorId}`).emit("assignment:new", {
       timestamp: new Date().toISOString(),
       ...assignment,
     });
   }
 
-  public notifySurvivorCaseUpdate(survivorId: string, caseUpdate: Record<string, unknown>): void {
-    this.io.to(`user:${survivorId}`).emit('case:status', {
+  public notifySurvivorCaseUpdate(
+    survivorId: string,
+    caseUpdate: Record<string, unknown>,
+  ): void {
+    this.io.to(`user:${survivorId}`).emit("case:status", {
       timestamp: new Date().toISOString(),
       ...caseUpdate,
     });
@@ -303,15 +390,21 @@ export class WebSocketManager {
   // Room management
   // ---------------------------------------------------------------------------
 
-  private subscribeToCases(socket: AuthenticatedSocket, caseIds: string[]): void {
+  private subscribeToCases(
+    socket: AuthenticatedSocket,
+    caseIds: string[],
+  ): void {
     caseIds.forEach((caseId) => socket.join(`case:${caseId}`));
-    logger.info('User subscribed to cases', { userId: socket.userId, count: caseIds.length });
+    logger.info("User subscribed to cases", {
+      userId: socket.userId,
+      count: caseIds.length,
+    });
   }
 
   private subscribeToAlerts(socket: AuthenticatedSocket): void {
     if (socket.userRole) socket.join(`alerts:${socket.userRole}`);
     if (socket.organizationId) socket.join(`alerts:${socket.organizationId}`);
-    logger.info('User subscribed to alerts', { userId: socket.userId });
+    logger.info("User subscribed to alerts", { userId: socket.userId });
   }
 
   private trackUserConnection(userId: string, socketId: string): void {
@@ -342,7 +435,7 @@ export class WebSocketManager {
           this.connectedUsers.delete(socket.userId);
         }
       }
-      logger.info('User disconnected', { userId: socket.userId });
+      logger.info("User disconnected", { userId: socket.userId });
     }
   }
 
@@ -354,22 +447,24 @@ export class WebSocketManager {
     if (process.env.REDIS_URL) return process.env.REDIS_URL;
     if (!process.env.REDIS_HOST) return null;
 
-    const protocol = process.env.REDIS_TLS === 'true' ? 'rediss' : 'redis';
-    const credentials = process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : '';
-    const port = process.env.REDIS_PORT || '6379';
+    const protocol = process.env.REDIS_TLS === "true" ? "rediss" : "redis";
+    const credentials = process.env.REDIS_PASSWORD
+      ? `:${process.env.REDIS_PASSWORD}@`
+      : "";
+    const port = process.env.REDIS_PORT || "6379";
 
     return `${protocol}://${credentials}${process.env.REDIS_HOST}:${port}`;
   }
 
   private async closeAdapterClients(): Promise<void> {
     const clients = [this.adapterPubClient, this.adapterSubClient].filter(
-      (client): client is RedisClientType => Boolean(client)
+      (client): client is RedisClientType => Boolean(client),
     );
 
     await Promise.allSettled(
       clients.map(async (client) => {
         if (client.isOpen) await client.quit();
-      })
+      }),
     );
 
     this.adapterPubClient = null;
@@ -392,28 +487,31 @@ export class WebSocketManager {
       const userIds = new Set<string>();
       for (const socket of sockets) {
         for (const room of socket.rooms) {
-          if (typeof room === 'string' && room.startsWith('user:')) {
+          if (typeof room === "string" && room.startsWith("user:")) {
             userIds.add(room);
           }
         }
       }
       return userIds.size;
     } catch (error) {
-      logger.warn('Failed to fetch cluster-wide user count, falling back to local', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "Failed to fetch cluster-wide user count, falling back to local",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return this.connectedUsers.size;
     }
   }
 
   public getHealthStatus() {
     return {
-      adapter: this.adapterEnabled ? 'redis' : 'local',
+      adapter: this.adapterEnabled ? "redis" : "local",
       adapterReady: this.adapterEnabled,
       redisConfigured: Boolean(this.resolveRedisUrl()),
       socketCount: this.io.engine.clientsCount,
       userCount: this.connectedUsers.size,
-      userCountScope: this.adapterEnabled ? 'instance' : 'instance-only',
+      userCountScope: this.adapterEnabled ? "instance" : "instance-only",
       batchQueueSize: this.messageBatch.length,
     };
   }
