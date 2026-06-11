@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Send, X, Mic, MicOff, ShieldCheck, AlertTriangle, Loader2 } from "lucide-react";
+import {
+  Bot,
+  Send,
+  X,
+  Mic,
+  MicOff,
+  ShieldCheck,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
@@ -23,14 +32,22 @@ const QUICK_PROMPTS = [
   "I need a safe shelter",
 ];
 
-async function sendToAI(messages: Message[], userMessage: string): Promise<string> {
+async function sendToAI(
+  messages: Message[],
+  userMessage: string,
+): Promise<string> {
   const history = messages.slice(-8).map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
   try {
-    const response = await fetch("/api/ai/survivor-chat", {
+    // Must target the Express backend via VITE_API_URL: a relative /api path
+    // resolves to the Vercel static host in production, which has no API.
+    const apiBaseUrl = (
+      import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+    ).replace(/\/+$/, "");
+    const response = await fetch(`${apiBaseUrl}/ai/survivor-chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // The system prompt is fixed server-side (see /api/ai/survivor-chat).
@@ -40,7 +57,10 @@ async function sendToAI(messages: Message[], userMessage: string): Promise<strin
     });
 
     if (!response.ok) throw new Error("API error");
-    const data = await response.json() as { content?: string; error?: string };
+    const data = (await response.json()) as {
+      content?: string;
+      error?: string;
+    };
     return data.content ?? "I'm here with you. Can you tell me a little more?";
   } catch {
     return getOfflineFallback(userMessage);
@@ -70,13 +90,17 @@ interface SurvivorAIChatProps {
   embedded?: boolean;
 }
 
-const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = false }) => {
+const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({
+  onClose,
+  embedded = false,
+}) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "assistant",
-      content: "Hello. I'm here to listen and support you — this is a safe, confidential space. Nothing you share here will be used against you. How are you doing right now?",
+      content:
+        "Hello. I'm here to listen and support you — this is a safe, confidential space. Nothing you share here will be used against you. How are you doing right now?",
       timestamp: new Date(),
     },
   ]);
@@ -91,7 +115,10 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const persistMessage = async (role: "user" | "assistant", content: string) => {
+  const persistMessage = async (
+    role: "user" | "assistant",
+    content: string,
+  ) => {
     try {
       await supabase.from("chat_messages").insert({
         id: `${sessionId.current}-${Date.now()}`,
@@ -109,7 +136,12 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
       await enqueueOfflineReport({
         id: `msg-${Date.now()}`,
         type: "case_report",
-        payload: { session_id: sessionId.current, role, content, created_at: new Date().toISOString() },
+        payload: {
+          session_id: sessionId.current,
+          role,
+          content,
+          created_at: new Date().toISOString(),
+        },
         createdAt: new Date().toISOString(),
       });
     }
@@ -184,15 +216,22 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
             <Bot className="h-4 w-4 text-blue-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-white">AEGIS Support Companion</p>
+            <p className="text-sm font-bold text-white">
+              AEGIS Support Companion
+            </p>
             <div className="flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-[10px] text-slate-400">Confidential · Encrypted · Trauma-informed</p>
+              <p className="text-[10px] text-slate-400">
+                Confidential · Encrypted · Trauma-informed
+              </p>
             </div>
           </div>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-white transition-colors"
+          >
             <X className="h-4 w-4" />
           </button>
         )}
@@ -202,7 +241,8 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
       <div className="px-4 py-2 bg-emerald-950/30 border-b border-emerald-800/20 flex items-center gap-2 shrink-0">
         <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
         <p className="text-[10px] text-emerald-300">
-          This conversation is end-to-end protected. POPIA compliant. You can delete your history at any time.
+          This conversation is end-to-end protected. POPIA compliant. You can
+          delete your history at any time.
         </p>
       </div>
 
@@ -222,14 +262,16 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
                   msg.role === "user"
                     ? "bg-blue-600 text-white rounded-br-sm"
                     : msg.riskFlag
-                    ? "bg-rose-950/60 border border-rose-500/40 text-rose-100 rounded-bl-sm"
-                    : "bg-slate-800/70 text-slate-100 rounded-bl-sm"
+                      ? "bg-rose-950/60 border border-rose-500/40 text-rose-100 rounded-bl-sm"
+                      : "bg-slate-800/70 text-slate-100 rounded-bl-sm"
                 }`}
               >
                 {msg.riskFlag && (
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                    <span className="text-rose-400 text-[10px] font-bold uppercase tracking-wide">Crisis Support</span>
+                    <span className="text-rose-400 text-[10px] font-bold uppercase tracking-wide">
+                      Crisis Support
+                    </span>
                   </div>
                 )}
                 {msg.content}
@@ -239,7 +281,11 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
         </AnimatePresence>
 
         {isLoading && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex justify-start"
+          >
             <div className="bg-slate-800/70 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
               <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
               <span className="text-xs text-slate-400">Responding…</span>
@@ -290,7 +336,11 @@ const SurvivorAIChat: React.FC<SurvivorAIChatProps> = ({ onClose, embedded = fal
           }`}
           title={isListening ? "Stop recording" : "Voice input"}
         >
-          {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {isListening ? (
+            <MicOff className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
         </button>
         <Button
           onClick={() => handleSend()}
