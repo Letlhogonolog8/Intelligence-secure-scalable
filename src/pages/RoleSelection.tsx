@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
-  AlertCircle,
   ArrowRight,
   BarChart3,
   Briefcase,
@@ -24,6 +23,7 @@ import {
 } from "@/lib/roleAuthPolicy";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
+import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import AuthTopBar from "@/components/auth/AuthTopBar";
 import AuthContextIntro from "@/components/auth/AuthContextIntro";
@@ -57,13 +57,13 @@ const RoleSelection: React.FC = () => {
         label: t("roles.survivor.title", "Survivor"),
         description: t(
           "roles.survivor.desc",
-          "Direct access to survivor support resources and secure case management."
+          "Survivor support is a dedicated, private mobile app — with quick-exit, offline access, and emergency SOS."
         ),
         icon: <Heart className="h-6 w-6" />,
         requiresAuth: false,
         color: "from-blue-500 to-sky-400",
-        badges: [t("roles.selfRegistration", "Self-registration available"), t("roles.credentialLogin", "Credential login")],
-        hint: t("roles.registrationAvailable", "Registration and login available"),
+        badges: [t("roles.mobileApp", "Mobile app"), t("roles.privateOffline", "Private & offline")],
+        hint: t("roles.useMobileApp", "Available on the AEGIS Support mobile app"),
       },
       {
         id: "counselor",
@@ -164,6 +164,10 @@ const RoleSelection: React.FC = () => {
   };
 
   const selectedRoleConfig = selectedRole ? roles.find((role) => role.id === selectedRole) ?? null : null;
+  // The web app is the PROFESSIONAL portal. Survivors use the dedicated mobile
+  // app, so when the Survivor role is selected we offer the app, not web sign-in.
+  const isSurvivor = selectedRole === "survivor";
+  const mobileAppUrl = env.VITE_MOBILE_APP_URL;
   const selectedPolicy = selectedRole ? ROLE_AUTH_POLICIES[selectedRole] : null;
   const selectedRequiresMfa = selectedRole ? requiresMfaForRole(selectedRole) : false;
   const canInitialize = selectedRole
@@ -234,10 +238,10 @@ const RoleSelection: React.FC = () => {
         onEmergencyClick={() => navigate("/auth?priority=emergency")}
       />
 
-      <div className="relative z-10 px-4 pb-16 pt-28 sm:px-6 lg:px-8 lg:pt-32">
-        <div className="mx-auto max-w-6xl space-y-8">
+      <main className="relative z-10 px-4 pb-12 pt-24 sm:px-6 lg:px-8 lg:pt-28">
+        <div className="mx-auto max-w-6xl space-y-6">
           <motion.section
-            className="grid gap-6 rounded-[32px] border border-white/10 bg-slate-950/60 p-6 shadow-[0_25px_60px_rgba(2,6,23,0.6)] lg:grid-cols-[0.58fr_0.42fr] lg:p-8"
+            className="grid gap-5 rounded-[28px] border border-white/10 bg-slate-950/60 p-5 shadow-[0_25px_60px_rgba(2,6,23,0.6)] lg:grid-cols-[0.58fr_0.42fr] lg:p-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -336,7 +340,7 @@ const RoleSelection: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.5 }}
-            className="grid gap-8 lg:grid-cols-[0.68fr_0.32fr]"
+            className="grid gap-6 lg:grid-cols-[0.68fr_0.32fr]"
           >
             <div className="rounded-[32px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_25px_60px_rgba(2,6,23,0.55)] sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -349,7 +353,7 @@ const RoleSelection: React.FC = () => {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {roles.map((role) => {
                   const isSelected = selectedRole === role.id;
                   const policy = ROLE_AUTH_POLICIES[role.id];
@@ -364,71 +368,50 @@ const RoleSelection: React.FC = () => {
                       whileHover={{ y: -4 }}
                       whileTap={{ scale: 0.99 }}
                       className={cn(
-                        "relative rounded-[28px] border p-5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]",
+                        "relative rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]",
                         isSelected
-                          ? "border-blue-300/80 bg-slate-900/90 shadow-[0_18px_50px_rgba(59,130,246,0.22)] ring-1 ring-blue-400/40"
+                          ? "border-blue-300/80 bg-slate-900/90 shadow-[0_14px_40px_rgba(59,130,246,0.22)] ring-1 ring-blue-400/40"
                           : "border-white/10 bg-slate-950/75 hover:border-white/25 hover:bg-slate-900/80"
                       )}
                     >
-                      {isSelected && (
-                        <div className="absolute right-4 top-4 rounded-full bg-blue-500 p-1 text-white">
-                          <CheckCircle className="h-4 w-4" />
-                        </div>
-                      )}
-
-                      <div className="flex items-start justify-between gap-4">
-                        <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg", role.color)}>
+                      <div className="flex items-center gap-3">
+                        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-lg", role.color)}>
                           {role.icon}
                         </div>
-                        <span
-                          className={cn(
-                            "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.24em]",
-                            role.requiresAuth
-                              ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
-                              : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-                          )}
-                        >
-                          {role.requiresAuth ? t("roles.restricted", "Restricted") : t("roles.openAccess", "Open Access")}
-                        </span>
-                      </div>
-
-                      <h3 className="mt-5 text-lg font-semibold text-white">{role.label}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-300/85">{role.description}</p>
-
-                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <div className="flex items-start gap-2">
-                          {role.requiresAuth ? (
-                            <AlertCircle className="mt-0.5 h-4 w-4 text-rose-300" />
-                          ) : (
-                            <CheckCircle className="mt-0.5 h-4 w-4 text-emerald-300" />
-                          )}
-                          <div>
-                            <p className="text-xs font-semibold text-white">
-                              {role.requiresAuth
-                                ? t("roles.authRequired", "Authorization Required")
-                                : t("roles.openRegistration", "Open Registration")}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-400">{role.hint}</p>
-                          </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate text-[15px] font-semibold text-white">{role.label}</h3>
+                          <span
+                            className={cn(
+                              "mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]",
+                              role.requiresAuth
+                                ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                                : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                            )}
+                          >
+                            {role.requiresAuth ? t("roles.restricted", "Restricted") : t("roles.openAccess", "Open Access")}
+                          </span>
                         </div>
+                        {isSelected && (
+                          <div className="shrink-0 rounded-full bg-blue-500 p-1 text-white">
+                            <CheckCircle className="h-4 w-4" />
+                          </div>
+                        )}
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-slate-300/80">{role.description}</p>
+
+                      <div className="mt-3 flex flex-wrap gap-1.5">
                         {role.badges.map((badge) => (
                           <span
                             key={badge}
-                            className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200"
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"
                           >
                             {badge}
                           </span>
                         ))}
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                        <span>
-                          {t("roles.securityLevel", "Security Level")}: {roleRequiresHighSecurity ? t("roles.high", "High") : t("roles.standard", "Standard")}
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">
+                          {roleRequiresHighSecurity ? t("roles.high", "High") : t("roles.standard", "Standard")}
                         </span>
-                        <span>Max sessions: {policy.maxConcurrentSessions}</span>
                       </div>
                     </motion.button>
                   );
@@ -436,9 +419,9 @@ const RoleSelection: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
               <motion.div
-                className="rounded-[32px] border border-white/10 bg-slate-950/75 p-6 shadow-[0_25px_60px_rgba(2,6,23,0.55)]"
+                className="rounded-[28px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_25px_60px_rgba(2,6,23,0.55)]"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.5 }}
@@ -451,46 +434,75 @@ const RoleSelection: React.FC = () => {
                     : "Select a role first. The available path will update automatically."}
                 </p>
 
-                <div className="mt-5 space-y-4">
-                  <AuthActionSummaryCard
-                    title="Sign in"
-                    description="Use approved credentials to enter the secure access flow for this role."
-                  />
+                {isSurvivor ? (
+                  <>
+                    <div className="mt-5 space-y-4">
+                      <AuthActionSummaryCard
+                        title="Survivor support is a mobile app"
+                        description="For your privacy and safety, survivors use the dedicated AEGIS Support app — not this web portal. Your account works on both."
+                      />
+                    </div>
+                    <div className="mt-6 flex flex-col gap-3">
+                      {mobileAppUrl ? (
+                        <Button
+                          onClick={() => window.open(mobileAppUrl, "_blank", "noopener,noreferrer")}
+                          className="h-12 bg-gradient-to-r from-sky-500 to-blue-600 text-base shadow-lg shadow-blue-500/25"
+                        >
+                          Get the AEGIS Support app
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          Ask your support worker or coordinator how to install the AEGIS Support
+                          app. You can sign in there with the same username and passphrase.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-5 space-y-4">
+                      <AuthActionSummaryCard
+                        title="Sign in"
+                        description="Use approved credentials to enter the secure access flow for this role."
+                      />
 
-                  <AuthActionSummaryCard
-                    title="Initialize"
-                    description={initializeHint}
-                  />
-                </div>
+                      <AuthActionSummaryCard
+                        title="Initialize"
+                        description={initializeHint}
+                      />
+                    </div>
 
-                <div className="mt-6 flex flex-col gap-3">
-                  <Button
-                    onClick={() => selectedRole && navigate(`/auth/verify?role=${selectedRole}`)}
-                    className="h-12 bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 text-base shadow-lg shadow-blue-500/25"
-                    disabled={!selectedRole}
-                  >
-                    Sign In
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => selectedRole && canInitialize && navigate(`/auth/initialize?role=${selectedRole}`)}
-                    className="h-12 border-white/20 bg-white/5 text-base text-slate-100 hover:bg-white/10"
-                    disabled={!selectedRole || !canInitialize}
-                  >
-                    {initializeLabel}
-                  </Button>
-                  {!canInitialize && selectedRole && (
-                    <p className="text-xs text-slate-400">
-                      Initialization is disabled because this role requires approved credentials before onboarding.
-                    </p>
-                  )}
-                </div>
+                    <div className="mt-6 flex flex-col gap-3">
+                      <Button
+                        onClick={() => selectedRole && navigate(`/auth/verify?role=${selectedRole}`)}
+                        className="h-12 bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 text-base shadow-lg shadow-blue-500/25"
+                        disabled={!selectedRole}
+                      >
+                        Sign In
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => selectedRole && canInitialize && navigate(`/auth/initialize?role=${selectedRole}`)}
+                        className="h-12 border-white/20 bg-white/5 text-base text-slate-100 hover:bg-white/10"
+                        disabled={!selectedRole || !canInitialize}
+                      >
+                        {initializeLabel}
+                      </Button>
+                      {!canInitialize && selectedRole && (
+                        <p className="text-xs text-slate-400">
+                          Initialization is disabled because this role requires approved credentials before onboarding.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
               </motion.div>
             </div>
           </motion.section>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

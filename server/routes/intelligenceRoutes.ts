@@ -27,7 +27,11 @@ type AuthenticatedRequest = Request & {
 
 export function createIntelligenceRoutes(
   supabase: SupabaseClient,
-  auditLog: AuditLogService
+  auditLog: AuditLogService,
+  // Token-verifying middleware from the app (populates req.user). The local
+  // stub this replaced only *checked* req.user, which nothing set on this
+  // mount — every route answered 401.
+  requireAuth: (req: Request, res: Response, next: NextFunction) => void | Promise<void>
 ): Router {
   const router = Router();
   const riskEngine = new RiskScoringEngine(supabase);
@@ -59,15 +63,6 @@ export function createIntelligenceRoutes(
       modelPath,
       summary: topContributors.map((factor, index) => `${index + 1}. ${factor.factor} (${factor.contribution}/100)`).join(' | '),
     };
-  };
-
-  // Middleware: Ensure user is authenticated
-  const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    next();
   };
 
   // ============================================================================

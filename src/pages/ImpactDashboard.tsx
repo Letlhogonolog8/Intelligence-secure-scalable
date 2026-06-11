@@ -46,7 +46,7 @@ const ImpactDashboard: React.FC = () => {
         <div className="absolute bottom-0 right-1/4 w-[40%] h-[30%] bg-rose-600/8 blur-[160px] rounded-full" />
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6 py-10 space-y-10">
+      <main className="relative z-10 max-w-6xl mx-auto px-6 py-10 space-y-10">
         <div>
           <button
             onClick={() => navigate("/")}
@@ -212,7 +212,7 @@ const ImpactDashboard: React.FC = () => {
         <p className="text-center text-[10px] text-slate-600 pb-4">
           All data is anonymised and aggregated. No personally identifiable information is displayed. POPIA compliant. © AEGIS-AI 2026
         </p>
-      </div>
+      </main>
     </div>
   );
 };

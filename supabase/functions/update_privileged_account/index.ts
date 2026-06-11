@@ -149,7 +149,11 @@ async function handleRequest(req: Request): Promise<Response> {
       ? payload.profile?.organization_id ?? null
       : targetProfile.organization_id ?? null;
 
-    if ((nextRole === "ngo" || nextRole === "police") && !nextOrganizationId) {
+    // Only enforce the org-assignment rule when the request is actually editing the
+    // profile (role/org). Credential-only operations (e.g. password resets) send no
+    // `profile` block and must not be blocked by pre-existing incomplete org data.
+    const isProfileEdit = Boolean(payload.profile);
+    if (isProfileEdit && (nextRole === "ngo" || nextRole === "police") && !nextOrganizationId) {
       return respond(200, { success: false, error: "Organization assignment is required for NGO and Police accounts" }, origin);
     }
 

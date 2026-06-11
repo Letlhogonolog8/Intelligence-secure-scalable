@@ -11,6 +11,8 @@ export const OfflineSyncIndicator: React.FC = () => {
     <AnimatePresence>
       {showBanner && (
         <motion.div
+          role="status"
+          aria-live="polite"
           initial={{ opacity: 0, y: -40 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -40 }}
@@ -62,6 +64,8 @@ export const OfflineSyncIndicator: React.FC = () => {
       {!showBanner && isOnline && (
         <motion.div
           key="online-pill"
+          role="status"
+          aria-live="polite"
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}

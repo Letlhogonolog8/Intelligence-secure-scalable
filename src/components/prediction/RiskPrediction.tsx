@@ -16,6 +16,15 @@ import {
 } from '@/components/ui/AegisIcons';
 import { useQueryClient } from '@tanstack/react-query';
 
+/**
+ * Model accuracy is stored as a 0–1 fraction (e.g. 0.89). Render it as a whole
+ * percentage, tolerating values already expressed as a percent (e.g. 89).
+ */
+const accuracyPercent = (value: number): number => {
+  const pct = value > 0 && value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+};
+
 const RiskPrediction: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [filterRisk, setFilterRisk] = useState<RiskLevel | 'all'>('all');
@@ -34,7 +43,17 @@ const RiskPrediction: React.FC = () => {
   const hasData = regions.length > 0 || riskTrendData.length > 0 || anomalyAlerts.length > 0;
   const errorMessage = regionsError?.message || trendError?.message || incidentTypesError?.message || forecastsError?.message || modelsError?.message || anomalyError?.message;
 
-  const predictionModels = governanceModels.filter((model) => model.module.toLowerCase().includes('prediction'));
+  const predictionModels = useMemo(() => {
+    const seen = new Set<string>();
+    return governanceModels
+      .filter((model) => model.module.toLowerCase().includes('prediction'))
+      .filter((model) => {
+        const key = `${model.name}|${model.version}`.toLowerCase().trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [governanceModels]);
   const visibleAnomalies = showAnomalies ? anomalyAlerts : [];
 
   const filteredRegions = regions.filter(r => {
@@ -352,10 +371,10 @@ const RiskPrediction: React.FC = () => {
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-500">
                     <span>{model.version}</span>
-                    <span>Accuracy: {model.accuracy}%</span>
+                    <span>Accuracy: {accuracyPercent(model.accuracy)}%</span>
                   </div>
                   <div className="w-full h-1 bg-slate-700 rounded-full mt-2 overflow-hidden">
-                    <div className="h-full rounded-full bg-amber-500/60" style={{ width: `${model.accuracy}%` }} />
+                    <div className="h-full rounded-full bg-amber-500/60" style={{ width: `${accuracyPercent(model.accuracy)}%` }} />
                   </div>
                 </div>
               ))}

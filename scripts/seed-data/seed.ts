@@ -1,7 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
+import * as crypto from "node:crypto";
 
 dotenv.config({ path: ".env" });
+
+/**
+ * Seed passwords are never hardcoded: set SEED_*_PASSWORD env vars to choose
+ * them, otherwise a random one is generated and printed exactly once below.
+ * (Hardcoded demo passwords in a public repo mean anyone can sign in as admin.)
+ */
+const generatedCredentials: Array<{ account: string; password: string }> = [];
+
+function resolveSeedPassword(envVar: string, account: string): string {
+  const fromEnv = process.env[envVar]?.trim();
+  if (fromEnv) {
+    if (fromEnv.length < 12) {
+      console.error(`❌ ${envVar} must be at least 12 characters`);
+      process.exit(1);
+    }
+    return fromEnv;
+  }
+  const password = `${crypto.randomBytes(9).toString("base64url")}!2a`;
+  generatedCredentials.push({ account, password });
+  return password;
+}
+
+function printGeneratedCredentials(): void {
+  if (generatedCredentials.length === 0) return;
+  console.log("🔑 Generated seed credentials (shown once — store them now):");
+  for (const { account, password } of generatedCredentials) {
+    console.log(`   ${account}: ${password}`);
+  }
+  console.log("   (Set SEED_ADMIN_PASSWORD / SEED_POLICE_PASSWORD / SEED_NGO_PASSWORD /");
+  console.log("    SEED_ANALYST_PASSWORD / SEED_COUNSELOR_PASSWORD to choose your own.)\n");
+}
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -21,7 +53,7 @@ if (!supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const adminUsername = "Admin";
-const adminPassword = "admin001!";
+const adminPassword = resolveSeedPassword("SEED_ADMIN_PASSWORD", "Admin (admin@aegis.co.za)");
 const primaryAdminEmail = "admin@aegis.co.za";
 const legacyAdminEmail = `${adminUsername.toLowerCase()}@aegis.example`;
 
@@ -43,7 +75,7 @@ const privilegedTestAccounts: TestPrivilegedAccount[] = [
   {
     fullName: "Samuel Poee",
     username: "Sam",
-    password: "saps003!",
+    password: resolveSeedPassword("SEED_POLICE_PASSWORD", "Police (Sam)"),
     role: "police",
     organizationName: "Kenya Women Police Officers",
     phone: "+254700111222",
@@ -54,7 +86,7 @@ const privilegedTestAccounts: TestPrivilegedAccount[] = [
   {
     fullName: "Merriam",
     username: "Merriam",
-    password: "nongov003!",
+    password: resolveSeedPassword("SEED_NGO_PASSWORD", "NGO (Merriam)"),
     role: "ngo",
     organizationName: "Kenyan Red Cross",
     phone: "+254733222333",
@@ -65,7 +97,7 @@ const privilegedTestAccounts: TestPrivilegedAccount[] = [
   {
     fullName: "Tshepo",
     username: "Tshepo",
-    password: "Tshepo123!",
+    password: resolveSeedPassword("SEED_ANALYST_PASSWORD", "Analyst (Tshepo)"),
     role: "analyst",
     organizationName: "South African Medical Research Council",
     phone: "+27711234567",
@@ -76,7 +108,7 @@ const privilegedTestAccounts: TestPrivilegedAccount[] = [
   {
     fullName: "Gosiame",
     username: "Gosiame",
-    password: "Gosiame242!",
+    password: resolveSeedPassword("SEED_COUNSELOR_PASSWORD", "Counselor (Gosiame)"),
     role: "counselor",
     organizationName: "South African Medical Research Council",
     phone: "+27739876543",
@@ -885,19 +917,41 @@ async function seedGovernanceData() {
     },
   ];
 
-  const { data: modelData, error: modelError } = await supabase
+  // Idempotent: only insert models that don't already exist (by name), so
+  // re-running the seed never stacks duplicate model rows.
+  const modelNames = models.map((model) => model.name);
+  const { data: existingModels, error: existingModelError } = await supabase
     .from("governance_models")
-    .insert(models)
-    .select();
+    .select("id, name")
+    .in("name", modelNames);
 
-  if (modelError) {
-    console.error("Error seeding governance models:", modelError);
-  } else {
-    console.log(`✅ Created ${modelData?.length || 0} governance models`);
+  if (existingModelError) {
+    console.error("Error loading existing governance models:", existingModelError);
   }
 
-  // Seed fairness metrics
-  if (modelData) {
+  const existingModelNames = new Set((existingModels || []).map((model) => model.name));
+  const missingModels = models.filter((model) => !existingModelNames.has(model.name));
+
+  let insertedModels: Array<{ id: string; name: string }> = [];
+  if (missingModels.length > 0) {
+    const { data, error: modelError } = await supabase
+      .from("governance_models")
+      .insert(missingModels)
+      .select("id, name");
+
+    if (modelError) {
+      console.error("Error seeding governance models:", modelError);
+    } else {
+      insertedModels = data || [];
+    }
+  }
+
+  console.log(
+    `✅ Prepared ${(existingModels?.length || 0) + insertedModels.length} governance models (${insertedModels.length} new)`
+  );
+
+  // Seed fairness metrics for newly added models only (idempotent).
+  if (insertedModels.length > 0) {
     const fairnessMetrics: Array<{
       model_id: string;
       demographic_group: string;
@@ -905,7 +959,7 @@ async function seedGovernanceData() {
       metric_value: number;
       status: string;
     }> = [];
-    for (const model of modelData) {
+    for (const model of insertedModels) {
       fairnessMetrics.push({
         model_id: model.id,
         demographic_group: "gender",
@@ -1035,6 +1089,7 @@ async function seedDatabase(options: SeedOptions = {}) {
 
     if (options.adminOnly) {
       console.log("\n✨ Admin repair complete!");
+      printGeneratedCredentials();
       process.exit(0);
     }
 
@@ -1046,6 +1101,7 @@ async function seedDatabase(options: SeedOptions = {}) {
 
     if (options.authOnly) {
       console.log("\n✨ Authentication repair complete!");
+      printGeneratedCredentials();
       process.exit(0);
     }
     
@@ -1081,6 +1137,7 @@ async function seedDatabase(options: SeedOptions = {}) {
 
     console.log("\n✨ Database seeding complete!");
     console.log("✅ All data loaded successfully\n");
+    printGeneratedCredentials();
     process.exit(0);
   } catch (error) {
     console.error("\n❌ Fatal error during seeding:");

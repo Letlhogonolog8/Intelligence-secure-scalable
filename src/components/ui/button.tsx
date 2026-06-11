@@ -12,12 +12,16 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        // The product UI is dark-themed, so outline/secondary/ghost use explicit
+        // high-contrast colors (instead of light theme tokens that render
+        // light-on-light). Buttons that pass their own color classes still win
+        // via tailwind-merge.
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-white/15 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-white/10 text-slate-100 hover:bg-white/15",
+        ghost: "text-slate-200 hover:bg-white/10 hover:text-white",
+        link: "text-sky-400 underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",

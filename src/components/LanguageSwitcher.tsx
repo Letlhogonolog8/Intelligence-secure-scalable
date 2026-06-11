@@ -7,7 +7,7 @@ interface LanguageSwitcherProps {
 }
 
 const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact" }) => {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const current = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0] || "en";
 
   const handleChange = async (code: SupportedLanguage) => {
@@ -40,6 +40,7 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact"
       <select
         value={current}
         onChange={(e) => void handleChange(e.target.value as SupportedLanguage)}
+        aria-label={t("common.selectLanguage", "Select language")}
         className="appearance-none bg-slate-900/60 border border-white/10 text-slate-300 text-xs rounded px-7 py-1.5 focus:outline-none focus:border-blue-500/40 cursor-pointer"
       >
         {SUPPORTED_LANGUAGES.map((lang) => (

@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAlertsFeed, useEscalationReviews, useOrganizationCoordination, useUserProfile } from "@/data/aegisData";
 import { useLiveJusticeCases, useLiveSafetyPlans, useLiveSurvivorChatSessions, useLiveSurvivors } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
 import { DashboardHero, DashboardPage, EmptyState, HeroBadge, ListItemCard, MetricCard, SectionCard, StatusPill } from "@/components/dashboard/DashboardPrimitives";
+import { EncryptedClinicalNotes } from "@/components/counselor/EncryptedClinicalNotes";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -16,6 +17,7 @@ const CounselorDashboard: React.FC = () => {
   const isCounselor = profile?.role === "counselor";
   const resolvedRole = (profile?.role ?? "counselor") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
+  const [selectedNoteCaseId, setSelectedNoteCaseId] = useState("");
 
   const { data: justiceCases = [], isLoading: casesLoading } = useLiveJusticeCases({ enabled: isCounselor, assignedTo: user?.id, staleTime: 15000, refetchInterval: 30000, limit: 120 });
   const { data: sessions = [], isLoading: sessionsLoading } = useLiveSurvivorChatSessions({ enabled: isCounselor, counselorId: user?.id, staleTime: 10000, refetchInterval: 20000, limit: 120 });
@@ -45,6 +47,7 @@ const CounselorDashboard: React.FC = () => {
   }, [coordination, counselorCaseIds]);
   const activeCollaborations = useMemo(() => counselorCoordination.filter((entry) => ["pending", "accepted", "in_progress"].includes(entry.status)), [counselorCoordination]);
   const visibleCases = useMemo(() => sortByPriorityAndRecency(activeCases).slice(0, 5), [activeCases]);
+  const noteCaseId = selectedNoteCaseId || activeCases[0]?.id || "";
   const alertHighlights = useMemo(
     () => dedupeBy(alertsFeed.filter((entry) => ["survivor_support", "justice", "command_center"].includes(entry.module || "")), (entry) => `${entry.module}|${entry.type}|${entry.message}`).slice(0, 4),
     [alertsFeed]
@@ -236,6 +239,42 @@ const CounselorDashboard: React.FC = () => {
             </div>
           </div>
         </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4">
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-5 backdrop-blur-xl sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Clinical documentation</h2>
+            <p className="text-sm text-slate-400">Record a confidential note against one of your active cases.</p>
+          </div>
+          {activeCases.length > 0 ? (
+            <label className="sm:w-80">
+              <span className="sr-only">Select case for clinical note</span>
+              <select
+                aria-label="Select case for clinical note"
+                value={noteCaseId}
+                onChange={(event) => setSelectedNoteCaseId(event.target.value)}
+                className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
+              >
+                {activeCases.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    Case {entry.caseNumber} · {entry.priority}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        {noteCaseId ? (
+          <EncryptedClinicalNotes caseId={noteCaseId} />
+        ) : (
+          <SectionCard title="Clinical notes" description="Notes attach to one of your active cases.">
+            <EmptyState
+              title="No active case to document"
+              description="Once you have an assigned active case, you can record confidential clinical notes here."
+            />
+          </SectionCard>
+        )}
       </section>
     </DashboardPage>
   );

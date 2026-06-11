@@ -10,6 +10,7 @@ import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, UserRole } from "@/lib/roleConfig";
 import { useOrganizationContext } from "@/contexts/organizationContext";
+import SurvivorAppRedirect from "@/components/auth/SurvivorAppRedirect";
 
 const CommandCenter = lazy(() => import('@/components/dashboard/CommandCenter'));
 const SurvivorSupport = lazy(() => import('@/components/survivor/SurvivorSupport'));
@@ -171,6 +172,12 @@ const AppLayout: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // The web app is the PROFESSIONAL portal. Survivors have a dedicated mobile
+  // app (more private, with quick-exit and offline SOS), so route them there.
+  if (role === "survivor") {
+    return <SurvivorAppRedirect />;
   }
 
   return (

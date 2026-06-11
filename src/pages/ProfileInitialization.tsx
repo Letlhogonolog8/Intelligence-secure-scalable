@@ -517,7 +517,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
         onEmergencyClick={() => navigate("/auth")}
       />
 
-      <motion.div
+      <motion.main
         className="grid lg:grid-cols-[0.4fr_0.6fr] gap-10 items-start"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1040,7 +1040,7 @@ const ProfileInitialization: React.FC<ProfileInitializationProps> = ({
               </CardContent>
             </Card>
           </motion.div>
-      </motion.div>
+      </motion.main>
     </AuthSplitLayout>
   );
 };

@@ -181,7 +181,9 @@ export const calculateQueueMetrics = (cases: LiveJusticeCase[]): QueueMetrics =>
       ? Math.round(daysOpenArray.reduce((sum, d) => sum + d, 0) / daysOpenArray.length)
       : 0,
     medianDaysOpen: daysOpenArray.length > 0
-      ? daysOpenArray[Math.floor(daysOpenArray.length / 2)]
+      ? (daysOpenArray.length % 2 === 0
+          ? Math.round((daysOpenArray[daysOpenArray.length / 2 - 1] + daysOpenArray[daysOpenArray.length / 2]) / 2)
+          : daysOpenArray[Math.floor(daysOpenArray.length / 2)])
       : 0,
   };
 

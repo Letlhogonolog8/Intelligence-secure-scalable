@@ -39,12 +39,21 @@ tsc-server*.log
 vitest.config.ts.timestamp-*
 
 # Compiled output of TS scripts (the .ts source is the source of truth)
-scripts/*.js
-scripts/*.js.map
-scripts/*.d.ts
-scripts/*.d.ts.map
-!scripts/*.cjs
-!scripts/*.mjs
+scripts/**/*.js
+scripts/**/*.js.map
+scripts/**/*.d.ts
+scripts/**/*.d.ts.map
+!scripts/**/*.cjs
+!scripts/**/*.mjs
+config/*.js
+config/*.js.map
+config/*.d.ts
+config/*.d.ts.map
+
+# Test/build output directories
+coverage/
+dev-dist/
+test-results/
 
 # Supabase CLI scratch
 supabase/.temp/

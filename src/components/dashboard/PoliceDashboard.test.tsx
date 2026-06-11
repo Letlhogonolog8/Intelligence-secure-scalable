@@ -33,7 +33,10 @@ vi.mock("@/data/aegisData", () => ({
   useUserProfile: (...args: unknown[]) => mockUseUserProfile(...args),
   usePoliceAlertsFeed: (...args: unknown[]) => mockUsePoliceAlertsFeed(...args),
   useOrganizationCoordination: (...args: unknown[]) => mockUseOrganizationCoordination(...args),
+  useEscalationRealtime: () => undefined,
   acknowledgePoliceAlert: vi.fn(),
+  deleteAlert: vi.fn(),
+  deleteAllAlerts: vi.fn(),
 }));
 
 vi.mock("@/data/liveDashboardData", () => ({

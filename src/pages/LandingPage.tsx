@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { AegisLogo } from "@/components/AegisLogo";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
@@ -181,9 +182,7 @@ const LandingPage: React.FC = () => {
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 via-blue-500 to-rose-500 shadow-lg shadow-sky-500/25">
-              <Shield className="h-5 w-5" />
-            </div>
+            <AegisLogo size={40} />
             <div>
               <p className="text-[10px] uppercase tracking-[0.35em] text-sky-200/70">
                 AEGIS-AI
@@ -274,6 +273,7 @@ const LandingPage: React.FC = () => {
       </motion.nav>
 
       <div className="relative z-10">
+        <main>
         <section
           id="hero"
           className="scroll-mt-28 px-4 pb-14 pt-32 sm:px-6 sm:pt-36 lg:px-8"
@@ -632,6 +632,7 @@ const LandingPage: React.FC = () => {
             </div>
           </motion.div>
         </section>
+        </main>
 
         <footer className="border-t border-white/10 px-4 py-8 sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">

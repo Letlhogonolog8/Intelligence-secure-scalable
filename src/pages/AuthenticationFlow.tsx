@@ -109,7 +109,6 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
       return;
     }
     const destination = credentials.role === "admin" ? "/admin" : "/app";
-    console.log("Navigating to destination:", { destination, role: credentials.role });
     setActiveModule("dashboard");
     navigate(destination);
   }, [navigate, onAuthenticated, setActiveModule]);
@@ -461,7 +460,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
         onEmergencyClick={() => navigate("/auth")}
       />
 
-      <motion.div
+      <motion.main
         className="grid lg:grid-cols-[0.55fr_0.45fr] gap-10 items-start"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -925,7 +924,7 @@ const AuthenticationFlow: React.FC<AuthFlowProps> = ({ selectedRole, onAuthentic
             </Card>
 
           </motion.div>
-      </motion.div>
+      </motion.main>
     </AuthSplitLayout>
   );
 };

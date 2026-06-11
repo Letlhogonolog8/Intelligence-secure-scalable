@@ -30,7 +30,7 @@ const moduleNames: Record<ModuleType, string> = {
 
 export const Breadcrumb: React.FC<BreadcrumbProps> = ({ currentModule, currentPage, roleLabel, organizationLabel }) => {
   return (
-    <nav className="flex items-center gap-2 text-xs text-slate-400">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-slate-400">
       <a href="/" className="flex items-center gap-1 hover:text-white transition-colors">
         <HomeIcon size={14} />
         <span className="hidden sm:inline">AEGIS</span>

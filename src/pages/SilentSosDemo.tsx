@@ -12,7 +12,7 @@ export default function SilentSosDemo() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-3xl space-y-6 p-6 md:p-10">
+      <main className="mx-auto max-w-3xl space-y-6 p-6 md:p-10">
         <header className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">AEGIS-AI · Edge / robotics integration</p>
           <h1 className="text-3xl font-semibold tracking-tight">Silent SOS (BLE + PWA)</h1>
@@ -81,7 +81,7 @@ export default function SilentSosDemo() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   )
 }

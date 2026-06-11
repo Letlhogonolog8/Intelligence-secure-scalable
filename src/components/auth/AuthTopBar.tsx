@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { AegisLogo } from "@/components/AegisLogo";
 import { LucideIcon } from "lucide-react";
 
 interface AuthTopBarProps {
@@ -23,13 +24,11 @@ const AuthTopBar: React.FC<AuthTopBarProps> = ({
   onEmergencyClick,
 }) => {
   return (
-    <div className="fixed top-0 z-40 w-full border-b border-white/5 bg-[#0a1020]/85 backdrop-blur-xl">
+    <header className="fixed top-0 z-40 w-full border-b border-white/5 bg-[#0a1020]/85 backdrop-blur-xl">
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-slate-700 to-rose-500 shadow-lg shadow-blue-500/30">
-              <Icon className="h-5 w-5 text-white" />
-            </div>
+            <AegisLogo size={40} fallbackIcon={Icon} />
             <div>
               <p className="text-[11px] uppercase tracking-[0.4em] text-blue-200/70">AEGIS-AI</p>
               <h1 className="text-lg font-semibold">{title}</h1>
@@ -61,7 +60,7 @@ const AuthTopBar: React.FC<AuthTopBarProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </header>
   );
 };
 

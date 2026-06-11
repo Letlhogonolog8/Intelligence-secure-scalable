@@ -29,7 +29,9 @@ export const schemas = {
 
   ussdTest: Joi.object({
     phoneNumber: Joi.string().required().pattern(/^\+?[\d\s\-()]+$/),
-    userInput: Joi.string().required().max(180),
+    // A USSD dial-in starts with an empty input — '' must validate.
+    userInput: Joi.string().required().max(180).allow(''),
+    sessionId: Joi.string().max(100).optional(),
     language: Joi.string().valid('en', 'zu', 'xh', 'st', 'tn', 'ss', 'af', 'ts', 've', 'nso', 'nr').optional(),
   }),
 

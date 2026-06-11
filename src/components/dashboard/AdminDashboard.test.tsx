@@ -54,6 +54,10 @@ vi.mock("@/components/dashboard/CaseStatusLookup", () => ({
   CaseStatusLookup: () => <div>mock-case-lookup</div>,
 }));
 
+vi.mock("@/components/admin/MFAEnforcementPanel", () => ({
+  MFAEnforcementPanel: () => <div>mock-mfa-panel</div>,
+}));
+
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="chart">{children}</div>,
   AreaChart: () => <div />,

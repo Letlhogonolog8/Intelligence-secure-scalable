@@ -271,8 +271,8 @@ const CHWDashboard: React.FC = () => {
                   <Input value={referralForm.survivorCode} onChange={e => setReferralForm(p => ({ ...p, survivorCode: e.target.value }))} placeholder="e.g. SUR-001A" className="bg-slate-900/60 border-white/10 text-white" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 font-semibold mb-1.5 block">Service Type</label>
-                  <select value={referralForm.serviceType} onChange={e => setReferralForm(p => ({ ...p, serviceType: e.target.value }))} className="w-full h-10 rounded-md border border-white/10 bg-slate-900/60 text-white text-sm px-3">
+                  <label htmlFor="chw-referral-service-type" className="text-xs text-slate-400 font-semibold mb-1.5 block">Service Type</label>
+                  <select id="chw-referral-service-type" value={referralForm.serviceType} onChange={e => setReferralForm(p => ({ ...p, serviceType: e.target.value }))} className="w-full h-10 rounded-md border border-white/10 bg-slate-900/60 text-white text-sm px-3">
                     {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>

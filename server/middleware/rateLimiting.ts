@@ -79,6 +79,7 @@ type LimiterHandlers = {
   strictLimiter: RequestHandler;
   escalationLimiter: RequestHandler;
   mfaLimiter: RequestHandler;
+  aiLimiter: RequestHandler;
 };
 
 const buildLimiters = (): LimiterHandlers => ({
@@ -114,6 +115,14 @@ const buildLimiters = (): LimiterHandlers => ({
     message: 'Too many MFA attempts, please try again later.',
     skipSuccessfulRequests: true,
   }),
+  // AI endpoints proxy paid third-party inference (Hugging Face) and are
+  // reachable without auth so anonymous survivors can use them. 20/min per IP
+  // is ample for a human conversation but blocks bulk cost abuse.
+  aiLimiter: createLimiter({
+    windowMs: 60 * 1000,
+    max: 20,
+    message: 'Too many AI requests, please slow down.',
+  }),
 });
 
 let limiterHandlers: LimiterHandlers = buildLimiters();
@@ -126,6 +135,7 @@ export const apiLimiter: RequestHandler = delegateTo('apiLimiter');
 export const strictLimiter: RequestHandler = delegateTo('strictLimiter');
 export const escalationLimiter: RequestHandler = delegateTo('escalationLimiter');
 export const mfaLimiter: RequestHandler = delegateTo('mfaLimiter');
+export const aiLimiter: RequestHandler = delegateTo('aiLimiter');
 
 export const initializeRateLimiting = async (): Promise<void> => {
   if (initialized) {

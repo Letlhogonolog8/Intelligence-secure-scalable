@@ -25,19 +25,35 @@ type AuthenticatedRequest = Request & {
   };
 };
 
+// Roles allowed to view/work escalations (mirrors the escalation_events RLS).
+const RESPONDER_ROLES = ['police', 'counselor', 'ngo', 'chw', 'admin', 'analyst'];
+
+function getUserRole(req: Request): string | undefined {
+  const user = (req as AuthenticatedRequest).user;
+  return (user?.role ?? user?.profile?.role)?.toLowerCase();
+}
+
 export function createEscalationRoutes(
   supabase: SupabaseClient,
   escalationWorkflow: EscalationWorkflow,
   auditLog: AuditLogService,
+  // Token-verifying middleware from the app (populates req.user). The local
+  // stub this replaced only *checked* req.user, which nothing set on this
+  // mount — every authenticated route answered 401.
+  requireAuth: (req: Request, res: Response, next: NextFunction) => void | Promise<void>,
+  hotlineLimiter: (req: Request, res: Response, next: NextFunction) => void,
   wsManager?: WebSocketManager
 ): Router {
   const router = Router();
 
-  // Middleware: Ensure user is authenticated
-  const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) {
-      return res.status(401).json({ error: 'Unauthorized' });
+  // Middleware: restrict to responding roles. These endpoints use the
+  // service-role Supabase client (bypasses RLS), so the role check must
+  // happen here — otherwise any signed-in survivor could read any
+  // escalation, including another survivor's live location.
+  const requireResponder = (req: Request, res: Response, next: NextFunction) => {
+    const role = getUserRole(req);
+    if (!role || !RESPONDER_ROLES.includes(role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();
   };
@@ -131,6 +147,14 @@ export function createEscalationRoutes(
         return res.status(404).json({ error: 'Escalation not found' });
       }
 
+      // Responders may view any escalation; a survivor only their own.
+      const role = getUserRole(req);
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const isResponder = Boolean(role && RESPONDER_ROLES.includes(role));
+      if (!isResponder && escalation.user_id !== userId) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
+
       res.json({
         escalationId: escalation.id,
         caseId: escalation.case_id,
@@ -153,7 +177,7 @@ export function createEscalationRoutes(
    * POST /api/escalation/:escalationId/acknowledge
    * Acknowledge escalation
    */
-  router.post('/:escalationId/acknowledge', requireAuth, async (req: Request, res: Response) => {
+  router.post('/:escalationId/acknowledge', requireAuth, requireResponder, async (req: Request, res: Response) => {
     try {
       const { escalationId } = req.params;
       const userId = (req as AuthenticatedRequest).user!.id;
@@ -188,7 +212,7 @@ export function createEscalationRoutes(
    * POST /api/escalation/:escalationId/resolve
    * Resolve escalation
    */
-  router.post('/:escalationId/resolve', requireAuth, async (req: Request, res: Response) => {
+  router.post('/:escalationId/resolve', requireAuth, requireResponder, async (req: Request, res: Response) => {
     try {
       const { escalationId } = req.params;
       const { resolution } = req.body;
@@ -229,7 +253,7 @@ export function createEscalationRoutes(
    * GET /api/escalation/case/:caseId
    * Get all escalations for a case
    */
-  router.get('/case/:caseId', requireAuth, async (req: Request, res: Response) => {
+  router.get('/case/:caseId', requireAuth, requireResponder, async (req: Request, res: Response) => {
     try {
       const { caseId } = req.params;
 
@@ -288,9 +312,10 @@ export function createEscalationRoutes(
 
   /**
    * POST /api/escalation/hotline
-   * Emergency hotline endpoint (accessible without normal auth)
+   * Emergency hotline endpoint (accessible without normal auth; tightly
+   * rate-limited because it creates cases and triggers SMS fan-out)
    */
-  router.post('/hotline', async (req: Request, res: Response) => {
+  router.post('/hotline', hotlineLimiter, async (req: Request, res: Response) => {
     try {
       const { description, location, lat, lng, survivorPhone, threatLevel } = req.body;
 

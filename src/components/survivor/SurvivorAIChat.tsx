@@ -15,19 +15,6 @@ interface Message {
   riskFlag?: boolean;
 }
 
-const SYSTEM_PROMPT = `You are a compassionate, trauma-informed support companion within the AEGIS GBV (gender-based violence) response platform. Your role is to:
-
-1. Provide a safe, non-judgmental space for survivors to share what they are experiencing
-2. Respond with empathy, validation, and grounding language
-3. Always remind users they are not alone and that help is available
-4. If the user describes immediate danger, active violence, or suicidal ideation, respond with CRISIS ALERT: and provide emergency numbers (Police: 10111, Crisis line: 0800 428 428, USSD: *123*456#)
-5. Never blame, minimize, or question the survivor's experience
-6. Keep responses concise (2-4 sentences max) and human
-7. Encourage the user to use the platform's case reporting and counselor features when appropriate
-8. Maintain strict confidentiality — you never store personal details beyond this session
-9. Always end with a gentle open question or affirmation
-10. If the message appears to be in another South African language (Zulu, Xhosa, Sotho, Afrikaans etc), respond in the same language`;
-
 const QUICK_PROMPTS = [
   "I don't know where to start",
   "I need help right now",
@@ -46,8 +33,8 @@ async function sendToAI(messages: Message[], userMessage: string): Promise<strin
     const response = await fetch("/api/ai/survivor-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // The system prompt is fixed server-side (see /api/ai/survivor-chat).
       body: JSON.stringify({
-        systemPrompt: SYSTEM_PROMPT,
         messages: [...history, { role: "user", content: userMessage }],
       }),
     });

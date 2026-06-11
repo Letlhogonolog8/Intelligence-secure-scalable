@@ -253,7 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 flex flex-col min-h-0 overflow-visible">
+      <nav aria-label="Primary" className="flex-1 flex flex-col min-h-0 overflow-visible">
         <div className="flex-1 overflow-y-auto overflow-x-visible px-2 py-4 space-y-1">
           {/* Favorites Section */}
           {!collapsed && favoriteModsData.length > 0 && (

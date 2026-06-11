@@ -275,6 +275,10 @@ export class USSDGateway {
         }
 
         session.currentMenu = option.nextMenu;
+      } else if (trimmedInput !== '') {
+        // Unknown choice: re-show the menu with feedback instead of silently
+        // rendering the same screen (the survivor must know the input failed).
+        return this.getMenuResponse(session, language, this.getLocalizedText('invalid_option', language));
       }
     } else if (session.currentMenu === 'language_menu') {
       return await this.handleLanguageSelection(session, trimmedInput, language);
@@ -526,7 +530,7 @@ export class USSDGateway {
   /**
    * Get menu response for current session state
    */
-  private async getMenuResponse(session: USSDSession, language: Language): Promise<USSDResponse> {
+  private async getMenuResponse(session: USSDSession, language: Language, notice?: string): Promise<USSDResponse> {
     const menuKey = session.currentMenu;
     const menuOptions = this.menus[language]?.[menuKey];
 
@@ -539,7 +543,7 @@ export class USSDGateway {
     return {
       sessionId: session.sessionId,
       menu: menuKey,
-      text: menuText,
+      text: notice ? `${notice}\n${menuText}` : menuText,
       options: menuOptions,
       endSession: false,
     };
@@ -611,7 +615,19 @@ export class USSDGateway {
 
   private getOfflineSessionById(sessionId: string): USSDSession | null {
     const session = this.offlineCache.get(`ussd-session:${sessionId}`) as unknown as USSDSession | undefined;
-    return session ?? null;
+    if (!session) {
+      return null;
+    }
+
+    // Mirror the 5-minute DB expires_at: an abandoned mid-flow session must
+    // not resume hours later from the in-memory cache.
+    const SESSION_TTL_MS = 5 * 60 * 1000;
+    if (Date.now() - new Date(session.lastAccessedAt).getTime() > SESSION_TTL_MS) {
+      this.removeOfflineSession(session);
+      return null;
+    }
+
+    return session;
   }
 
   private getOfflineSessionByPhone(phoneNumber: string): USSDSession | null {
@@ -626,6 +642,11 @@ export class USSDGateway {
   private storeOfflineSession(session: USSDSession): void {
     this.offlineCache.set(`ussd-session:${session.sessionId}`, session as unknown as Record<string, unknown>);
     this.offlineCache.set(`ussd-phone:${session.phoneNumber}`, { sessionId: session.sessionId });
+  }
+
+  private removeOfflineSession(session: USSDSession): void {
+    this.offlineCache.delete(`ussd-session:${session.sessionId}`);
+    this.offlineCache.delete(`ussd-phone:${session.phoneNumber}`);
   }
 
   private async fetchSessionBySessionId(sessionId: string, language: Language): Promise<USSDSession | null> {
@@ -773,12 +794,18 @@ export class USSDGateway {
       const now = new Date().toISOString();
       const cachedSession = this.getOfflineSessionById(sessionId);
       if (cachedSession) {
-        this.storeOfflineSession({
-          ...cachedSession,
-          language,
-          currentMenu: response.menu,
-          lastAccessedAt: now,
-        });
+        if (response.endSession) {
+          // Drop the cached session when it ends, otherwise the next dial-in
+          // from this number resumes a dead session stuck on its final menu.
+          this.removeOfflineSession(cachedSession);
+        } else {
+          this.storeOfflineSession({
+            ...cachedSession,
+            language,
+            currentMenu: response.menu,
+            lastAccessedAt: now,
+          });
+        }
       }
 
       const modernUpdate = await this.supabase
@@ -947,6 +974,19 @@ export class USSDGateway {
     variables?: TemplateVariables
   ): string {
     const texts: Record<string, Record<Language, string>> = {
+      invalid_option: {
+        en: 'Invalid choice. Reply with a number from the menu.',
+        zu: 'Okukhethile akulungile. Phendula ngenombolo esemenyu.',
+        xh: 'Ukhetho alulunganga. Phendula ngenombolo esemenyu.',
+        st: 'Kgetho e fosahetse. Araba ka nomoro e menung.',
+        af: "Ongeldige keuse. Antwoord met 'n nommer uit die keuselys.",
+        ss: 'Lokukhetsile akulungile. Phendvula ngenombolo lesemenyu.',
+        tn: 'Tlhopho e e sa siamang. Araba ka nomoro e e mo menung.',
+        ts: 'Nhlawulo a wu lulamanga. Hlamula hi nomboro leyi nga eka menu.',
+        ve: 'Khetho a yo ngo luga. Fhindulani nga nomboro i re kha menu.',
+        nso: 'Kgetho e fošagetšego. Araba ka nomoro yeo e lego menung.',
+        nr: 'Ukukhetha okungakalungi. Phendula ngenomboro esemenyini.',
+      },
       confirmation: {
         en: 'Case reported. ID: {{caseId}}. Save this ID for option 3 (Case Status).',
         zu: 'Icala libhalisiwe. Isithombelo: {{caseId}}. Usizo luza ngesikhashana.',

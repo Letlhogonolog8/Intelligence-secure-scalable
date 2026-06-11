@@ -20,6 +20,9 @@ const envSchema = z.object({
   VITE_DATADOG_SERVICE: z.string().min(1).optional(),
   VITE_DATADOG_ENV: z.string().min(1).optional(),
   VITE_DATADOG_VERSION: z.string().min(1).optional(),
+  // Where survivors get the dedicated mobile app. Shown on the web portal when a
+  // survivor signs in (the web portal is for professional roles only).
+  VITE_MOBILE_APP_URL: z.string().min(1).optional(),
 })
 
 type ParsedEnv = z.infer<typeof envSchema>

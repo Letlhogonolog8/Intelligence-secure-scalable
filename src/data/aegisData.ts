@@ -880,6 +880,55 @@ const useRealtimeQuery = <T,>(key: string, table: string | string[], queryFn: ()
   return query
 }
 
+/**
+ * Subscribes to `escalation_events` (now published to Supabase Realtime) and
+ * invalidates the alert-feed queries on any change, so a survivor's SOS appears
+ * on responder dashboards instantly instead of waiting for the next poll.
+ * Use alongside the polled feed hooks on responder surfaces.
+ */
+export const useEscalationRealtime = (options?: { enabled?: boolean }) => {
+  const queryClient = useQueryClient()
+  const enabled = options?.enabled ?? true
+
+  useEffect(() => {
+    if (!hasSupabase || !enabled) return
+    if (typeof navigator !== "undefined" && !navigator.onLine) return
+
+    const scopeKey = "escalationRealtime:escalation_events"
+    const scopeState = getRealtimeScopeState(scopeKey)
+    if (scopeState.disabled) return
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ["aegis", "policeAlertsFeed"] })
+      queryClient.invalidateQueries({ queryKey: ["aegis", "alertsFeed"] })
+    }
+
+    const channel = supabase
+      .channel("aegis:escalationRealtime:escalation_events")
+      .on("postgres_changes", { event: "*", schema: "public", table: "escalation_events" }, invalidate)
+
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        scopeState.failureCount = 0
+        scopeState.disabled = false
+        return
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        scopeState.failureCount += 1
+        if (scopeState.failureCount >= realtimeFailureThreshold) {
+          scopeState.disabled = true
+        }
+        invalidate()
+        supabase.removeChannel(channel)
+      }
+    })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [queryClient, enabled])
+}
+
 const fetchRegions = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as RegionData[]
 
@@ -1301,6 +1350,29 @@ const fetchPoliceAlertsFeed = async (options?: FetchOptions): Promise<AlertItem[
 
 export const acknowledgePoliceAlert = async (alertId: string) => {
   await apiClient.post(`/police/alerts/${alertId}/acknowledge`)
+}
+
+/**
+ * Permanently removes an alert from the feed. RLS limits this to police/admin
+ * (policy `police_manage_alerts`); other roles get a permission error.
+ */
+export const deleteAlert = async (alertId: string) => {
+  if (!hasSupabase) return
+  const { error } = await supabase.from("alerts_feed").delete().eq("id", alertId)
+  if (error && !isMissingTableError(error)) throw error
+}
+
+/**
+ * Clears every alert the caller is permitted to delete (RLS-scoped). Supabase
+ * requires a filter on delete, so we match all real rows via a nil-UUID guard.
+ */
+export const deleteAllAlerts = async () => {
+  if (!hasSupabase) return
+  const { error } = await supabase
+    .from("alerts_feed")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000")
+  if (error && !isMissingTableError(error)) throw error
 }
 
 export const fetchUserProfile = async (userId: string) => {

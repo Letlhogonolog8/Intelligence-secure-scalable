@@ -1,7 +1,8 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
-import { acknowledgePoliceAlert, useOrganizationCoordination, usePoliceAlertsFeed, useUserProfile } from "@/data/aegisData";
+import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { acknowledgePoliceAlert, deleteAlert, deleteAllAlerts, useEscalationRealtime, useOrganizationCoordination, usePoliceAlertsFeed, useUserProfile } from "@/data/aegisData";
+import { renderMessageWithLinks } from "@/components/dashboard/renderAlertLinks";
 import { useLiveJusticeCases, useLiveOrganization, useLivePoliceDepartments, useLiveUserProfiles } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
@@ -39,6 +40,8 @@ const PoliceDashboard: React.FC = () => {
   const [isFileIncidentDialogOpen, setIsFileIncidentDialogOpen] = useState(false);
   const [queueSearch, setQueueSearch] = useState("");
   const [queuePriorityFilter, setQueuePriorityFilter] = useState("all");
+  const [deletingAlertId, setDeletingAlertId] = useState<string | null>(null);
+  const [clearingAlerts, setClearingAlerts] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const deferredQueueSearch = useDeferredValue(queueSearch);
 
@@ -71,12 +74,15 @@ const PoliceDashboard: React.FC = () => {
     limit: 160,
     regionId: activeDepartment?.regionId ?? null,
   });
-  const { data: alertsFeed = [], isLoading: alertsLoading } = usePoliceAlertsFeed({
+  const { data: alertsFeed = [], isLoading: alertsLoading, isFetching: alertsFetching, refetch: refetchAlerts } = usePoliceAlertsFeed({
     enabled: isPolice,
     staleTime: 10000,
     refetchInterval: 15000,
     limit: 12,
   });
+  // Live-refresh the alert feed the moment an SOS lands, instead of waiting for
+  // the 15s poll. Polling above stays as the resilient fallback.
+  useEscalationRealtime({ enabled: isPolice });
   const { data: referrals = [], isLoading: referralsLoading } = useOrganizationCoordination({
     enabled: isPolice,
     staleTime: 15000,
@@ -195,6 +201,32 @@ const PoliceDashboard: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ["aegis", "policeAlertsFeed"] });
     } catch {
       // Keep failure silent in the dashboard shell; the queue will retry on refresh.
+    }
+  };
+
+  const handleDeleteAlert = async (alertId: string) => {
+    setDeletingAlertId(alertId);
+    try {
+      await deleteAlert(alertId);
+      await refetchAlerts();
+    } catch (error) {
+      console.error("Failed to delete alert", error);
+    } finally {
+      setDeletingAlertId(null);
+    }
+  };
+
+  const handleDeleteAllAlerts = async () => {
+    if (pendingAlerts.length === 0) return;
+    if (typeof window !== "undefined" && !window.confirm(`Delete all ${pendingAlerts.length} alerts? This cannot be undone.`)) return;
+    setClearingAlerts(true);
+    try {
+      await deleteAllAlerts();
+      await refetchAlerts();
+    } catch (error) {
+      console.error("Failed to clear alerts", error);
+    } finally {
+      setClearingAlerts(false);
     }
   };
 
@@ -330,7 +362,7 @@ const PoliceDashboard: React.FC = () => {
                 <ListItemCard
                   key={entry.id}
                   title={`Case ${entry.caseNumber}`}
-                  subtitle={`${entry.stage || "intake"} • ${entry.region || "region pending"} • updated ${formatRelativeDateTime(entry.updatedAt)}`}
+                  subtitle={`${entry.stage || "intake"} Â· ${entry.region || "region pending"} Â· updated ${formatRelativeDateTime(entry.updatedAt)}`}
                   meta={<StatusPill tone={entry.priority === "critical" ? "rose" : entry.priority === "high" ? "amber" : "sky"}>{entry.priority}</StatusPill>}
                   action={<Button size="sm" variant="outline" onClick={() => { setDispatchCaseId(entry.id); setIsDispatchDialogOpen(true); }} disabled={!permissions.canViewOrgData}>Dispatch</Button>}
                 />
@@ -339,7 +371,35 @@ const PoliceDashboard: React.FC = () => {
           </div>
         </SectionCard>
 
-        <SectionCard title="Realtime alert queue" description="Alerts can be acknowledged directly from this board.">
+        <SectionCard
+          title="Realtime alert queue"
+          description="Alerts can be acknowledged directly from this board."
+          action={
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void refetchAlerts()}
+                disabled={alertsFetching}
+                aria-label="Refresh alerts"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${alertsFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleDeleteAllAlerts()}
+                disabled={clearingAlerts || pendingAlerts.length === 0}
+                aria-label="Delete all alerts"
+                className="border-red-500/20 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Clear all
+              </Button>
+            </div>
+          }
+        >
           <div className="space-y-3">
             {pendingAlerts.length === 0 ? (
               <EmptyState
@@ -354,15 +414,30 @@ const PoliceDashboard: React.FC = () => {
               prioritizedAlerts.slice(0, 5).map((entry) => (
                 <ListItemCard
                   key={entry.id}
-                  title={entry.message}
-                  subtitle={`${entry.module || "core"} • ${entry.time} • Response: ${entry.estimatedResponseTime}min`}
+                  title={renderMessageWithLinks(entry.message)}
+                  subtitle={`${entry.module || "core"} Â· ${entry.time} Â· Response: ${entry.estimatedResponseTime}min`}
                   meta={
                     <div className="flex items-center gap-2">
                       <StatusPill tone={entry.urgencyLevel === "immediate" ? "rose" : entry.urgencyLevel === "high" ? "amber" : "sky"}>{entry.urgencyLevel}</StatusPill>
                       <span className="text-xs text-slate-400">Score: {entry.priorityScore}</span>
                     </div>
                   }
-                  action={<Button size="sm" variant="outline" onClick={() => void handleAcknowledgeAlert(entry.id)}>Acknowledge</Button>}
+                  action={
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => void handleAcknowledgeAlert(entry.id)}>Acknowledge</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleDeleteAlert(entry.id)}
+                        disabled={deletingAlertId === entry.id}
+                        aria-label="Delete alert"
+                        className="border-red-500/20 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                      >
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  }
                 />
               ))
             )}
@@ -387,7 +462,7 @@ const PoliceDashboard: React.FC = () => {
                 <ListItemCard
                   key={entry.id}
                   title={`Referral ${entry.caseId.slice(0, 8)}`}
-                  subtitle={`${entry.referralType} • ${formatRelativeDateTime(entry.createdAt)}`}
+                  subtitle={`${entry.referralType} Â· ${formatRelativeDateTime(entry.createdAt)}`}
                   meta={<StatusPill tone={entry.status === "completed" ? "emerald" : entry.status === "pending" ? "amber" : "sky"}>{entry.status}</StatusPill>}
                 />
               ))
@@ -431,7 +506,7 @@ const PoliceDashboard: React.FC = () => {
             <div className="space-y-4">
               <ListItemCard
                 title={`Forecast ${topPredictedCase.caseNumber}`}
-                subtitle={`${topPredictedCase.stage || "intake"} • ${topPredictedCase.region || "region pending"}`}
+                subtitle={`${topPredictedCase.stage || "intake"} Â· ${topPredictedCase.region || "region pending"}`}
                 meta={<StatusPill tone={topPredictedCase.priority === "critical" ? "rose" : topPredictedCase.priority === "high" ? "amber" : "sky"}>{topPredictedCase.priority}</StatusPill>}
               />
               <CasePredictions caseItem={topPredictedCase} />
@@ -481,7 +556,7 @@ const PoliceDashboard: React.FC = () => {
         </SectionCard>
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="grid grid-cols-1 gap-6">
         <SectionCard title="Stage aging" description="Spot stalled case stages before they become operational drag.">
           {stageAging.length === 0 ? (
             <EmptyState
@@ -491,16 +566,6 @@ const PoliceDashboard: React.FC = () => {
           ) : (
             <PoliceStageAgingList items={stageAging} />
           )}
-        </SectionCard>
-
-        <SectionCard title="Operator notes" description="Improvements already integrated into the police operations surface.">
-          <div className="space-y-3">
-            <ListItemCard title="Access is now enforced" subtitle="Non-police users are blocked from this dashboard instead of inheriting a partially functional view." />
-            <ListItemCard title="Queries are jurisdiction-gated" subtitle="Organization, department, officer, and case queries now wait for the right identity context before fetching." />
-            <ListItemCard title="Police alerts are backend-scoped" subtitle="The alert board now uses a police-access API endpoint and acknowledgements are written through an auditable backend route." />
-            <ListItemCard title="Queue controls are live" subtitle="Dispatch search, priority filters, stage aging, and response trend analytics are now integrated into the dashboard." />
-            <ListItemCard title="Enhanced police tooling" subtitle="Performance monitoring, export support, predictive triage, workload balancing, shortcuts, and connection awareness are now integrated." />
-          </div>
         </SectionCard>
       </section>
 

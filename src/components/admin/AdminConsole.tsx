@@ -1007,6 +1007,7 @@ const AdminConsole: React.FC = () => {
           </div>
         </header>
 
+        <main className="contents">
         <Card className="border-white/10 bg-slate-900/60 p-2 backdrop-blur-xl">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             {adminSectionTabs.map((tab) => {
@@ -1816,6 +1817,7 @@ const AdminConsole: React.FC = () => {
                         <select
                           value={item.role as RoleOption}
                           onChange={(e) => handleRoleChange(item.id, e.target.value as RoleOption)}
+                          aria-label={`System role for ${item.fullName || item.id}`}
                           className="h-9 bg-slate-950/60 border border-slate-800 rounded-lg px-3 text-xs font-bold text-indigo-300 focus:border-indigo-500/50 outline-none cursor-pointer transition-all"
                           disabled={updatingId === item.id}
                         >
@@ -1957,7 +1959,7 @@ const AdminConsole: React.FC = () => {
                   <Input
                     value={ussdServiceCode}
                     onChange={(e) => setUssdServiceCode(e.target.value)}
-                    placeholder="e.g. *384*30933#"
+                    placeholder="e.g. *135*1782#"
                     className="h-12 bg-slate-950/60 border-slate-800 text-white focus:border-orange-500/50"
                   />
                 </div>
@@ -1970,7 +1972,7 @@ const AdminConsole: React.FC = () => {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1 h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(`sim-${Date.now()}`); setUssdPhoneNumber("+27820000000"); setUssdServiceCode("*384*30933#"); setUssdText(""); setUssdResponse(null); }}>
+                  <Button variant="outline" className="flex-1 h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest" onClick={() => { setUssdSessionId(`sim-${Date.now()}`); setUssdPhoneNumber("+27820000000"); setUssdServiceCode("*135*1782#"); setUssdText(""); setUssdResponse(null); }}>
                     Auto-Fill
                   </Button>
                   <Button variant="outline" className="flex-1 h-12 border-white/10 bg-white/5 font-black text-xs uppercase tracking-widest hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30" onClick={() => { setUssdSessionId(""); setUssdPhoneNumber(""); setUssdServiceCode(""); setUssdText(""); setUssdResponse(null); }}>
@@ -2368,6 +2370,7 @@ const AdminConsole: React.FC = () => {
           </Card>
         </div>
         )}
+        </main>
       </div>
     </div>
   );

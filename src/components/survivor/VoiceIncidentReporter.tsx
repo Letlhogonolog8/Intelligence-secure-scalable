@@ -165,6 +165,7 @@ const VoiceIncidentReporter: React.FC<VoiceIncidentReporterProps> = ({ onReportS
             value={selectedLang}
             onChange={(e) => { reset(); setSelectedLang(e.target.value); }}
             disabled={status === "listening"}
+            aria-label="Report language"
             className="text-xs bg-slate-900 border border-white/10 text-slate-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500/50"
           >
             {LANG_OPTIONS.map((l) => (

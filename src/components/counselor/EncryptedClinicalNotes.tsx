@@ -38,8 +38,8 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
           sender_role: 'counselor',
           message_type: 'clinical_note',
           content: notes,
-          is_encrypted: true,
-          encrypted_content: Buffer.from(notes).toString('base64'),
+          // Stored as an access-controlled record (RLS); not client-side encrypted.
+          is_encrypted: false,
           metadata: {
             risk_level: riskLevel,
             session_type: 'clinical_session',
@@ -48,32 +48,12 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
 
       if (insertError) throw insertError;
 
-      const { error: caseError } = await supabase
-        .from('case_reports')
-        .update({
-          risk_level: riskLevel,
-          last_counselor_note: new Date().toISOString(),
-        })
+      // Best-effort: reflect the assessed risk on the linked justice case.
+      // Never block the saved note if the case row can't be updated.
+      await supabase
+        .from('justice_cases')
+        .update({ priority: riskLevel, updated_at: new Date().toISOString() })
         .eq('id', caseId);
-
-      const missingCaseReports = Boolean(caseError) && (
-        (caseError as { code?: string; message?: string }).code === '42P01' ||
-        ((caseError as { message?: string }).message ?? '').toLowerCase().includes('case_reports')
-      );
-
-      if (missingCaseReports) {
-        const { error: justiceError } = await supabase
-          .from('justice_cases')
-          .update({
-            priority: riskLevel,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('case_number', caseId);
-
-        if (justiceError) throw justiceError;
-      } else if (caseError) {
-        throw caseError;
-      }
 
       setSaved(true);
       setNotes('');
@@ -94,8 +74,8 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
           <Lock className="h-5 w-5 text-purple-400" />
         </div>
         <div>
-          <h3 className="text-lg font-bold text-white">Encrypted Clinical Notes</h3>
-          <p className="text-xs text-slate-400 mt-1">End-to-end encrypted. POPIA compliant.</p>
+          <h3 className="text-lg font-bold text-white">Clinical Notes</h3>
+          <p className="text-xs text-slate-400 mt-1">Confidential · access-controlled · POPIA-aligned.</p>
         </div>
       </div>
 
@@ -105,13 +85,13 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Document session observations, therapeutic interventions, and behavioral assessments. These notes are encrypted and HIPAA-compliant."
+            placeholder="Document session observations, therapeutic interventions, and behavioral assessments. These notes are confidential and access-controlled."
             rows={8}
             className="w-full px-4 py-3 rounded-lg bg-slate-950/60 border border-white/10 text-white placeholder-slate-500 resize-none focus:border-purple-500/50 focus:outline-none"
             required
           />
           <p className="text-xs text-slate-500 mt-2">
-            {notes.length} characters • Encrypted with AES-256
+            {notes.length} characters · Stored securely
           </p>
         </div>
 
@@ -163,12 +143,12 @@ export const EncryptedClinicalNotes: React.FC<EncryptedClinicalNotesProps> = ({
           {loading ? (
             <>
               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              Encrypting & Saving...
+              Saving...
             </>
           ) : (
             <>
               <Save className="mr-2 h-4 w-4" />
-              Save Encrypted Notes
+              Save Clinical Note
             </>
           )}
         </Button>

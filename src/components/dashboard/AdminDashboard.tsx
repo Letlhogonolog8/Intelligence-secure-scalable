@@ -25,6 +25,7 @@ import {
   StatusPill,
 } from "@/components/dashboard/DashboardPrimitives";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
+import { MFAEnforcementPanel } from "@/components/admin/MFAEnforcementPanel";
 import {
   AdminAuditSeveritySummary,
   AdminFeedHealthGrid,
@@ -798,6 +799,10 @@ const AdminDashboard: React.FC = () => {
             <ListItemCard title="Normalize data upstream" subtitle="Alert, incident, and audit sanitization now sits outside the render layer and should continue moving into shared data services." />
           </div>
         </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6">
+        <MFAEnforcementPanel />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-1">

@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
+import { sendExpoPush } from './expoPush';
 
 export interface NotificationPayload {
   recipientType: 'sms' | 'whatsapp' | 'email';
@@ -26,6 +27,7 @@ interface NotificationQueueRecord {
   status?: string | null;
   sent_at?: string | null;
   attempt_count?: number | null;
+  max_attempts?: number | null;
   recipient_type?: QueueRecipientType | null;
   recipient_address?: string | null;
   message_content?: string | null;
@@ -278,15 +280,65 @@ Check app for details.
     }
   }
 
+  /**
+   * Atomically claim a queue row before sending so concurrent workers (the
+   * in-process API drain loop, the standalone worker, multiple replicas)
+   * never deliver the same notification twice. Returns false when another
+   * worker won the race. If the claim fails because the schema predates the
+   * 'processing' status (migration not applied yet), we fall back to legacy
+   * unclaimed at-least-once processing rather than stalling the queue.
+   */
+  private async claimQueuedNotification(
+    notificationId: string,
+    fromStatuses: string[] = ['pending', 'retry']
+  ): Promise<boolean> {
+    try {
+      const { data, error } = await this.supabase
+        .from('notification_queue')
+        .update({ status: 'processing', claimed_at: new Date().toISOString() })
+        .eq('id', notificationId)
+        .in('status', fromStatuses)
+        .select('id');
+
+      if (error) {
+        throw error;
+      }
+
+      return (data?.length ?? 0) > 0;
+    } catch (error) {
+      console.warn(
+        'Notification claim failed (pre-claiming schema?); processing without claim:',
+        error instanceof Error ? error.message : error
+      );
+      return true;
+    }
+  }
+
+  /** Return claims abandoned by a crashed worker to the queue. Best-effort. */
+  private async recoverStaleClaims(): Promise<void> {
+    const STALE_CLAIM_MS = 5 * 60 * 1000;
+    try {
+      await this.supabase
+        .from('notification_queue')
+        .update({ status: 'retry' })
+        .eq('status', 'processing')
+        .lt('claimed_at', new Date(Date.now() - STALE_CLAIM_MS).toISOString());
+    } catch {
+      // Pre-claiming schema or transient error — nothing to recover.
+    }
+  }
+
   public async processPendingNotifications(limit: number = 25): Promise<number> {
     try {
       if (!this.notificationQueueAvailable) {
         return 0;
       }
 
+      await this.recoverStaleClaims();
+
       const { data: pendingNotifications, error } = await this.supabase
         .from('notification_queue')
-        .select('id, recipient_type, recipient_address, message_content, message_type, case_id, attempt_count')
+        .select('id, recipient_type, recipient_address, message_content, message_type, case_id, attempt_count, max_attempts')
         .in('status', ['pending', 'retry'])
         .order('created_at', { ascending: true })
         .limit(limit)
@@ -299,6 +351,18 @@ Check app for details.
       let processedCount = 0;
 
       for (const notification of pendingNotifications || []) {
+        if (!(await this.claimQueuedNotification(notification.id))) {
+          continue;
+        }
+
+        if (notification.recipient_type === 'push') {
+          const pushed = await this.dispatchPushMessage(notification);
+          if (pushed) {
+            processedCount++;
+          }
+          continue;
+        }
+
         if (notification.recipient_type && notification.recipient_type !== 'sms') {
           await this.updateQueuedNotification(notification.id, {
             status: 'failed',
@@ -356,6 +420,10 @@ Check app for details.
       let retryCount = 0;
 
       for (const notification of failedNotifications || []) {
+        if (!(await this.claimQueuedNotification(notification.id, ['failed']))) {
+          continue;
+        }
+
         const messageType = notification.message_type || 'update';
         const isWhatsapp = messageType.startsWith('whatsapp:');
         const result = await this.dispatchPhoneMessage({
@@ -491,6 +559,48 @@ Check app for details.
         error: errorMessage,
       };
     }
+  }
+
+  /**
+   * Deliver a queued 'push' notification via the Expo push API and update its
+   * queue row. A token Expo reports as dead is deactivated in push_tokens so we
+   * stop fanning out to it. Returns true on successful delivery.
+   */
+  private async dispatchPushMessage(notification: NotificationQueueRecord): Promise<boolean> {
+    const token = notification.recipient_address || '';
+    const nextAttemptCount = (notification.attempt_count || 0) + 1;
+    const title = notification.message_type === 'escalation' ? '🚨 AEGIS Emergency' : 'AEGIS';
+
+    const result = await sendExpoPush(token, title, notification.message_content || '', {
+      type: notification.message_type,
+      caseId: notification.case_id,
+    });
+
+    if (result.success) {
+      await this.updateQueuedNotification(notification.id, {
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        last_error: null,
+        attempt_count: nextAttemptCount,
+      });
+      return true;
+    }
+
+    if (result.invalidToken && token) {
+      try {
+        await this.supabase.from('push_tokens').update({ is_active: false }).eq('token', token);
+      } catch {
+        // best-effort: a missing push_tokens table must not break the drain loop
+      }
+    }
+
+    const maxAttempts = notification.max_attempts ?? 5;
+    await this.updateQueuedNotification(notification.id, {
+      status: nextAttemptCount >= maxAttempts ? 'failed' : 'retry',
+      last_error: result.error || result.status,
+      attempt_count: nextAttemptCount,
+    });
+    return false;
   }
 
   private async queueNotification(payload: NotificationPayload): Promise<string | null> {

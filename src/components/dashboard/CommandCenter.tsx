@@ -3,12 +3,16 @@ import HotspotHeatmap from "@/components/analytics/HotspotHeatmap";
 import {
   useAlertsFeed,
   useContinentalStats,
+  useEscalationRealtime,
   useIncidentTimeSeries,
   useRegions,
   useSystemMetrics,
+  deleteAlert,
+  deleteAllAlerts,
   RISK_COLORS,
   RiskLevel
 } from '@/data/aegisData';
+import { renderMessageWithLinks } from '@/components/dashboard/renderAlertLinks';
 import {
   ShieldIcon, AlertTriangleIcon, UsersIcon, MapPinIcon,
   ActivityIcon, GlobeIcon, TrendUpIcon, TrendDownIcon,
@@ -46,9 +50,12 @@ const CommandCenter: React.FC = () => {
   const alertsPerPage = 8;
   const { data: regions = [], isLoading: regionsLoading, error: regionsError } = useRegions({ staleTime: 60000 });
   const { data: systemMetricsData, isLoading: metricsLoading, error: metricsError } = useSystemMetrics({ staleTime: 10000, refetchInterval: 30000 });
-  const { data: alertsFeed = [], isLoading: alertsLoading, error: alertsError } = useAlertsFeed({ staleTime: 5000, refetchInterval: 15000 });
+  const { data: alertsFeed = [], isLoading: alertsLoading, isFetching: alertsFetching, error: alertsError, refetch: refetchAlerts } = useAlertsFeed({ staleTime: 5000, refetchInterval: 15000 });
+  const [deletingAlertId, setDeletingAlertId] = useState<string | null>(null);
   const { data: continentalStatsData, isLoading: statsLoading, error: statsError } = useContinentalStats({ staleTime: 60000 });
   const { data: incidentTimeSeries = [], isLoading: timelineLoading, error: timelineError } = useIncidentTimeSeries({ staleTime: 60000 });
+  // Live SOS reactivity: refresh the alert feed instantly when an escalation lands.
+  useEscalationRealtime();
 
   const systemMetrics = systemMetricsData ?? null;
   const continentalStats = continentalStatsData ?? {};
@@ -82,6 +89,33 @@ const CommandCenter: React.FC = () => {
       setAlertsPage(Math.max(0, totalAlertPages - 1));
     }
   }, [alertsPage, totalAlertPages]);
+
+  const handleDeleteAlert = async (alertId: string) => {
+    setDeletingAlertId(alertId);
+    try {
+      await deleteAlert(alertId);
+      await refetchAlerts();
+    } catch (error) {
+      console.error('Failed to delete alert', error);
+    } finally {
+      setDeletingAlertId(null);
+    }
+  };
+
+  const [clearingAlerts, setClearingAlerts] = useState(false);
+  const handleDeleteAllAlerts = async () => {
+    if (alertsFeed.length === 0) return;
+    if (typeof window !== 'undefined' && !window.confirm(`Delete all ${alertsFeed.length} alerts? This cannot be undone.`)) return;
+    setClearingAlerts(true);
+    try {
+      await deleteAllAlerts();
+      await refetchAlerts();
+    } catch (error) {
+      console.error('Failed to clear alerts', error);
+    } finally {
+      setClearingAlerts(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedRegion && !regions.some((region) => region.id === selectedRegion)) {
@@ -368,18 +402,57 @@ const CommandCenter: React.FC = () => {
         <div className="bg-slate-950/60 border border-white/10 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <h3 className="text-white font-semibold text-sm">Live Alert Feed</h3>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] text-red-400">LIVE</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void refetchAlerts()}
+                disabled={alertsFetching}
+                title="Refresh alerts"
+                aria-label="Refresh alerts"
+                className="flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[10px] text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+              >
+                <svg
+                  className={`h-3 w-3 ${alertsFetching ? 'animate-spin' : ''}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteAllAlerts()}
+                disabled={clearingAlerts || alertsFeed.length === 0}
+                title="Delete all alerts"
+                aria-label="Delete all alerts"
+                className="flex items-center gap-1 rounded border border-red-500/20 px-2 py-1 text-[10px] text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:opacity-50"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+                Clear all
+              </button>
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[10px] text-red-400">LIVE</span>
+              </div>
             </div>
           </div>
           <div className="overflow-y-auto max-h-[430px]">
             {pagedAlerts.length === 0 ? (
-              <div className="px-4 py-6 text-xs text-slate-500">No live alerts in the current feed.</div>
+              <div className="px-4 py-6 text-xs text-slate-400">No live alerts in the current feed.</div>
             ) : pagedAlerts.map((alert) => (
               <div
                 key={alert.id}
-                className="px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors cursor-pointer"
+                className="group px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors"
               >
                 <div className="flex items-start gap-2.5">
                   <div className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -387,15 +460,30 @@ const CommandCenter: React.FC = () => {
                     alert.type === 'high' ? 'bg-orange-500' :
                     alert.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
                   }`} />
-                  <div>
-                    <p className="text-xs text-slate-300 leading-relaxed">{alert.message}</p>
-                    <p className="text-[10px] text-slate-600 mt-1">{alert.time}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-200 leading-relaxed break-words">{renderMessageWithLinks(alert.message)}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{alert.time}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAlert(alert.id)}
+                    disabled={deletingAlertId === alert.id}
+                    title="Delete alert"
+                    aria-label="Delete alert"
+                    className="flex-shrink-0 rounded border border-red-500/20 p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:opacity-50"
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between gap-2 border-t border-slate-800/50 px-4 py-3 text-[10px] text-slate-500">
+          <div className="flex items-center justify-between gap-2 border-t border-slate-800/50 px-4 py-3 text-[10px] text-slate-400">
             <span>Page {alertsPage + 1} of {totalAlertPages}</span>
             <div className="flex items-center gap-2">
               <button

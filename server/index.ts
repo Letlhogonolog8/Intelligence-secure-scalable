@@ -37,6 +37,7 @@ import { dbPool } from "./utils/dbPoolOptimized";
 import { cacheManager } from "./utils/cacheManager";
 import { loadBalancer } from "./utils/loadBalancer";
 import {
+  aiLimiter,
   defaultLimiter,
   escalationLimiter,
   mfaLimiter,
@@ -1340,12 +1341,14 @@ app.use(
     supabase,
     escalationWorkflow,
     auditLogService,
+    requireAuth,
+    escalationLimiter,
     wsManager,
   ),
 );
 app.use(
   "/api/intelligence",
-  createIntelligenceRoutes(supabase, auditLogService),
+  createIntelligenceRoutes(supabase, auditLogService, requireAuth),
 );
 app.use("/api/whatsapp", whatsappRoutes);
 app.use(
@@ -1361,12 +1364,13 @@ app.use(
 app.post(
   "/api/ai/survivor-chat",
   aiChatJsonParser,
-  defaultLimiter,
+  aiLimiter,
   async (req: Request, res: Response): Promise<void> => {
     const requestId = (req as AppRequest).id;
     try {
-      const { systemPrompt, messages } = req.body as {
-        systemPrompt?: string;
+      // The system prompt is fixed server-side. Accepting one from the client
+      // would turn this unauthenticated endpoint into an open LLM proxy.
+      const { messages } = req.body as {
         messages?: Array<{ role: string; content: string }>;
       };
 
@@ -1377,39 +1381,79 @@ app.post(
         return;
       }
 
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        const lastUser =
-          messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
-        const fallback = /danger|hurt|kill|die|attack|emergency/i.test(lastUser)
+      const lastUser =
+        messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
+      const craftFallback = () =>
+        /danger|hurt|kill|die|attack|emergency/i.test(lastUser)
           ? "CRISIS ALERT: Please call Police: 10111 or Crisis Line: 0800 428 428 immediately. Dial *123*456# from any phone — no internet needed. You are not alone."
           : "I hear you, and I'm glad you reached out. You are safe here. Can you share a little more so I can help guide you?";
-        res.json({ content: fallback });
+
+      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
+      if (!hfToken || hfToken.startsWith("[replace")) {
+        // No Hugging Face token configured — degrade to safe canned guidance.
+        res.json({ content: craftFallback() });
         return;
       }
 
-      const Anthropic = await import("@anthropic-ai/sdk");
-      const client = new Anthropic.default({ apiKey });
+      const model =
+        process.env.HUGGINGFACE_CHAT_MODEL || "meta-llama/Llama-3.1-8B-Instruct";
+      // Single source of truth for the survivor-chat behaviour (the web and
+      // mobile clients used to send this; now it lives only here).
+      const system = `You are a compassionate, trauma-informed support companion within the AEGIS GBV (gender-based violence) response platform. Your role is to:
 
-      const validMessages = messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .slice(-10)
-        .map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        }));
+1. Provide a safe, non-judgmental space for survivors to share what they are experiencing
+2. Respond with empathy, validation, and grounding language
+3. Always remind users they are not alone and that help is available
+4. If the user describes immediate danger, active violence, or suicidal ideation, respond with CRISIS ALERT: and provide emergency numbers (Police: 10111, Crisis line: 0800 428 428, USSD: *123*456#)
+5. Never blame, minimize, or question the survivor's experience
+6. Keep responses concise (2-4 sentences max) and human
+7. Encourage the user to use the platform's case reporting and counselor features when appropriate
+8. Maintain strict confidentiality — you never store personal details beyond this session
+9. Always end with a gentle open question or affirmation
+10. If the message appears to be in another South African language (Zulu, Xhosa, Sotho, Afrikaans etc), respond in the same language`;
 
-      const response = await client.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 300,
-        system:
-          systemPrompt ??
-          "You are a compassionate, trauma-informed GBV support companion. Respond with empathy. If user is in immediate danger include CRISIS ALERT: and provide Police: 10111, Crisis line: 0800 428 428.",
-        messages: validMessages,
-      });
+      const chatMessages = [
+        { role: "system", content: system },
+        ...messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(-10)
+          .map((m) => ({ role: m.role, content: m.content })),
+      ];
 
-      const content =
-        response.content[0].type === "text" ? response.content[0].text : "";
+      // Hugging Face router exposes an OpenAI-compatible chat completions API.
+      const hfResponse = await fetch(
+        "https://router.huggingface.co/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: chatMessages,
+            max_tokens: 300,
+            temperature: 0.6,
+          }),
+        },
+      );
+
+      if (!hfResponse.ok) {
+        const detail = await hfResponse.text().catch(() => "");
+        logger.error(
+          "Hugging Face chat failed",
+          new Error(`HF ${hfResponse.status}: ${detail.slice(0, 200)}`),
+          {},
+          requestId,
+        );
+        res.json({ content: craftFallback() });
+        return;
+      }
+
+      const payload = (await hfResponse.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content = payload.choices?.[0]?.message?.content?.trim() || craftFallback();
       res.json({ content });
     } catch (error) {
       logger.error("AI survivor chat failed", error, {}, requestId);
@@ -1417,6 +1461,62 @@ app.post(
         content:
           "I'm here with you. Can you tell me a little more about what's happening right now?",
       });
+    }
+  },
+);
+
+// ----------------------------------------------------------------------------
+// VOICE INCIDENT TRANSCRIPTION (Hugging Face ASR / Whisper)
+// Accepts a raw audio body and returns { text }. Used by the mobile Report
+// screen's voice capture. Degrades to an empty transcript if HF is unavailable.
+// ----------------------------------------------------------------------------
+app.post(
+  "/api/ai/transcribe",
+  express.raw({ type: () => true, limit: "12mb" }),
+  aiLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const requestId = (req as AppRequest).id;
+    try {
+      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
+      const audio = req.body as Buffer;
+      if (!hfToken || hfToken.startsWith("[replace") || !Buffer.isBuffer(audio) || audio.length === 0) {
+        res.json({ text: "" });
+        return;
+      }
+
+      // Turbo distils large-v3 with ~8x faster inference and far better
+      // serverless availability — the full model frequently cold-loads for
+      // minutes on HF, which reads as "transcription broken" to the survivor.
+      const model = process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
+      const hfResponse = await fetch(
+        `https://router.huggingface.co/hf-inference/models/${model}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type": (req.headers["content-type"] as string) || "audio/m4a",
+          },
+          body: audio,
+        },
+      );
+
+      if (!hfResponse.ok) {
+        const detail = await hfResponse.text().catch(() => "");
+        logger.error(
+          "Hugging Face transcription failed",
+          new Error(`HF ${hfResponse.status}: ${detail.slice(0, 200)}`),
+          {},
+          requestId,
+        );
+        res.json({ text: "" });
+        return;
+      }
+
+      const payload = (await hfResponse.json()) as { text?: string };
+      res.json({ text: (payload.text ?? "").trim() });
+    } catch (error) {
+      logger.error("Voice transcription failed", error, {}, requestId);
+      res.json({ text: "" });
     }
   },
 );
@@ -1496,11 +1596,26 @@ app.post(
 );
 
 // ============================================================================
-// MANUAL USSD TEST ENDPOINT
+// MANUAL USSD TEST ENDPOINT (dev/staging only)
 // ============================================================================
+// Unauthenticated and able to create real cases via the gateway, so it must
+// never be reachable in production. Local smoke: `npm run ussd:local`.
+
+const ussdTestDisabledInProduction = (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  next();
+};
 
 app.post(
   "/api/ussd/test",
+  ussdTestDisabledInProduction,
   validationMiddleware.ussdTest,
   async (req: Request, res: Response) => {
     try {

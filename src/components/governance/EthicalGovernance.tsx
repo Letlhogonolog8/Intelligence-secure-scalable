@@ -534,7 +534,7 @@ const EthicalGovernance: React.FC = () => {
                           'bg-blue-500/10 text-blue-400'
                         }`}>{model.status}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-white font-mono">{model.accuracy}%</td>
+                      <td className="px-4 py-3 text-xs text-white font-mono">{(model.accuracy * 100).toFixed(0)}%</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
