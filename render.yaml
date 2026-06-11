@@ -27,7 +27,7 @@ services:
       - key: CORS_ORIGIN
         sync: false
       - key: BACKEND_PUBLIC_URL
-        value: https://aegis-backend-zhv3.onrender.com
+        value: https://intelligence-secure-scalable-mwge.onrender.com
       - key: TELKOM_API_URL
         value: https://api.telkom.co.za/ussd/v1
       - key: TELKOM_API_KEY
@@ -62,14 +62,25 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: HUGGINGFACE_API_KEY
+      # The server reads HUGGINGFACE_API_TOKEN (powers AI chat + voice
+      # transcription). The old HUGGINGFACE_API_KEY name was never read.
+      - key: HUGGINGFACE_API_TOKEN
         sync: false
+      - key: HUGGINGFACE_ASR_MODEL
+        value: openai/whisper-large-v3-turbo
       - key: SENTRY_DSN
         sync: false
       - key: DATADOG_API_KEY
         sync: false
+      # USSD service-code allowlist — without these the gateway accepts any code.
+      - key: USSD_SERVICE_CODE
+        value: "*135*1782#"
+      - key: USSD_ALLOWED_SERVICE_CODES
+        value: "*135*1782#,*384*30933#,*721#"
+      # In-process queue drain (SOS push/SMS). Safe to run alongside replicas
+      # since workers claim rows atomically before sending.
       - key: NOTIFICATION_WORKER_ENABLED
-        value: "false"
+        value: "true"
 
   - type: web
     name: aegis-frontend
@@ -78,7 +89,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://aegis-backend-zhv3.onrender.com/api
+        value: https://intelligence-secure-scalable-mwge.onrender.com/api
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_KEY
