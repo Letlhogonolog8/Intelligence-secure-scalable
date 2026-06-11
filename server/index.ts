@@ -1396,7 +1396,8 @@ app.post(
       }
 
       const model =
-        process.env.HUGGINGFACE_CHAT_MODEL || "meta-llama/Llama-3.1-8B-Instruct";
+        process.env.HUGGINGFACE_CHAT_MODEL ||
+        "meta-llama/Llama-3.1-8B-Instruct";
       // Single source of truth for the survivor-chat behaviour (the web and
       // mobile clients used to send this; now it lives only here).
       const system = `You are a compassionate, trauma-informed support companion within the AEGIS GBV (gender-based violence) response platform. Your role is to:
@@ -1453,7 +1454,8 @@ app.post(
       const payload = (await hfResponse.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
-      const content = payload.choices?.[0]?.message?.content?.trim() || craftFallback();
+      const content =
+        payload.choices?.[0]?.message?.content?.trim() || craftFallback();
       res.json({ content });
     } catch (error) {
       logger.error("AI survivor chat failed", error, {}, requestId);
@@ -1479,7 +1481,12 @@ app.post(
     try {
       const hfToken = process.env.HUGGINGFACE_API_TOKEN;
       const audio = req.body as Buffer;
-      if (!hfToken || hfToken.startsWith("[replace") || !Buffer.isBuffer(audio) || audio.length === 0) {
+      if (
+        !hfToken ||
+        hfToken.startsWith("[replace") ||
+        !Buffer.isBuffer(audio) ||
+        audio.length === 0
+      ) {
         res.json({ text: "" });
         return;
       }
@@ -1487,14 +1494,16 @@ app.post(
       // Turbo distils large-v3 with ~8x faster inference and far better
       // serverless availability — the full model frequently cold-loads for
       // minutes on HF, which reads as "transcription broken" to the survivor.
-      const model = process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
+      const model =
+        process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
       const hfResponse = await fetch(
         `https://router.huggingface.co/hf-inference/models/${model}`,
         {
           method: "POST",
           headers: {
             Authorization: `Bearer ${hfToken}`,
-            "Content-Type": (req.headers["content-type"] as string) || "audio/m4a",
+            "Content-Type":
+              (req.headers["content-type"] as string) || "audio/m4a",
           },
           body: audio,
         },
@@ -1517,6 +1526,175 @@ app.post(
     } catch (error) {
       logger.error("Voice transcription failed", error, {}, requestId);
       res.json({ text: "" });
+    }
+  },
+);
+
+// ----------------------------------------------------------------------------
+// VOICE NOTE TRANSLATION (STT -> detect+translate -> TTS)
+// A survivor records in any language; a responder receives the original
+// transcript, a translation in their preferred language, and synthesized
+// audio of that translation. Degrades gracefully: TTS failure still returns
+// the transcripts; translation failure still returns the original text.
+// ----------------------------------------------------------------------------
+
+// Meta MMS-TTS model per supported responder language (HF serverless).
+const MMS_TTS_MODELS: Record<string, string> = {
+  en: "facebook/mms-tts-eng",
+  af: "facebook/mms-tts-afr",
+  zu: "facebook/mms-tts-zul",
+  xh: "facebook/mms-tts-xho",
+  tn: "facebook/mms-tts-tsn",
+  st: "facebook/mms-tts-sot",
+  ts: "facebook/mms-tts-tso",
+  ve: "facebook/mms-tts-ven",
+  ss: "facebook/mms-tts-ssw",
+  nso: "facebook/mms-tts-nso",
+};
+
+app.post(
+  "/api/ai/voice-translate",
+  express.raw({ type: () => true, limit: "12mb" }),
+  aiLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const requestId = (req as AppRequest).id;
+    const target = String(req.query.target || "en").toLowerCase();
+    try {
+      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
+      const audio = req.body as Buffer;
+      if (
+        !hfToken ||
+        hfToken.startsWith("[replace") ||
+        !Buffer.isBuffer(audio) ||
+        audio.length === 0
+      ) {
+        res.status(503).json({ error: "ai_unavailable" });
+        return;
+      }
+
+      // 1. Transcribe (Whisper handles all SA languages + auto language).
+      const asrModel =
+        process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
+      const asr = await fetch(
+        `https://router.huggingface.co/hf-inference/models/${asrModel}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type":
+              (req.headers["content-type"] as string) || "audio/m4a",
+          },
+          body: audio,
+        },
+      );
+      if (!asr.ok) {
+        res.status(502).json({ error: "transcription_failed" });
+        return;
+      }
+      const originalText = (
+        ((await asr.json()) as { text?: string }).text ?? ""
+      ).trim();
+      if (!originalText) {
+        res.json({
+          originalText: "",
+          detectedLanguage: null,
+          translatedText: "",
+          audioBase64: null,
+        });
+        return;
+      }
+
+      // 2. Detect language + translate in one LLM call.
+      let detectedLanguage: string | null = null;
+      let translatedText = originalText;
+      try {
+        const chatModel =
+          process.env.HUGGINGFACE_CHAT_MODEL ||
+          "meta-llama/Llama-3.1-8B-Instruct";
+        const llm = await fetch(
+          "https://router.huggingface.co/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${hfToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: chatModel,
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    'You are a precise translator for a gender-based-violence response platform. Reply ONLY with JSON: {"detected_language":"<ISO 639-1>","translation":"<text>"}. Preserve meaning and tone exactly; never summarise, soften, or omit details.',
+                },
+                {
+                  role: "user",
+                  content: `Translate to ${target}:\n\n${originalText}`,
+                },
+              ],
+              max_tokens: 600,
+              temperature: 0.2,
+            }),
+          },
+        );
+        if (llm.ok) {
+          const raw =
+            (
+              (await llm.json()) as {
+                choices?: Array<{ message?: { content?: string } }>;
+              }
+            ).choices?.[0]?.message?.content ?? "";
+          const json = raw.match(/\{[\s\S]*\}/)?.[0];
+          if (json) {
+            const parsed = JSON.parse(json) as {
+              detected_language?: string;
+              translation?: string;
+            };
+            detectedLanguage = parsed.detected_language?.toLowerCase() ?? null;
+            if (parsed.translation?.trim())
+              translatedText = parsed.translation.trim();
+          }
+        }
+      } catch {
+        // Translation failure is non-fatal — responder still gets the original.
+      }
+
+      // 3. Synthesize the translation in the responder's language (best-effort).
+      let audioBase64: string | null = null;
+      const ttsModel = MMS_TTS_MODELS[target];
+      if (ttsModel && translatedText) {
+        try {
+          const tts = await fetch(
+            `https://router.huggingface.co/hf-inference/models/${ttsModel}`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${hfToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ inputs: translatedText.slice(0, 800) }),
+            },
+          );
+          if (tts.ok) {
+            audioBase64 = Buffer.from(await tts.arrayBuffer()).toString(
+              "base64",
+            );
+          }
+        } catch {
+          // TTS failure is non-fatal — transcripts alone are still useful.
+        }
+      }
+
+      res.json({
+        originalText,
+        detectedLanguage,
+        translatedText,
+        targetLanguage: target,
+        audioBase64,
+      });
+    } catch (error) {
+      logger.error("Voice translation failed", error, {}, requestId);
+      res.status(500).json({ error: "voice_translate_failed" });
     }
   },
 );
