@@ -1,4 +1,11 @@
-﻿import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState } from "react";
+﻿import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAlertsFeed,
@@ -26,6 +33,7 @@ import {
 } from "@/components/dashboard/DashboardPrimitives";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
 import { MFAEnforcementPanel } from "@/components/admin/MFAEnforcementPanel";
+import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import {
   AdminAuditSeveritySummary,
   AdminFeedHealthGrid,
@@ -36,7 +44,12 @@ import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { useDocumentVisibility } from "@/hooks/useDocumentVisibility";
 import { AdminQueryErrorBanner } from "@/components/dashboard/AdminQueryErrorBanner";
-import { buildWeeklyLifecycle, dedupeBy, formatRelativeDateTime, percent } from "@/lib/dashboardMetrics";
+import {
+  buildWeeklyLifecycle,
+  dedupeBy,
+  formatRelativeDateTime,
+  percent,
+} from "@/lib/dashboardMetrics";
 import {
   buildAdminFeedHealth,
   buildAdminRecommendedActions,
@@ -45,9 +58,20 @@ import {
   normalizeAdminAuditLogs,
   normalizeAdminIncidentSeries,
 } from "@/lib/adminDashboard";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { AlertTriangle, Database, ShieldCheck, Users } from "lucide-react";
-import { ADMIN_DASHBOARD_REFRESH_INTERVALS, ADMIN_DASHBOARD_THRESHOLDS } from "@/config/adminDashboardThresholds";
+import {
+  ADMIN_DASHBOARD_REFRESH_INTERVALS,
+  ADMIN_DASHBOARD_THRESHOLDS,
+} from "@/config/adminDashboardThresholds";
 
 const severityTone = {
   critical: "rose",
@@ -58,7 +82,8 @@ const severityTone = {
 
 const AUDIT_PAGE_SIZE = 6;
 
-const formatQueryError = (error: unknown) => (error instanceof Error ? error.message : "Request failed");
+const formatQueryError = (error: unknown) =>
+  error instanceof Error ? error.message : "Request failed";
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -73,21 +98,27 @@ const AdminDashboard: React.FC = () => {
   } = useUserProfile(user?.id);
   const isAdmin = profile?.role === "admin";
   const documentVisible = useDocumentVisibility();
-  const { data: adminDashboardConfig, error: adminConfigError, refetch: refetchAdminConfig } = useAdminDashboardConfig({ enabled: isAdmin });
-  const refreshIntervals = adminDashboardConfig?.refresh ?? ADMIN_DASHBOARD_REFRESH_INTERVALS;
-  const adminThresholds = adminDashboardConfig?.thresholds ?? ADMIN_DASHBOARD_THRESHOLDS;
+  const {
+    data: adminDashboardConfig,
+    error: adminConfigError,
+    refetch: refetchAdminConfig,
+  } = useAdminDashboardConfig({ enabled: isAdmin });
+  const refreshIntervals =
+    adminDashboardConfig?.refresh ?? ADMIN_DASHBOARD_REFRESH_INTERVALS;
+  const adminThresholds =
+    adminDashboardConfig?.thresholds ?? ADMIN_DASHBOARD_THRESHOLDS;
 
   const metricsInterval = useMemo(
     () => (documentVisible ? refreshIntervals.metricsMs : undefined),
-    [documentVisible, refreshIntervals.metricsMs]
+    [documentVisible, refreshIntervals.metricsMs],
   );
   const alertsInterval = useMemo(
     () => (documentVisible ? refreshIntervals.alertsMs : undefined),
-    [documentVisible, refreshIntervals.alertsMs]
+    [documentVisible, refreshIntervals.alertsMs],
   );
   const auditInterval = useMemo(
     () => (documentVisible ? refreshIntervals.auditMs : undefined),
-    [documentVisible, refreshIntervals.auditMs]
+    [documentVisible, refreshIntervals.auditMs],
   );
 
   const {
@@ -108,42 +139,70 @@ const AdminDashboard: React.FC = () => {
     isFetching: metricsFetching,
     error: metricsError,
     refetch: refetchMetrics,
-  } = useSystemMetrics({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval });
+  } = useSystemMetrics({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.metricsMs,
+    refetchInterval: metricsInterval,
+  });
   const {
     data: incidentTimeSeries = [],
     isPending: incidentsPending,
     isFetching: incidentsFetching,
     error: incidentsError,
     refetch: refetchIncidents,
-  } = useIncidentTimeSeries({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval });
+  } = useIncidentTimeSeries({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.metricsMs,
+    refetchInterval: metricsInterval,
+  });
   const {
     data: alertsFeed = [],
     isPending: alertsPending,
     isFetching: alertsFetching,
     error: alertsError,
     refetch: refetchAlerts,
-  } = useAlertsFeed({ enabled: isAdmin, staleTime: refreshIntervals.alertsMs, refetchInterval: alertsInterval, limit: 12 });
+  } = useAlertsFeed({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.alertsMs,
+    refetchInterval: alertsInterval,
+    limit: 12,
+  });
   const {
     data: auditLogs = [],
     isPending: auditPending,
     isFetching: auditFetching,
     error: auditError,
     refetch: refetchAuditLogs,
-  } = useAuditLogs({ enabled: isAdmin, staleTime: refreshIntervals.auditMs, refetchInterval: auditInterval, limit: 24 });
+  } = useAuditLogs({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.auditMs,
+    refetchInterval: auditInterval,
+    limit: 24,
+  });
   const {
     data: escalationReviews = [],
     isPending: escalationsPending,
     isFetching: escalationsFetching,
     error: escalationsError,
     refetch: refetchEscalations,
-  } = useEscalationReviews({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval, limit: 20 });
+  } = useEscalationReviews({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.metricsMs,
+    refetchInterval: metricsInterval,
+    limit: 20,
+  });
   const {
     data: deletionRequests = [],
     isPending: deletionsPending,
     isFetching: deletionsFetching,
     error: deletionsError,
     refetch: refetchDeletions,
-  } = useDeletionRequests({ enabled: isAdmin, staleTime: refreshIntervals.metricsMs, refetchInterval: metricsInterval, limit: 20 });
+  } = useDeletionRequests({
+    enabled: isAdmin,
+    staleTime: refreshIntervals.metricsMs,
+    refetchInterval: metricsInterval,
+    limit: 20,
+  });
 
   const [auditSearch, setAuditSearch] = useState("");
   const [auditSeverity, setAuditSeverity] = useState<string>("all");
@@ -160,7 +219,9 @@ const AdminDashboard: React.FC = () => {
     try {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["aegis"] }),
-        queryClient.invalidateQueries({ queryKey: ["live-dashboard", "userProfiles"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["live-dashboard", "userProfiles"],
+        }),
       ]);
     } finally {
       setRefreshingData(false);
@@ -184,17 +245,60 @@ const AdminDashboard: React.FC = () => {
     auditFetching ||
     escalationsFetching ||
     deletionsFetching;
-  const sanitizedIncidentSeries = useMemo(() => normalizeAdminIncidentSeries(incidentTimeSeries), [incidentTimeSeries]);
-  const sanitizedAuditLogs = useMemo(() => normalizeAdminAuditLogs(auditLogs), [auditLogs]);
-  const sanitizedAlerts = useMemo(() => normalizeAdminAlerts(alertsFeed), [alertsFeed]);
+  const sanitizedIncidentSeries = useMemo(
+    () => normalizeAdminIncidentSeries(incidentTimeSeries),
+    [incidentTimeSeries],
+  );
+  const sanitizedAuditLogs = useMemo(
+    () => normalizeAdminAuditLogs(auditLogs),
+    [auditLogs],
+  );
+  const sanitizedAlerts = useMemo(
+    () => normalizeAdminAlerts(alertsFeed),
+    [alertsFeed],
+  );
 
-  const activeUsers = useMemo(() => users.filter((entry) => entry.isActive), [users]);
-  const privilegedUsers = useMemo(() => users.filter((entry) => ["admin", "analyst", "ngo", "police", "counselor"].includes(entry.role)), [users]);
-  const pendingApprovals = useMemo(() => privilegedUsers.filter((entry) => entry.approvalStatus === "pending"), [privilegedUsers]);
-  const uniqueAlerts = useMemo(() => dedupeBy(sanitizedAlerts, (entry) => `${entry.module}|${entry.type}|${entry.message}`), [sanitizedAlerts]);
-  const criticalAlerts = useMemo(() => uniqueAlerts.filter((entry) => entry.type === "critical"), [uniqueAlerts]);
-  const unresolvedEscalations = useMemo(() => escalationReviews.filter((entry) => !["resolved", "closed"].includes(entry.status.toLowerCase())), [escalationReviews]);
-  const pendingDeletionRequests = useMemo(() => deletionRequests.filter((entry) => entry.status?.toLowerCase() !== "processed"), [deletionRequests]);
+  const activeUsers = useMemo(
+    () => users.filter((entry) => entry.isActive),
+    [users],
+  );
+  const privilegedUsers = useMemo(
+    () =>
+      users.filter((entry) =>
+        ["admin", "analyst", "ngo", "police", "counselor"].includes(entry.role),
+      ),
+    [users],
+  );
+  const pendingApprovals = useMemo(
+    () => privilegedUsers.filter((entry) => entry.approvalStatus === "pending"),
+    [privilegedUsers],
+  );
+  const uniqueAlerts = useMemo(
+    () =>
+      dedupeBy(
+        sanitizedAlerts,
+        (entry) => `${entry.module}|${entry.type}|${entry.message}`,
+      ),
+    [sanitizedAlerts],
+  );
+  const criticalAlerts = useMemo(
+    () => uniqueAlerts.filter((entry) => entry.type === "critical"),
+    [uniqueAlerts],
+  );
+  const unresolvedEscalations = useMemo(
+    () =>
+      escalationReviews.filter(
+        (entry) => !["resolved", "closed"].includes(entry.status.toLowerCase()),
+      ),
+    [escalationReviews],
+  );
+  const pendingDeletionRequests = useMemo(
+    () =>
+      deletionRequests.filter(
+        (entry) => entry.status?.toLowerCase() !== "processed",
+      ),
+    [deletionRequests],
+  );
   const roleDistribution = useMemo(() => {
     const distribution = new Map<string, number>();
     users.forEach((entry) => {
@@ -209,19 +313,28 @@ const AdminDashboard: React.FC = () => {
   const auditFeed = useMemo(() => {
     const term = deferredAuditSearch.trim().toLowerCase();
     return sanitizedAuditLogs.filter((entry) => {
-      const matchesSearch = !term || [entry.action, entry.module, entry.user, entry.description ?? ""]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term));
-      const matchesSeverity = auditSeverity === "all" || entry.severity === auditSeverity;
+      const matchesSearch =
+        !term ||
+        [entry.action, entry.module, entry.user, entry.description ?? ""]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(term));
+      const matchesSeverity =
+        auditSeverity === "all" || entry.severity === auditSeverity;
       return matchesSearch && matchesSeverity;
     });
   }, [sanitizedAuditLogs, deferredAuditSearch, auditSeverity]);
 
-  const visibleAuditFeed = useMemo(() => auditFeed.slice(0, auditDisplayLimit), [auditDisplayLimit, auditFeed]);
+  const visibleAuditFeed = useMemo(
+    () => auditFeed.slice(0, auditDisplayLimit),
+    [auditDisplayLimit, auditFeed],
+  );
 
   const incidentTrend = useMemo(() => {
-    const latest = sanitizedIncidentSeries[sanitizedIncidentSeries.length - 1]?.value ?? 0;
-    const previous = sanitizedIncidentSeries[sanitizedIncidentSeries.length - 2]?.value ?? latest;
+    const latest =
+      sanitizedIncidentSeries[sanitizedIncidentSeries.length - 1]?.value ?? 0;
+    const previous =
+      sanitizedIncidentSeries[sanitizedIncidentSeries.length - 2]?.value ??
+      latest;
     return {
       latest,
       delta: latest - previous,
@@ -229,12 +342,18 @@ const AdminDashboard: React.FC = () => {
   }, [sanitizedIncidentSeries]);
 
   const governanceTimeline = useMemo(
-    () => buildWeeklyLifecycle(sanitizedAuditLogs, (entry) => entry.time, undefined, 4).map((bucket) => ({
-      label: bucket.label,
-      opened: bucket.opened,
-      active: bucket.active,
-    })),
-    [sanitizedAuditLogs]
+    () =>
+      buildWeeklyLifecycle(
+        sanitizedAuditLogs,
+        (entry) => entry.time,
+        undefined,
+        4,
+      ).map((bucket) => ({
+        label: bucket.label,
+        opened: bucket.opened,
+        active: bucket.active,
+      })),
+    [sanitizedAuditLogs],
   );
   const auditSeveritySummary = useMemo(() => {
     const summary = { critical: 0, error: 0, warning: 0, info: 0 };
@@ -245,9 +364,20 @@ const AdminDashboard: React.FC = () => {
     });
     return summary;
   }, [sanitizedAuditLogs]);
-  const recentAuditActors = useMemo(() => new Set(sanitizedAuditLogs.slice(0, 12).map((entry) => entry.user).filter(Boolean)).size, [sanitizedAuditLogs]);
+  const recentAuditActors = useMemo(
+    () =>
+      new Set(
+        sanitizedAuditLogs
+          .slice(0, 12)
+          .map((entry) => entry.user)
+          .filter(Boolean),
+      ).size,
+    [sanitizedAuditLogs],
+  );
   const mfaCoverage = useMemo(() => {
-    const privileged = users.filter((u) => ["admin", "analyst", "ngo", "police", "counselor"].includes(u.role));
+    const privileged = users.filter((u) =>
+      ["admin", "analyst", "ngo", "police", "counselor"].includes(u.role),
+    );
     if (privileged.length === 0) return null;
     const covered = privileged.filter((u) => u.mfaEnabled).length;
     return Math.round((covered / privileged.length) * 100);
@@ -255,11 +385,20 @@ const AdminDashboard: React.FC = () => {
 
   const securityPosture = useMemo(() => {
     const rawUptime = systemMetrics?.systemUptime ?? 0;
-    const uptime = rawUptime > 0 && rawUptime <= 1 ? rawUptime * 100 : rawUptime;
-    const encryptionFactor = systemMetrics?.encryptionStatus === "active" ? 100 : 70;
+    const uptime =
+      rawUptime > 0 && rawUptime <= 1 ? rawUptime * 100 : rawUptime;
+    const encryptionFactor =
+      systemMetrics?.encryptionStatus === "active" ? 100 : 70;
     const alertPenalty = Math.min(35, criticalAlerts.length * 6);
-    return Math.min(100, Math.max(0, Math.round((uptime + encryptionFactor) / 2 - alertPenalty)));
-  }, [criticalAlerts.length, systemMetrics?.encryptionStatus, systemMetrics?.systemUptime]);
+    return Math.min(
+      100,
+      Math.max(0, Math.round((uptime + encryptionFactor) / 2 - alertPenalty)),
+    );
+  }, [
+    criticalAlerts.length,
+    systemMetrics?.encryptionStatus,
+    systemMetrics?.systemUptime,
+  ]);
 
   const incidentTrendLabel = useMemo(() => {
     if (incidentTrend.delta === 0) {
@@ -274,7 +413,7 @@ const AdminDashboard: React.FC = () => {
         incidentPointCount: sanitizedIncidentSeries.length,
         auditEntryCount: sanitizedAuditLogs.length,
       }),
-    [sanitizedAuditLogs.length, sanitizedIncidentSeries.length, users.length]
+    [sanitizedAuditLogs.length, sanitizedIncidentSeries.length, users.length],
   );
   const recommendedActions = useMemo(
     () =>
@@ -284,7 +423,12 @@ const AdminDashboard: React.FC = () => {
         unresolvedEscalations: unresolvedEscalations.length,
         pendingDeletionRequests: pendingDeletionRequests.length,
       }),
-    [criticalAlerts.length, pendingApprovals.length, pendingDeletionRequests.length, unresolvedEscalations.length]
+    [
+      criticalAlerts.length,
+      pendingApprovals.length,
+      pendingDeletionRequests.length,
+      unresolvedEscalations.length,
+    ],
   );
   const thresholdNotifications = useMemo(
     () =>
@@ -296,7 +440,14 @@ const AdminDashboard: React.FC = () => {
         securityPosture,
         thresholds: adminThresholds,
       }),
-    [adminThresholds, criticalAlerts.length, pendingApprovals.length, pendingDeletionRequests.length, securityPosture, unresolvedEscalations.length]
+    [
+      adminThresholds,
+      criticalAlerts.length,
+      pendingApprovals.length,
+      pendingDeletionRequests.length,
+      securityPosture,
+      unresolvedEscalations.length,
+    ],
   );
 
   const priorityBoard = useMemo(
@@ -334,13 +485,23 @@ const AdminDashboard: React.FC = () => {
         action: () => setActiveModule("admin_console"),
       },
     ],
-    [criticalAlerts.length, pendingApprovals.length, pendingDeletionRequests.length, setActiveModule, unresolvedEscalations.length]
+    [
+      criticalAlerts.length,
+      pendingApprovals.length,
+      pendingDeletionRequests.length,
+      setActiveModule,
+      unresolvedEscalations.length,
+    ],
   );
 
   if (profileLoading) {
     return (
       <DashboardPage accent="sky">
-        <section className="rounded-3xl border border-white/15 bg-slate-950/75 p-6 shadow-xl backdrop-blur-xl sm:p-8" aria-busy="true" aria-label="Loading admin dashboard">
+        <section
+          className="rounded-3xl border border-white/15 bg-slate-950/75 p-6 shadow-xl backdrop-blur-xl sm:p-8"
+          aria-busy="true"
+          aria-label="Loading admin dashboard"
+        >
           <Skeleton className="mb-4 h-4 w-40 rounded-full bg-slate-800/80" />
           <Skeleton className="mb-3 h-9 w-full max-w-lg bg-slate-800/80" />
           <Skeleton className="h-5 w-full max-w-2xl bg-slate-800/70" />
@@ -351,7 +512,10 @@ const AdminDashboard: React.FC = () => {
         </section>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[0, 1, 2, 3].map((key) => (
-            <div key={key} className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
+            <div
+              key={key}
+              className="rounded-2xl border border-white/10 bg-slate-950/60 p-5"
+            >
               <Skeleton className="h-3 w-24 bg-slate-800/70" />
               <Skeleton className="mt-4 h-8 w-16 bg-slate-800/80" />
               <Skeleton className="mt-2 h-3 w-full max-w-[180px] bg-slate-800/60" />
@@ -395,14 +559,51 @@ const AdminDashboard: React.FC = () => {
         title="Administrative oversight"
         description="Live command surface for identity controls, system health, governance actions, and audit response across the platform."
         badges={[
-          <HeroBadge key="posture" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200">{securityPosture}% security posture</HeroBadge>,
-          <HeroBadge key="approvals" className="border-amber-500/20 bg-amber-500/10 text-amber-200">{pendingApprovals.length} pending approvals</HeroBadge>,
-          <HeroBadge key="alerts" className="border-rose-500/20 bg-rose-500/10 text-rose-200">{criticalAlerts.length} critical alerts</HeroBadge>,
+          <HeroBadge
+            key="posture"
+            className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+          >
+            {securityPosture}% security posture
+          </HeroBadge>,
+          <HeroBadge
+            key="approvals"
+            className="border-amber-500/20 bg-amber-500/10 text-amber-200"
+          >
+            {pendingApprovals.length} pending approvals
+          </HeroBadge>,
+          <HeroBadge
+            key="alerts"
+            className="border-rose-500/20 bg-rose-500/10 text-rose-200"
+          >
+            {criticalAlerts.length} critical alerts
+          </HeroBadge>,
           ...(mfaCoverage !== null
-            ? [<HeroBadge key="mfa" className={mfaCoverage >= 80 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : mfaCoverage >= 50 ? "border-amber-500/20 bg-amber-500/10 text-amber-200" : "border-rose-500/20 bg-rose-500/10 text-rose-200"}>{mfaCoverage}% MFA coverage</HeroBadge>]
+            ? [
+                <HeroBadge
+                  key="mfa"
+                  className={
+                    mfaCoverage >= 80
+                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                      : mfaCoverage >= 50
+                        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+                        : "border-rose-500/20 bg-rose-500/10 text-rose-200"
+                  }
+                >
+                  {mfaCoverage}% MFA coverage
+                </HeroBadge>,
+              ]
             : []),
-          ...(isFetchingAdminData && !isInitialDashboardPending && documentVisible
-            ? [<HeroBadge key="sync" className="border-cyan-500/20 bg-cyan-500/10 text-cyan-200">Syncing live data…</HeroBadge>]
+          ...(isFetchingAdminData &&
+          !isInitialDashboardPending &&
+          documentVisible
+            ? [
+                <HeroBadge
+                  key="sync"
+                  className="border-cyan-500/20 bg-cyan-500/10 text-cyan-200"
+                >
+                  Syncing live data…
+                </HeroBadge>,
+              ]
             : []),
         ]}
         actions={
@@ -415,10 +616,15 @@ const AdminDashboard: React.FC = () => {
             >
               {refreshingData ? "Refreshing…" : "Refresh data"}
             </Button>
-            <Button variant="outline" onClick={() => setActiveModule("reporting")}>
+            <Button
+              variant="outline"
+              onClick={() => setActiveModule("reporting")}
+            >
               Export reporting
             </Button>
-            <Button onClick={() => setActiveModule("admin_console")}>Open admin console</Button>
+            <Button onClick={() => setActiveModule("admin_console")}>
+              Open admin console
+            </Button>
           </>
         }
       />
@@ -432,10 +638,34 @@ const AdminDashboard: React.FC = () => {
       ) : null}
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active users" value={activeUsers.length} helper={`${users.length} profiles tracked`} accent="sky" loading={isInitialDashboardPending} />
-        <MetricCard label="Privileged queue" value={pendingApprovals.length} helper="Awaiting access approval" accent="amber" loading={isInitialDashboardPending} />
-        <MetricCard label="Critical alerts" value={criticalAlerts.length} helper={incidentTrendLabel} accent="rose" loading={isInitialDashboardPending} />
-        <MetricCard label="Deletion requests" value={pendingDeletionRequests.length} helper={`${unresolvedEscalations.length} unresolved escalations`} accent="indigo" loading={isInitialDashboardPending} />
+        <MetricCard
+          label="Active users"
+          value={activeUsers.length}
+          helper={`${users.length} profiles tracked`}
+          accent="sky"
+          loading={isInitialDashboardPending}
+        />
+        <MetricCard
+          label="Privileged queue"
+          value={pendingApprovals.length}
+          helper="Awaiting access approval"
+          accent="amber"
+          loading={isInitialDashboardPending}
+        />
+        <MetricCard
+          label="Critical alerts"
+          value={criticalAlerts.length}
+          helper={incidentTrendLabel}
+          accent="rose"
+          loading={isInitialDashboardPending}
+        />
+        <MetricCard
+          label="Deletion requests"
+          value={pendingDeletionRequests.length}
+          helper={`${unresolvedEscalations.length} unresolved escalations`}
+          accent="indigo"
+          loading={isInitialDashboardPending}
+        />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -457,13 +687,20 @@ const AdminDashboard: React.FC = () => {
                 title={item.title}
                 subtitle={item.subtitle}
                 meta={<StatusPill tone={item.tone}>{item.value}</StatusPill>}
-                action={<Button size="sm" variant="outline" onClick={item.action}>{item.actionLabel}</Button>}
+                action={
+                  <Button size="sm" variant="outline" onClick={item.action}>
+                    {item.actionLabel}
+                  </Button>
+                }
               />
             ))}
           </div>
         </SectionCard>
 
-        <SectionCard title="Operator snapshot" description="A compact read on posture, throughput, and current workload.">
+        <SectionCard
+          title="Operator snapshot"
+          description="A compact read on posture, throughput, and current workload."
+        >
           {metricsError ? (
             <AdminQueryErrorBanner
               title="System metrics unavailable"
@@ -472,17 +709,50 @@ const AdminDashboard: React.FC = () => {
             />
           ) : null}
           <div className="grid gap-3">
-            <ListItemCard title="System uptime" subtitle="Latest recorded service posture" meta={<StatusPill tone="emerald">{systemMetrics?.systemUptime ?? 0}%</StatusPill>} />
-            <ListItemCard title="API requests today" subtitle="Live platform usage" meta={systemMetrics?.apiRequestsToday ?? 0} />
-            <ListItemCard title="Data points processed" subtitle="Current analytics pipeline" meta={systemMetrics?.dataPointsProcessed ?? "--"} />
-            <ListItemCard title="Alert surface" subtitle="Combined alert watch and backlog pressure" meta={<StatusPill tone={criticalAlerts.length > 0 ? "rose" : "sky"}>{criticalAlerts.length > 0 ? `${criticalAlerts.length} critical` : "Calm"}</StatusPill>} />
-            <ListItemCard title="Recent audit actors" subtitle="Unique operators in the latest audit activity window" meta={<StatusPill tone="sky">{recentAuditActors}</StatusPill>} />
+            <ListItemCard
+              title="System uptime"
+              subtitle="Latest recorded service posture"
+              meta={
+                <StatusPill tone="emerald">
+                  {systemMetrics?.systemUptime ?? 0}%
+                </StatusPill>
+              }
+            />
+            <ListItemCard
+              title="API requests today"
+              subtitle="Live platform usage"
+              meta={systemMetrics?.apiRequestsToday ?? 0}
+            />
+            <ListItemCard
+              title="Data points processed"
+              subtitle="Current analytics pipeline"
+              meta={systemMetrics?.dataPointsProcessed ?? "--"}
+            />
+            <ListItemCard
+              title="Alert surface"
+              subtitle="Combined alert watch and backlog pressure"
+              meta={
+                <StatusPill tone={criticalAlerts.length > 0 ? "rose" : "sky"}>
+                  {criticalAlerts.length > 0
+                    ? `${criticalAlerts.length} critical`
+                    : "Calm"}
+                </StatusPill>
+              }
+            />
+            <ListItemCard
+              title="Recent audit actors"
+              subtitle="Unique operators in the latest audit activity window"
+              meta={<StatusPill tone="sky">{recentAuditActors}</StatusPill>}
+            />
           </div>
         </SectionCard>
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard title="Governance telemetry" description="Latest system throughput and governance event activity.">
+        <SectionCard
+          title="Governance telemetry"
+          description="Latest system throughput and governance event activity."
+        >
           {incidentsError ? (
             <AdminQueryErrorBanner
               title="Incident telemetry unavailable"
@@ -498,22 +768,64 @@ const AdminDashboard: React.FC = () => {
                 aria-label="Governance incident signal over time"
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sanitizedIncidentSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <AreaChart
+                    data={sanitizedIncidentSeries}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  >
                     <defs>
-                      <linearGradient id={chartGradientId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+                      <linearGradient
+                        id={chartGradientId}
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#38bdf8"
+                          stopOpacity={0.35}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#38bdf8"
+                          stopOpacity={0}
+                        />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="date" stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
-                    <YAxis stroke="#64748b" tickLine={false} axisLine={false} fontSize={10} />
+                    <CartesianGrid
+                      stroke="#1e293b"
+                      strokeDasharray="3 3"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                    />
+                    <YAxis
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                    />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "12px" }}
+                      contentStyle={{
+                        backgroundColor: "#0f172a",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: "12px",
+                      }}
                       labelStyle={{ color: "#e2e8f0" }}
                       itemStyle={{ color: "#38bdf8" }}
                     />
-                    <Area type="monotone" dataKey="value" stroke="#38bdf8" fill={`url(#${chartGradientId})`} strokeWidth={2} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#38bdf8"
+                      fill={`url(#${chartGradientId})`}
+                      strokeWidth={2}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -528,15 +840,55 @@ const AdminDashboard: React.FC = () => {
               />
             )}
             <div className="grid gap-3">
-              <ListItemCard title="Security posture" subtitle="Composite of uptime, encryption, and alert pressure" meta={<StatusPill tone={securityPosture >= 85 ? "emerald" : securityPosture >= 65 ? "amber" : "rose"}>{securityPosture}%</StatusPill>} />
-              <ListItemCard title="Incident trend" subtitle="Current delta compared with the previous interval" meta={incidentTrend.delta === 0 ? "Stable" : incidentTrend.delta > 0 ? `+${incidentTrend.delta}` : incidentTrend.delta} />
-              <ListItemCard title="Governance activity" subtitle="Events opened across the weekly lifecycle" meta={governanceTimeline.reduce((sum, bucket) => sum + bucket.opened, 0)} />
-              <ListItemCard title="Active alerts" subtitle="Current monitoring watch surface" meta={systemMetrics?.activeAlerts ?? criticalAlerts.length} />
+              <ListItemCard
+                title="Security posture"
+                subtitle="Composite of uptime, encryption, and alert pressure"
+                meta={
+                  <StatusPill
+                    tone={
+                      securityPosture >= 85
+                        ? "emerald"
+                        : securityPosture >= 65
+                          ? "amber"
+                          : "rose"
+                    }
+                  >
+                    {securityPosture}%
+                  </StatusPill>
+                }
+              />
+              <ListItemCard
+                title="Incident trend"
+                subtitle="Current delta compared with the previous interval"
+                meta={
+                  incidentTrend.delta === 0
+                    ? "Stable"
+                    : incidentTrend.delta > 0
+                      ? `+${incidentTrend.delta}`
+                      : incidentTrend.delta
+                }
+              />
+              <ListItemCard
+                title="Governance activity"
+                subtitle="Events opened across the weekly lifecycle"
+                meta={governanceTimeline.reduce(
+                  (sum, bucket) => sum + bucket.opened,
+                  0,
+                )}
+              />
+              <ListItemCard
+                title="Active alerts"
+                subtitle="Current monitoring watch surface"
+                meta={systemMetrics?.activeAlerts ?? criticalAlerts.length}
+              />
             </div>
           </div>
         </SectionCard>
 
-        <SectionCard title="Identity & role mix" description="Real-time role distribution and access posture.">
+        <SectionCard
+          title="Identity & role mix"
+          description="Real-time role distribution and access posture."
+        >
           {usersError ? (
             <AdminQueryErrorBanner
               title="User directory unavailable"
@@ -556,11 +908,19 @@ const AdminDashboard: React.FC = () => {
               />
             ) : (
               roleDistribution.map((entry) => (
-                <div key={entry.role} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                <div
+                  key={entry.role}
+                  className="rounded-2xl border border-white/10 bg-slate-900/70 p-4"
+                >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-medium text-white capitalize">{entry.role}</p>
-                      <p className="text-xs text-slate-400">{percent(entry.count, users.length)}% of active identity surface</p>
+                      <p className="text-sm font-medium text-white capitalize">
+                        {entry.role}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {percent(entry.count, users.length)}% of active identity
+                        surface
+                      </p>
                     </div>
                     <StatusPill tone="sky">{entry.count}</StatusPill>
                   </div>
@@ -572,20 +932,32 @@ const AdminDashboard: React.FC = () => {
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard title="Case resolution lookup" description="Shared live lookup for case status verification across admin workflows.">
+        <SectionCard
+          title="Case resolution lookup"
+          description="Shared live lookup for case status verification across admin workflows."
+        >
           <CaseStatusLookup
             description="Use a secure case reference to retrieve the current status, priority, and last movement in the case pipeline."
             placeholder="Enter secure case ID"
           />
         </SectionCard>
 
-        <SectionCard title="Recommended actions" description="System-generated next steps based on current admin pressure points.">
-          <AdminRecommendedActionsList items={recommendedActions} onAction={(module) => setActiveModule(module as never)} />
+        <SectionCard
+          title="Recommended actions"
+          description="System-generated next steps based on current admin pressure points."
+        >
+          <AdminRecommendedActionsList
+            items={recommendedActions}
+            onAction={(module) => setActiveModule(module as never)}
+          />
         </SectionCard>
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard title="Attention matrix" description="At-a-glance view of where intervention is most likely needed next.">
+        <SectionCard
+          title="Attention matrix"
+          description="At-a-glance view of where intervention is most likely needed next."
+        >
           {escalationsError || deletionsError ? (
             <AdminQueryErrorBanner
               title="Queue data partially unavailable"
@@ -603,14 +975,85 @@ const AdminDashboard: React.FC = () => {
             />
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
-            <ListItemCard title="Approvals" subtitle="Privileged identities waiting for enablement" meta={<StatusPill tone="amber">{pendingApprovals.length}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("admin_console")}>Review</Button>} />
-            <ListItemCard title="Escalations" subtitle="Risk cases still open in oversight" meta={<StatusPill tone="rose">{unresolvedEscalations.length}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("justice")}>Open queue</Button>} />
-            <ListItemCard title="Privacy" subtitle="Deletion processing awaiting closure" meta={<StatusPill tone="indigo">{pendingDeletionRequests.length}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("admin_console")}>Process</Button>} />
-            <ListItemCard title="Signal watch" subtitle="Critical alerts currently affecting posture" meta={<StatusPill tone={criticalAlerts.length > 0 ? "rose" : "emerald"}>{criticalAlerts.length > 0 ? criticalAlerts.length : "Clear"}</StatusPill>} action={<Button size="sm" variant="outline" onClick={() => setActiveModule("governance")}>Inspect</Button>} />
+            <ListItemCard
+              title="Approvals"
+              subtitle="Privileged identities waiting for enablement"
+              meta={
+                <StatusPill tone="amber">{pendingApprovals.length}</StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("admin_console")}
+                >
+                  Review
+                </Button>
+              }
+            />
+            <ListItemCard
+              title="Escalations"
+              subtitle="Risk cases still open in oversight"
+              meta={
+                <StatusPill tone="rose">
+                  {unresolvedEscalations.length}
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("justice")}
+                >
+                  Open queue
+                </Button>
+              }
+            />
+            <ListItemCard
+              title="Privacy"
+              subtitle="Deletion processing awaiting closure"
+              meta={
+                <StatusPill tone="indigo">
+                  {pendingDeletionRequests.length}
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("admin_console")}
+                >
+                  Process
+                </Button>
+              }
+            />
+            <ListItemCard
+              title="Signal watch"
+              subtitle="Critical alerts currently affecting posture"
+              meta={
+                <StatusPill
+                  tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
+                >
+                  {criticalAlerts.length > 0 ? criticalAlerts.length : "Clear"}
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("governance")}
+                >
+                  Inspect
+                </Button>
+              }
+            />
           </div>
         </SectionCard>
 
-        <SectionCard title="Feed health" description="Status of the main admin data surfaces used by the oversight console.">
+        <SectionCard
+          title="Feed health"
+          description="Status of the main admin data surfaces used by the oversight console."
+        >
           <AdminFeedHealthGrid items={feedHealth} />
         </SectionCard>
       </section>
@@ -619,7 +1062,11 @@ const AdminDashboard: React.FC = () => {
         <SectionCard
           title="Audit trail"
           description="Realtime log stream filtered by severity and search."
-          action={auditFeed.length > 0 ? <StatusPill tone="sky">{auditFeed.length} matches</StatusPill> : undefined}
+          action={
+            auditFeed.length > 0 ? (
+              <StatusPill tone="sky">{auditFeed.length} matches</StatusPill>
+            ) : undefined
+          }
         >
           {auditError ? (
             <AdminQueryErrorBanner
@@ -664,14 +1111,27 @@ const AdminDashboard: React.FC = () => {
           <AdminAuditSeveritySummary summary={auditSeveritySummary} />
           <div className="space-y-3">
             {visibleAuditFeed.length === 0 ? (
-              <EmptyState title="No matching audit events" description="Adjust your search or severity filters to inspect the governance ledger." />
+              <EmptyState
+                title="No matching audit events"
+                description="Adjust your search or severity filters to inspect the governance ledger."
+              />
             ) : (
               visibleAuditFeed.map((entry, index) => (
                 <ListItemCard
                   key={`${entry.time}-${entry.action}-${entry.user}-${entry.module}-${index}`}
                   title={entry.action}
                   subtitle={`${entry.user} • ${entry.module} • ${formatRelativeDateTime(entry.time)}`}
-                  meta={<StatusPill tone={severityTone[entry.severity as keyof typeof severityTone] ?? "slate"}>{entry.severity}</StatusPill>}
+                  meta={
+                    <StatusPill
+                      tone={
+                        severityTone[
+                          entry.severity as keyof typeof severityTone
+                        ] ?? "slate"
+                      }
+                    >
+                      {entry.severity}
+                    </StatusPill>
+                  }
                 />
               ))
             )}
@@ -683,14 +1143,20 @@ const AdminDashboard: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    setAuditDisplayLimit((n) => Math.min(n + AUDIT_PAGE_SIZE, auditFeed.length))
+                    setAuditDisplayLimit((n) =>
+                      Math.min(n + AUDIT_PAGE_SIZE, auditFeed.length),
+                    )
                   }
                 >
                   Load more ({auditFeed.length - auditDisplayLimit} remaining)
                 </Button>
               ) : null}
               {auditDisplayLimit > AUDIT_PAGE_SIZE ? (
-                <Button variant="outline" size="sm" onClick={() => setAuditDisplayLimit(AUDIT_PAGE_SIZE)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAuditDisplayLimit(AUDIT_PAGE_SIZE)}
+                >
                   Show less
                 </Button>
               ) : null}
@@ -698,7 +1164,10 @@ const AdminDashboard: React.FC = () => {
           ) : null}
         </SectionCard>
 
-        <SectionCard title="Alert & activity watch" description="Live alert feed and governance activity volume.">
+        <SectionCard
+          title="Alert & activity watch"
+          description="Live alert feed and governance activity volume."
+        >
           {alertsError ? (
             <AdminQueryErrorBanner
               title="Alert feed unavailable"
@@ -712,7 +1181,13 @@ const AdminDashboard: React.FC = () => {
                 key={entry.id}
                 title={entry.message}
                 subtitle={`${entry.module} • ${entry.time}`}
-                meta={<StatusPill tone={entry.type === "critical" ? "rose" : "amber"}>{entry.type || "notice"}</StatusPill>}
+                meta={
+                  <StatusPill
+                    tone={entry.type === "critical" ? "rose" : "amber"}
+                  >
+                    {entry.type || "notice"}
+                  </StatusPill>
+                }
               />
             ))}
             {uniqueAlerts.length === 0 ? (
@@ -730,8 +1205,12 @@ const AdminDashboard: React.FC = () => {
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Critical signals</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{criticalAlerts.length}</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                    Critical signals
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-white">
+                    {criticalAlerts.length}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-200">
                   <AlertTriangle className="h-5 w-5" />
@@ -741,8 +1220,12 @@ const AdminDashboard: React.FC = () => {
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Privileged identities</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{privilegedUsers.length}</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                    Privileged identities
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-white">
+                    {privilegedUsers.length}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-3 text-sky-200">
                   <Users className="h-5 w-5" />
@@ -752,8 +1235,12 @@ const AdminDashboard: React.FC = () => {
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Escalation watch</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{unresolvedEscalations.length}</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                    Escalation watch
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-white">
+                    {unresolvedEscalations.length}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-200">
                   <AlertTriangle className="h-5 w-5" />
@@ -763,8 +1250,12 @@ const AdminDashboard: React.FC = () => {
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Privacy queue</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{pendingDeletionRequests.length}</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                    Privacy queue
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-white">
+                    {pendingDeletionRequests.length}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-3 text-indigo-200">
                   <Database className="h-5 w-5" />
@@ -773,12 +1264,19 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Governance activity</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+              Governance activity
+            </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-4">
               {governanceTimeline.map((bucket) => (
-                <div key={bucket.label} className="rounded-xl border border-white/10 bg-slate-950/60 p-3">
+                <div
+                  key={bucket.label}
+                  className="rounded-xl border border-white/10 bg-slate-950/60 p-3"
+                >
                   <p className="text-xs text-slate-400">{bucket.label}</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{bucket.opened}</p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {bucket.opened}
+                  </p>
                   <p className="text-xs text-slate-500">events</p>
                 </div>
               ))}
@@ -788,15 +1286,30 @@ const AdminDashboard: React.FC = () => {
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <SectionCard title="Threshold notifications" description="Alerts generated when key admin queues exceed operational thresholds.">
+        <SectionCard
+          title="Threshold notifications"
+          description="Alerts generated when key admin queues exceed operational thresholds."
+        >
           <AdminThresholdNotifications items={thresholdNotifications} />
         </SectionCard>
 
-        <SectionCard title="Admin efficiency notes" description="Pragmatic improvements that will keep the oversight console maintainable.">
+        <SectionCard
+          title="Admin efficiency notes"
+          description="Pragmatic improvements that will keep the oversight console maintainable."
+        >
           <div className="space-y-3">
-            <ListItemCard title="Thresholds now come from the backend" subtitle={`Approval ${adminThresholds.pendingApprovalsWarning}, escalations ${adminThresholds.unresolvedEscalationsWarning}, privacy ${adminThresholds.pendingDeletionRequestsWarning}, posture minimum ${adminThresholds.securityPostureMinimum}%.`} />
-            <ListItemCard title="Polling policy is centralized" subtitle={`Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s, alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s, audit ${Math.round(refreshIntervals.auditMs / 1000)}s.`} />
-            <ListItemCard title="Normalize data upstream" subtitle="Alert, incident, and audit sanitization now sits outside the render layer and should continue moving into shared data services." />
+            <ListItemCard
+              title="Thresholds now come from the backend"
+              subtitle={`Approval ${adminThresholds.pendingApprovalsWarning}, escalations ${adminThresholds.unresolvedEscalationsWarning}, privacy ${adminThresholds.pendingDeletionRequestsWarning}, posture minimum ${adminThresholds.securityPostureMinimum}%.`}
+            />
+            <ListItemCard
+              title="Polling policy is centralized"
+              subtitle={`Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s, alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s, audit ${Math.round(refreshIntervals.auditMs / 1000)}s.`}
+            />
+            <ListItemCard
+              title="Normalize data upstream"
+              subtitle="Alert, incident, and audit sanitization now sits outside the render layer and should continue moving into shared data services."
+            />
           </div>
         </SectionCard>
       </section>
@@ -805,26 +1318,76 @@ const AdminDashboard: React.FC = () => {
         <MFAEnforcementPanel />
       </section>
 
+      <section>
+        <VoiceEvidenceArchive />
+      </section>
+
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-1">
-        <SectionCard title="Live posture summary" description="Quick, role-specific admin guidance for the next move.">
+        <SectionCard
+          title="Live posture summary"
+          description="Quick, role-specific admin guidance for the next move."
+        >
           <div className="grid gap-3 md:grid-cols-3">
             <ListItemCard
               title="Identity controls"
               subtitle="Open the admin console when you need to provision, approve, or recover privileged accounts."
-              meta={<StatusPill tone="sky"><ShieldCheck className="mr-1 h-3.5 w-3.5 inline" />Control ready</StatusPill>}
-              action={<Button size="sm" variant="outline" onClick={() => setActiveModule("admin_console")}>Open console</Button>}
+              meta={
+                <StatusPill tone="sky">
+                  <ShieldCheck className="mr-1 h-3.5 w-3.5 inline" />
+                  Control ready
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("admin_console")}
+                >
+                  Open console
+                </Button>
+              }
             />
             <ListItemCard
               title="Governance review"
               subtitle="Use the governance hub to inspect alert-driven policy or fairness issues across the platform."
-              meta={<StatusPill tone={criticalAlerts.length > 0 ? "rose" : "emerald"}>{criticalAlerts.length > 0 ? "Needs review" : "Stable"}</StatusPill>}
-              action={<Button size="sm" variant="outline" onClick={() => setActiveModule("governance")}>Open governance</Button>}
+              meta={
+                <StatusPill
+                  tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
+                >
+                  {criticalAlerts.length > 0 ? "Needs review" : "Stable"}
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("governance")}
+                >
+                  Open governance
+                </Button>
+              }
             />
             <ListItemCard
               title="Operational escalation"
               subtitle="Jump into the justice queue when sensitive escalations require cross-team follow-up."
-              meta={<StatusPill tone={unresolvedEscalations.length > 0 ? "amber" : "emerald"}>{unresolvedEscalations.length > 0 ? "Backlog active" : "Queue clear"}</StatusPill>}
-              action={<Button size="sm" variant="outline" onClick={() => setActiveModule("justice")}>Open justice</Button>}
+              meta={
+                <StatusPill
+                  tone={unresolvedEscalations.length > 0 ? "amber" : "emerald"}
+                >
+                  {unresolvedEscalations.length > 0
+                    ? "Backlog active"
+                    : "Queue clear"}
+                </StatusPill>
+              }
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveModule("justice")}
+                >
+                  Open justice
+                </Button>
+              }
             />
           </div>
         </SectionCard>
@@ -834,4 +1397,3 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-

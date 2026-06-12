@@ -99,6 +99,34 @@ export type Database = {
         is_anonymous: boolean;
         uploaded_at: string;
       }>;
+      voice_evidence: TableDefinition<
+        {
+          id: string;
+          uploaded_by: string;
+          case_reference: string | null;
+          storage_path: string;
+          file_name: string | null;
+          mime_type: string | null;
+          original_text: string;
+          detected_language: string | null;
+          translated_text: string | null;
+          target_language: string | null;
+          created_at: string;
+          /** Generated full-text column — filter on it, never select it. */
+          search_tsv: string | null;
+        },
+        {
+          uploaded_by: string;
+          case_reference?: string | null;
+          storage_path: string;
+          file_name?: string | null;
+          mime_type?: string | null;
+          original_text: string;
+          detected_language?: string | null;
+          translated_text?: string | null;
+          target_language?: string | null;
+        }
+      >;
       escalation_events: TableDefinition<{
         id: string;
         case_id: string | null;

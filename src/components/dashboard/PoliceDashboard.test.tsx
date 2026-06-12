@@ -32,7 +32,8 @@ vi.mock("@tanstack/react-query", async () => {
 vi.mock("@/data/aegisData", () => ({
   useUserProfile: (...args: unknown[]) => mockUseUserProfile(...args),
   usePoliceAlertsFeed: (...args: unknown[]) => mockUsePoliceAlertsFeed(...args),
-  useOrganizationCoordination: (...args: unknown[]) => mockUseOrganizationCoordination(...args),
+  useOrganizationCoordination: (...args: unknown[]) =>
+    mockUseOrganizationCoordination(...args),
   useEscalationRealtime: () => undefined,
   acknowledgePoliceAlert: vi.fn(),
   deleteAlert: vi.fn(),
@@ -41,13 +42,22 @@ vi.mock("@/data/aegisData", () => ({
 
 vi.mock("@/data/liveDashboardData", () => ({
   useLiveOrganization: (...args: unknown[]) => mockUseLiveOrganization(...args),
-  useLivePoliceDepartments: (...args: unknown[]) => mockUseLivePoliceDepartments(...args),
+  useLivePoliceDepartments: (...args: unknown[]) =>
+    mockUseLivePoliceDepartments(...args),
   useLiveUserProfiles: (...args: unknown[]) => mockUseLiveUserProfiles(...args),
   useLiveJusticeCases: (...args: unknown[]) => mockUseLiveJusticeCases(...args),
 }));
 
 vi.mock("@/components/dashboard/CaseStatusLookup", () => ({
   CaseStatusLookup: () => <div>mock-case-lookup</div>,
+}));
+
+vi.mock("@/components/voice/VoiceNoteTranslator", () => ({
+  default: () => <div>mock-voice-translator</div>,
+}));
+
+vi.mock("@/components/voice/VoiceEvidenceArchive", () => ({
+  default: () => <div>mock-voice-archive</div>,
 }));
 
 vi.mock("@/components/justice/CaseDispatchDialog", () => ({
@@ -59,7 +69,9 @@ vi.mock("@/components/justice/FileIncidentDialog", () => ({
 }));
 
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   AreaChart: () => <div />,
   Area: () => null,
   CartesianGrid: () => null,
@@ -70,13 +82,29 @@ vi.mock("recharts", () => ({
 
 describe("PoliceDashboard", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { id: "police-1" }, session: { expires_at: 1767225600 } });
+    mockUseAuth.mockReturnValue({
+      user: { id: "police-1" },
+      session: { expires_at: 1767225600 },
+    });
     mockUseAppStore.mockReturnValue({ setActiveModule: vi.fn() });
     mockUseQueryClient.mockReturnValue({ invalidateQueries: vi.fn() });
-    mockUseUserProfile.mockReturnValue({ data: { role: "police", organizationId: "org-1" } });
-    mockUseLiveOrganization.mockReturnValue({ data: { id: "org-1", name: "Metro Police", region: "Gauteng" } });
+    mockUseUserProfile.mockReturnValue({
+      data: { role: "police", organizationId: "org-1" },
+    });
+    mockUseLiveOrganization.mockReturnValue({
+      data: { id: "org-1", name: "Metro Police", region: "Gauteng" },
+    });
     mockUseLivePoliceDepartments.mockReturnValue({
-      data: [{ id: "dept-1", regionId: "region-1", departmentName: "Metro South", jurisdictionLevel: "regional", jurisdictionName: "Johannesburg South", isActive: true }],
+      data: [
+        {
+          id: "dept-1",
+          regionId: "region-1",
+          departmentName: "Metro South",
+          jurisdictionLevel: "regional",
+          jurisdictionName: "Johannesburg South",
+          isActive: true,
+        },
+      ],
       isLoading: false,
     });
     mockUseLiveUserProfiles.mockReturnValue({
@@ -88,16 +116,25 @@ describe("PoliceDashboard", () => {
     });
     mockUseLiveJusticeCases.mockReturnValue({ data: [], isLoading: false });
     mockUsePoliceAlertsFeed.mockReturnValue({ data: [], isLoading: false });
-    mockUseOrganizationCoordination.mockReturnValue({ data: [], isLoading: false });
+    mockUseOrganizationCoordination.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
   });
 
   it("blocks non-police users from the dashboard", () => {
-    mockUseUserProfile.mockReturnValue({ data: { role: "admin", organizationId: "org-1" } });
+    mockUseUserProfile.mockReturnValue({
+      data: { role: "admin", organizationId: "org-1" },
+    });
 
     render(<PoliceDashboard />);
 
     expect(screen.getByText("Police access required")).toBeInTheDocument();
-    expect(screen.getByText("Your account does not have the required privileges to view the police operations dashboard.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your account does not have the required privileges to view the police operations dashboard.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows empty-state guidance when no live police data is available", () => {
@@ -129,32 +166,63 @@ describe("PoliceDashboard", () => {
       isLoading: false,
     });
     mockUsePoliceAlertsFeed.mockReturnValue({
-      data: [{ id: "alert-1", type: "CRITICAL", message: "Officer assistance required", module: null, time: null, status: "PENDING" }],
+      data: [
+        {
+          id: "alert-1",
+          type: "CRITICAL",
+          message: "Officer assistance required",
+          module: null,
+          time: null,
+          status: "PENDING",
+        },
+      ],
       isLoading: false,
     });
     mockUseOrganizationCoordination.mockReturnValue({
-      data: [{ id: "ref-1", caseId: "case-1-referral", referralType: null, status: "PENDING", createdAt: "2026-03-31T11:00:00Z" }],
+      data: [
+        {
+          id: "ref-1",
+          caseId: "case-1-referral",
+          referralType: null,
+          status: "PENDING",
+          createdAt: "2026-03-31T11:00:00Z",
+        },
+      ],
       isLoading: false,
     });
 
     render(<PoliceDashboard />);
 
     expect(screen.getAllByText("Case A-102")[0]).toBeInTheDocument();
-    expect(screen.getByText(/intake.*Region pending.*updated/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/intake.*Region pending.*updated/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Officer assistance required")).toBeInTheDocument();
     expect(screen.getByText(/core.*--.*response: 5min/i)).toBeInTheDocument();
     expect(screen.getByText(/Referral case-1-r/i)).toBeInTheDocument();
-    expect(screen.getByText("Reduce unassigned investigations")).toBeInTheDocument();
+    expect(
+      screen.getByText("Reduce unassigned investigations"),
+    ).toBeInTheDocument();
   });
 
   it("gates jurisdiction queries until the police profile context is available", () => {
     mockUseUserProfile.mockReturnValue({ data: undefined });
-    mockUseLivePoliceDepartments.mockReturnValue({ data: [], isLoading: false });
+    mockUseLivePoliceDepartments.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
 
     render(<PoliceDashboard />);
 
-    expect(mockUseLiveOrganization).toHaveBeenCalledWith(null, expect.objectContaining({ enabled: false }));
-    expect(mockUseLivePoliceDepartments).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, organizationId: null }));
-    expect(mockUseLiveJusticeCases).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, regionId: null }));
+    expect(mockUseLiveOrganization).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(mockUseLivePoliceDepartments).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, organizationId: null }),
+    );
+    expect(mockUseLiveJusticeCases).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, regionId: null }),
+    );
   });
 });

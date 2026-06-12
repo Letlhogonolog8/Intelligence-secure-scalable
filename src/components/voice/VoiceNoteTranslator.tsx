@@ -1,6 +1,25 @@
 import { useRef, useState } from "react";
-import { Languages, Loader2, Play, Upload, Volume2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Archive,
+  Check,
+  Languages,
+  Loader2,
+  Play,
+  Upload,
+  Volume2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  saveVoiceEvidence,
+  VOICE_EVIDENCE_QUERY_KEY,
+} from "@/data/voiceEvidence";
+import {
+  languageLabel,
+  RESPONDER_LANGUAGES,
+} from "@/components/voice/voiceLanguages";
 
 /**
  * Voice evidence translator for responder dashboards.
@@ -11,22 +30,13 @@ import { Button } from "@/components/ui/button";
  * the backend /api/ai/voice-translate pipeline (Whisper STT → LLM detect +
  * translate → MMS text-to-speech).
  *
+ * A translated note can then be saved to the voice evidence archive (private
+ * storage + transcript table) with an optional case reference, so it becomes
+ * durable, searchable evidence instead of a one-off display.
+ *
  * The language preference persists per browser so each official hears
  * evidence in their own language regardless of what the survivor spoke.
  */
-
-const RESPONDER_LANGUAGES: Array<{ code: string; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "af", label: "Afrikaans" },
-  { code: "zu", label: "isiZulu" },
-  { code: "xh", label: "isiXhosa" },
-  { code: "tn", label: "Setswana" },
-  { code: "st", label: "Sesotho" },
-  { code: "ts", label: "Xitsonga" },
-  { code: "ve", label: "Tshivenda" },
-  { code: "ss", label: "siSwati" },
-  { code: "nso", label: "Sepedi" },
-];
 
 const LANG_PREF_KEY = "aegis.responder.lang";
 
@@ -41,13 +51,19 @@ interface TranslateResult {
 const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
   className,
 }) => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [lang, setLang] = useState(
     () => localStorage.getItem(LANG_PREF_KEY) || "en",
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TranslateResult | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [caseReference, setCaseReference] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -56,11 +72,13 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
     localStorage.setItem(LANG_PREF_KEY, code);
   };
 
-  const translate = async (file: File) => {
+  const translate = async (selected: File) => {
     setBusy(true);
     setError(null);
     setResult(null);
-    setFileName(file.name);
+    setFile(selected);
+    setSaved(false);
+    setSaveError(null);
     try {
       const apiBaseUrl = (
         import.meta.env.VITE_API_URL || "http://localhost:3001/api"
@@ -69,8 +87,8 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
         `${apiBaseUrl}/ai/voice-translate?target=${encodeURIComponent(lang)}`,
         {
           method: "POST",
-          headers: { "Content-Type": file.type || "audio/m4a" },
-          body: file,
+          headers: { "Content-Type": selected.type || "audio/m4a" },
+          body: selected,
         },
       );
       if (!response.ok)
@@ -92,6 +110,32 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
     }
   };
 
+  const saveToArchive = async () => {
+    if (!user?.id || !result || !file || saving || saved) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveVoiceEvidence(user.id, {
+        file,
+        caseReference,
+        originalText: result.originalText,
+        detectedLanguage: result.detectedLanguage,
+        translatedText: result.translatedText,
+        targetLanguage: result.targetLanguage,
+      });
+      setSaved(true);
+      void queryClient.invalidateQueries({
+        queryKey: VOICE_EVIDENCE_QUERY_KEY,
+      });
+    } catch {
+      setSaveError(
+        "Couldn't save to the evidence archive. Please try again shortly.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const playTranslation = () => {
     if (!result?.audioBase64) return;
     audioRef.current?.pause();
@@ -100,11 +144,6 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
     audioRef.current = audio;
     void audio.play();
   };
-
-  const languageLabel = (code: string | null) =>
-    RESPONDER_LANGUAGES.find((entry) => entry.code === code)?.label ??
-    code ??
-    "unknown";
 
   return (
     <div
@@ -148,8 +187,8 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
         accept="audio/*"
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void translate(file);
+          const selected = event.target.files?.[0];
+          if (selected) void translate(selected);
           event.target.value = "";
         }}
       />
@@ -181,7 +220,7 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
           <div className="rounded-lg border border-white/10 bg-slate-950/50 p-3">
             <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
               Original · {languageLabel(result.detectedLanguage)}
-              {fileName ? ` · ${fileName}` : ""}
+              {file ? ` · ${file.name}` : ""}
             </p>
             <p className="text-sm leading-relaxed text-slate-200">
               {result.originalText}
@@ -207,6 +246,51 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
               <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
                 <Volume2 className="h-3.5 w-3.5" /> Audio playback unavailable
                 for this language — transcript above.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-slate-950/50 p-3">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              Evidence archive
+            </p>
+            {saved ? (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                <Check className="h-3.5 w-3.5" /> Saved to the voice evidence
+                archive
+                {caseReference.trim() ? ` · case ${caseReference.trim()}` : ""}.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={caseReference}
+                  onChange={(event) => setCaseReference(event.target.value)}
+                  placeholder="Case reference (optional)"
+                  aria-label="Case reference"
+                  className="h-9 border-white/10 bg-slate-950/70 text-xs text-white"
+                />
+                <Button
+                  onClick={() => void saveToArchive()}
+                  disabled={saving || !user?.id}
+                  size="sm"
+                  className="h-9 shrink-0 bg-purple-600 text-xs font-bold hover:bg-purple-500"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{" "}
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="mr-1.5 h-3.5 w-3.5" /> Save to archive
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+            {saveError && (
+              <p className="mt-2 text-xs font-medium text-rose-400">
+                {saveError}
               </p>
             )}
           </div>

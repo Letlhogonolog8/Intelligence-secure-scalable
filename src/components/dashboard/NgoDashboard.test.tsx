@@ -30,8 +30,10 @@ vi.mock("@/store/appStore", () => ({
 vi.mock("@/data/aegisData", () => ({
   useUserProfile: (...args: unknown[]) => mockUseUserProfile(...args),
   useAlertsFeed: (...args: unknown[]) => mockUseAlertsFeed(...args),
-  useEscalationReviews: (...args: unknown[]) => mockUseEscalationReviews(...args),
-  useOrganizationCoordination: (...args: unknown[]) => mockUseOrganizationCoordination(...args),
+  useEscalationReviews: (...args: unknown[]) =>
+    mockUseEscalationReviews(...args),
+  useOrganizationCoordination: (...args: unknown[]) =>
+    mockUseOrganizationCoordination(...args),
 }));
 
 vi.mock("@/data/liveDashboardData", () => ({
@@ -42,8 +44,18 @@ vi.mock("@/data/liveDashboardData", () => ({
   useLiveUserProfiles: (...args: unknown[]) => mockUseLiveUserProfiles(...args),
 }));
 
+vi.mock("@/components/voice/VoiceNoteTranslator", () => ({
+  default: () => <div>mock-voice-translator</div>,
+}));
+
+vi.mock("@/components/voice/VoiceEvidenceArchive", () => ({
+  default: () => <div>mock-voice-archive</div>,
+}));
+
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   BarChart: () => <div />,
   Bar: () => null,
   CartesianGrid: () => null,
@@ -54,27 +66,52 @@ vi.mock("recharts", () => ({
 
 describe("NgoDashboard", () => {
   beforeEach(() => {
-    mockUseOrganizationContext.mockReturnValue({ organizationId: "org-1", organizationName: "Safe Network" });
-    mockUseAuth.mockReturnValue({ user: { id: "ngo-1" }, session: { expires_at: 1767225600 } });
+    mockUseOrganizationContext.mockReturnValue({
+      organizationId: "org-1",
+      organizationName: "Safe Network",
+    });
+    mockUseAuth.mockReturnValue({
+      user: { id: "ngo-1" },
+      session: { expires_at: 1767225600 },
+    });
     mockUseAppStore.mockReturnValue({ setActiveModule: vi.fn() });
-    mockUseUserProfile.mockReturnValue({ data: { role: "ngo", organizationId: "org-1" } });
-    mockUseLiveOrganization.mockReturnValue({ data: { id: "org-1", name: "Safe Network", region: "Gauteng", isVerified: true, subscriptionLevel: "standard" } });
+    mockUseUserProfile.mockReturnValue({
+      data: { role: "ngo", organizationId: "org-1" },
+    });
+    mockUseLiveOrganization.mockReturnValue({
+      data: {
+        id: "org-1",
+        name: "Safe Network",
+        region: "Gauteng",
+        isVerified: true,
+        subscriptionLevel: "standard",
+      },
+    });
     mockUseLiveUserProfiles.mockReturnValue({ data: [], isLoading: false });
     mockUseLiveSurvivors.mockReturnValue({ data: [], isLoading: false });
     mockUseLiveNgoPrograms.mockReturnValue({ data: [], isLoading: false });
     mockUseLiveResources.mockReturnValue({ data: [], isLoading: false });
-    mockUseOrganizationCoordination.mockReturnValue({ data: [], isLoading: false });
+    mockUseOrganizationCoordination.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
     mockUseAlertsFeed.mockReturnValue({ data: [], isLoading: false });
     mockUseEscalationReviews.mockReturnValue({ data: [], isLoading: false });
   });
 
   it("blocks non-ngo users from the dashboard", () => {
-    mockUseUserProfile.mockReturnValue({ data: { role: "police", organizationId: "org-1" } });
+    mockUseUserProfile.mockReturnValue({
+      data: { role: "police", organizationId: "org-1" },
+    });
 
     render(<NgoDashboard />);
 
     expect(screen.getByText("NGO access required")).toBeInTheDocument();
-    expect(screen.getByText("Your account does not have the required privileges to view the NGO operations hub.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your account does not have the required privileges to view the NGO operations hub.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows empty-state guidance when no live ngo data is available", () => {
@@ -84,7 +121,9 @@ describe("NgoDashboard", () => {
     expect(screen.getByText("No referral activity yet")).toBeInTheDocument();
     expect(screen.getByText("No active alerts")).toBeInTheDocument();
     expect(screen.getByText("No referral flow yet")).toBeInTheDocument();
-    expect(screen.getByText("No active programs configured")).toBeInTheDocument();
+    expect(
+      screen.getByText("No active programs configured"),
+    ).toBeInTheDocument();
     expect(screen.getByText("No urgent escalation items")).toBeInTheDocument();
   });
 
@@ -93,8 +132,15 @@ describe("NgoDashboard", () => {
 
     render(<NgoDashboard />);
 
-    expect(mockUseLiveOrganization).toHaveBeenCalledWith("org-1", expect.objectContaining({ enabled: false }));
-    expect(mockUseLiveUserProfiles).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, organizationId: "org-1" }));
-    expect(mockUseLiveNgoPrograms).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, organizationId: "org-1" }));
+    expect(mockUseLiveOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(mockUseLiveUserProfiles).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, organizationId: "org-1" }),
+    );
+    expect(mockUseLiveNgoPrograms).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, organizationId: "org-1" }),
+    );
   });
 });
