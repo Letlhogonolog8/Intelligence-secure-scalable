@@ -27,6 +27,7 @@ import {
 import { VoiceEvidenceRecorder } from "@/features/voice/VoiceEvidenceRecorder";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
+import { uploadToVault, VaultUploadTimeoutError } from "@/lib/vaultUpload";
 import { colors, font, radius, spacing } from "@/theme";
 
 const BUCKET = "evidence";
@@ -151,33 +152,31 @@ export default function Evidence() {
     const asset = result.assets[0];
     setBusy(true);
     try {
-      const res = await fetch(asset.uri);
-      const blob = await res.blob();
       const ext = (
         asset.fileName?.split(".").pop() ||
         asset.uri.split(".").pop() ||
         "jpg"
       ).toLowerCase();
       const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, blob, {
-          contentType: asset.mimeType ?? "image/jpeg",
-          upsert: false,
-        });
-      if (error) throw error;
+      await uploadToVault(path, asset.uri, asset.mimeType ?? "image/jpeg");
       setNote({
         tone: "success",
         text: t("evidence.added", "Evidence saved securely."),
       });
       await load();
-    } catch {
+    } catch (err) {
       setNote({
         tone: "danger",
-        text: t(
-          "evidence.uploadError",
-          "Upload failed. Check your connection and try again.",
-        ),
+        text:
+          err instanceof VaultUploadTimeoutError
+            ? t(
+                "evidence.uploadTimeout",
+                "Upload is taking too long — check your connection and try again.",
+              )
+            : t(
+                "evidence.uploadError",
+                "Upload failed. Check your connection and try again.",
+              ),
       });
     } finally {
       setBusy(false);

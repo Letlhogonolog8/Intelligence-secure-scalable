@@ -17,12 +17,10 @@ import {
 } from "expo-audio";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { supabase } from "@/lib/supabase";
+import { uploadToVault, VaultUploadTimeoutError } from "@/lib/vaultUpload";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
 
 type State = "idle" | "recording" | "uploading";
-
-const BUCKET = "evidence";
 
 /**
  * Evidence statements can run longer than report dictation; HIGH_QUALITY m4a
@@ -129,24 +127,27 @@ export function VoiceEvidenceRecorder({
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri || !user?.id) throw new Error("no_audio");
-      const file = await fetch(uri);
-      const blob = await file.blob();
       const ext = (uri.split(".").pop() || "m4a").toLowerCase();
       const path = `${user.id}/${Date.now()}-voice-note.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, blob, {
-          contentType: blob.type || "audio/m4a",
-          upsert: false,
-        });
-      if (uploadError) throw uploadError;
+      const contentType =
+        ext === "3gp"
+          ? "audio/3gpp"
+          : ext === "wav"
+            ? "audio/wav"
+            : "audio/m4a";
+      await uploadToVault(path, uri, contentType);
       await onSaved?.();
-    } catch {
+    } catch (err) {
       setError(
-        t(
-          "voiceEvidence.uploadError",
-          "Couldn't save that recording. Check your connection and try again.",
-        ),
+        err instanceof VaultUploadTimeoutError
+          ? t(
+              "voiceEvidence.timeout",
+              "Saving is taking too long — check your connection and try again.",
+            )
+          : t(
+              "voiceEvidence.uploadError",
+              "Couldn't save that recording. Check your connection and try again.",
+            ),
       );
     } finally {
       setState("idle");
