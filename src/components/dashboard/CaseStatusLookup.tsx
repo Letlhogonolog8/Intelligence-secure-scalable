@@ -2,7 +2,10 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StatusPill } from "@/components/dashboard/DashboardPrimitives";
+import {
+  StatTile,
+  StatusPill,
+} from "@/components/dashboard/DashboardPrimitives";
 import { formatRelativeDateTime } from "@/lib/dashboardMetrics";
 
 type LookupResult = {
@@ -52,10 +55,12 @@ export const CaseStatusLookup = ({
       return;
     }
 
-    const missingCaseReports = Boolean(lookupError) && (
-      (lookupError as { code?: string; message?: string }).code === "42P01" ||
-      ((lookupError as { message?: string }).message ?? "").toLowerCase().includes("case_reports")
-    );
+    const missingCaseReports =
+      Boolean(lookupError) &&
+      ((lookupError as { code?: string; message?: string }).code === "42P01" ||
+        ((lookupError as { message?: string }).message ?? "")
+          .toLowerCase()
+          .includes("case_reports"));
 
     if (!missingCaseReports) {
       setResult(null);
@@ -111,34 +116,45 @@ export const CaseStatusLookup = ({
           placeholder={placeholder}
           className="h-12 border-white/10 bg-slate-950/70 text-white"
         />
-        <Button className="h-12 min-w-[180px]" disabled={loading} onClick={() => void handleLookup()}>
+        <Button
+          className="h-12 min-w-[180px]"
+          disabled={loading}
+          onClick={() => void handleLookup()}
+        >
           {loading ? "Checking..." : "Check Status"}
         </Button>
       </div>
 
-      {error ? <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+      {error ? (
+        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {error}
+        </div>
+      ) : null}
 
       {result ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Status</p>
-            <div className="mt-3"><StatusPill tone="emerald">{result.status}</StatusPill></div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Priority</p>
-            <p className="mt-3 text-lg font-semibold text-white">{result.priority}</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Risk level</p>
-            <p className="mt-3 text-lg font-semibold text-rose-300">{result.risk_level}</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Last update</p>
-            <p className="mt-3 text-sm font-medium text-slate-100">{formatRelativeDateTime(result.updated_at)}</p>
-          </div>
+          <StatTile
+            label="Status"
+            value={<StatusPill tone="emerald">{result.status}</StatusPill>}
+          />
+          <StatTile label="Priority" value={result.priority} />
+          <StatTile
+            label="Risk level"
+            value={<span className="text-rose-300">{result.risk_level}</span>}
+          />
+          <StatTile
+            label="Last update"
+            value={
+              <span className="text-sm font-medium text-slate-100">
+                {formatRelativeDateTime(result.updated_at)}
+              </span>
+            }
+          />
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-slate-300">{emptyHint}</div>
+        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-slate-300">
+          {emptyHint}
+        </div>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GlassPanel } from "@/components/dashboard/DashboardPrimitives";
 import { useAuth } from "@/hooks/use-auth";
 import {
   createVoiceEvidenceAudioUrl,
@@ -81,24 +82,12 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
   };
 
   return (
-    <div
-      className={`rounded-2xl border border-white/10 bg-slate-900/40 p-6 backdrop-blur-xl ${className ?? ""}`}
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/15">
-            <Archive className="h-4 w-4 text-purple-400" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white">
-              Voice evidence archive
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Saved survivor voice notes with searchable transcripts and
-              translations
-            </p>
-          </div>
-        </div>
+    <GlassPanel
+      className={className}
+      icon={<Archive className="h-4 w-4 text-purple-400" />}
+      title="Voice evidence archive"
+      subtitle="Saved survivor voice notes with searchable transcripts and translations"
+      action={
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
           <Input
@@ -109,8 +98,8 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
             className="h-9 border-white/10 bg-slate-950/70 pl-8 text-xs text-white"
           />
         </div>
-      </div>
-
+      }
+    >
       {actionError && (
         <p className="mb-3 text-xs font-medium text-rose-400">{actionError}</p>
       )}
@@ -198,7 +187,7 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
           ))}
         </ul>
       )}
-    </div>
+    </GlassPanel>
   );
 };
 

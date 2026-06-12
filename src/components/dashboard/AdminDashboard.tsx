@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import {
+  ChartFrame,
   DashboardHero,
   DashboardPage,
   EmptyState,
@@ -29,6 +30,7 @@ import {
   ListItemCard,
   MetricCard,
   SectionCard,
+  StatTile,
   StatusPill,
 } from "@/components/dashboard/DashboardPrimitives";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
@@ -762,11 +764,7 @@ const AdminDashboard: React.FC = () => {
           ) : null}
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             {sanitizedIncidentSeries.length > 0 ? (
-              <div
-                className="h-[280px] rounded-2xl border border-white/10 bg-slate-900/70 p-4"
-                role="img"
-                aria-label="Governance incident signal over time"
-              >
+              <ChartFrame label="Governance incident signal over time">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={sanitizedIncidentSeries}
@@ -828,7 +826,7 @@ const AdminDashboard: React.FC = () => {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </ChartFrame>
             ) : (
               <EmptyState
                 title="No governance telemetry yet"
@@ -908,23 +906,12 @@ const AdminDashboard: React.FC = () => {
               />
             ) : (
               roleDistribution.map((entry) => (
-                <div
+                <ListItemCard
                   key={entry.role}
-                  className="rounded-2xl border border-white/10 bg-slate-900/70 p-4"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-white capitalize">
-                        {entry.role}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {percent(entry.count, users.length)}% of active identity
-                        surface
-                      </p>
-                    </div>
-                    <StatusPill tone="sky">{entry.count}</StatusPill>
-                  </div>
-                </div>
+                  title={<span className="capitalize">{entry.role}</span>}
+                  subtitle={`${percent(entry.count, users.length)}% of active identity surface`}
+                  meta={<StatusPill tone="sky">{entry.count}</StatusPill>}
+                />
               ))
             )}
           </div>
@@ -1202,66 +1189,30 @@ const AdminDashboard: React.FC = () => {
             ) : null}
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Critical signals
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {criticalAlerts.length}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-200">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Privileged identities
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {privilegedUsers.length}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-3 text-sky-200">
-                  <Users className="h-5 w-5" />
-                </div>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Escalation watch
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {unresolvedEscalations.length}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-200">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Privacy queue
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {pendingDeletionRequests.length}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-3 text-indigo-200">
-                  <Database className="h-5 w-5" />
-                </div>
-              </div>
-            </div>
+            <StatTile
+              label="Critical signals"
+              value={criticalAlerts.length}
+              icon={<AlertTriangle className="h-5 w-5" />}
+              tone="rose"
+            />
+            <StatTile
+              label="Privileged identities"
+              value={privilegedUsers.length}
+              icon={<Users className="h-5 w-5" />}
+              tone="sky"
+            />
+            <StatTile
+              label="Escalation watch"
+              value={unresolvedEscalations.length}
+              icon={<AlertTriangle className="h-5 w-5" />}
+              tone="amber"
+            />
+            <StatTile
+              label="Privacy queue"
+              value={pendingDeletionRequests.length}
+              icon={<Database className="h-5 w-5" />}
+              tone="indigo"
+            />
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
@@ -1269,16 +1220,13 @@ const AdminDashboard: React.FC = () => {
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-4">
               {governanceTimeline.map((bucket) => (
-                <div
+                <StatTile
                   key={bucket.label}
-                  className="rounded-xl border border-white/10 bg-slate-950/60 p-3"
-                >
-                  <p className="text-xs text-slate-400">{bucket.label}</p>
-                  <p className="mt-2 text-lg font-semibold text-white">
-                    {bucket.opened}
-                  </p>
-                  <p className="text-xs text-slate-500">events</p>
-                </div>
+                  label={bucket.label}
+                  value={bucket.opened}
+                  sub="events"
+                  className="bg-slate-950/60 p-3"
+                />
               ))}
             </div>
           </div>

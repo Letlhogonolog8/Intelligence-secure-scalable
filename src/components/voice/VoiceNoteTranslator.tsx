@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GlassPanel } from "@/components/dashboard/DashboardPrimitives";
 import { useAuth } from "@/hooks/use-auth";
 import {
   saveVoiceEvidence,
@@ -146,24 +147,12 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
   };
 
   return (
-    <div
-      className={`rounded-2xl border border-white/10 bg-slate-900/40 p-6 backdrop-blur-xl ${className ?? ""}`}
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/15">
-            <Languages className="h-4 w-4 text-purple-400" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white">
-              Voice evidence translator
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Hear survivor voice notes in your language — any language in, your
-              language out
-            </p>
-          </div>
-        </div>
+    <GlassPanel
+      className={className}
+      icon={<Languages className="h-4 w-4 text-purple-400" />}
+      title="Voice evidence translator"
+      subtitle="Hear survivor voice notes in your language — any language in, your language out"
+      action={
         <label className="flex items-center gap-2 text-xs text-slate-400">
           My language
           <select
@@ -179,8 +168,8 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
             ))}
           </select>
         </label>
-      </div>
-
+      }
+    >
       <input
         ref={fileRef}
         type="file"
@@ -296,7 +285,7 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
           </div>
         </div>
       )}
-    </div>
+    </GlassPanel>
   );
 };
 

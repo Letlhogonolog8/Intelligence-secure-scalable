@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
 import {
+  ChartFrame,
   DashboardHero,
   DashboardPage,
   EmptyState,
@@ -853,7 +854,7 @@ const PoliceDashboard: React.FC = () => {
           description="Recent queue movement across the jurisdiction."
         >
           <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="h-[220px] rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <ChartFrame label="Police response trend" height={220}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={responseTrend}>
                   <defs>
@@ -907,7 +908,7 @@ const PoliceDashboard: React.FC = () => {
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
             <div className="grid gap-3">
               <ListItemCard
                 title="Current queue"

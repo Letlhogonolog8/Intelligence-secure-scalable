@@ -14,6 +14,7 @@ import {
 } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
 import {
+  ChartFrame,
   DashboardHero,
   DashboardPage,
   EmptyState,
@@ -476,7 +477,7 @@ const NgoDashboard: React.FC = () => {
           {coordinationTrend.some(
             (entry) => entry.opened > 0 || entry.resolved > 0,
           ) ? (
-            <div className="h-[280px]">
+            <ChartFrame label="Referral flow trend">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={coordinationTrend}>
                   <CartesianGrid
@@ -506,7 +507,7 @@ const NgoDashboard: React.FC = () => {
                   />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           ) : (
             <EmptyState
               title="No referral flow yet"
