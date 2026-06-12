@@ -76,7 +76,8 @@ export function deviceLanguage(): LanguageCode {
   try {
     const locale = new Intl.DateTimeFormat().resolvedOptions().locale ?? "en";
     const code = String(locale).split("-")[0];
-    return (SUPPORTED_LANGUAGES.find((l) => l.code === code)?.code ?? "en") as LanguageCode;
+    return (SUPPORTED_LANGUAGES.find((l) => l.code === code)?.code ??
+      "en") as LanguageCode;
   } catch {
     return "en";
   }
@@ -136,6 +137,45 @@ export async function setLanguage(code: LanguageCode): Promise<void> {
   }
   await i18n.changeLanguage(code);
   applyDirection(code);
+  void persistLanguageToProfile(code);
+}
+
+/**
+ * Cross-device sync: store the choice on user_profiles.preferred_language so
+ * the web portal (and any other device) picks it up on next login. Lazy-loads
+ * the supabase client to keep i18n's synchronous module init dependency-free.
+ */
+async function persistLanguageToProfile(code: LanguageCode): Promise<void> {
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+    await supabase.rpc("set_preferred_language", { lang: code });
+  } catch {
+    // Best-effort: AsyncStorage persistence already happened.
+  }
+}
+
+/**
+ * Apply the language stored on the user's profile (set from any device).
+ * Used after login; skips codes this app doesn't ship translations for and
+ * does NOT write back to the profile.
+ */
+export async function applyRemotePreferredLanguage(
+  code: string | null | undefined,
+): Promise<void> {
+  if (!code) return;
+  const supported = SUPPORTED_LANGUAGES.find((l) => l.code === code)?.code as
+    | LanguageCode
+    | undefined;
+  if (!supported || supported === i18n.language) return;
+  try {
+    await AsyncStorage.setItem(LANG_KEY, supported);
+  } catch {
+    // non-fatal
+  }
+  await i18n.changeLanguage(supported);
+  applyDirection(supported);
 }
 
 /** Apply the user's saved language after mount (non-blocking). */

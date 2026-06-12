@@ -1,17 +1,27 @@
 import { useTranslation } from "react-i18next";
 import { Globe } from "lucide-react";
-import { changeAppLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from "@/i18n";
+import {
+  changeAppLanguage,
+  SUPPORTED_LANGUAGES,
+  SupportedLanguage,
+} from "@/i18n";
+import { persistPreferredLanguage } from "@/lib/languageSync";
 
 interface LanguageSwitcherProps {
   variant?: "landing" | "compact";
 }
 
-const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = "compact" }) => {
+const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
+  variant = "compact",
+}) => {
   const { i18n, t } = useTranslation();
-  const current = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0] || "en";
+  const current =
+    (i18n.resolvedLanguage || i18n.language || "en").split("-")[0] || "en";
 
   const handleChange = async (code: SupportedLanguage) => {
     await changeAppLanguage(code);
+    // Sync to the signed-in profile so other devices pick it up on login.
+    void persistPreferredLanguage(code);
   };
 
   if (variant === "landing") {

@@ -223,6 +223,7 @@ export type Database = {
         full_name: string | null;
         email: string | null;
         avatar_url: string | null;
+        preferred_language: string | null;
         is_active: boolean | null;
         approval_status: ApprovalStatus | null;
         mfa_enabled: boolean | null;
@@ -234,7 +235,12 @@ export type Database = {
       }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      set_preferred_language: {
+        Args: { lang: string };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

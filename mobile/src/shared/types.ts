@@ -31,6 +31,7 @@ export interface UserProfileRow {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  preferred_language: string | null;
   is_active: boolean | null;
   approval_status: ApprovalStatus | null;
   mfa_enabled: boolean | null;
@@ -90,7 +91,12 @@ export type Database = {
       case_reports: TableDefinition<CaseReportRow>;
       peer_support_messages: TableDefinition<
         PeerSupportMessageRow,
-        { alias: string; content: string; flagged?: boolean; expires_at?: string }
+        {
+          alias: string;
+          content: string;
+          flagged?: boolean;
+          expires_at?: string;
+        }
       >;
     };
     Views: Record<string, never>;
@@ -98,6 +104,10 @@ export type Database = {
       flag_peer_support_message: {
         Args: { p_message_id: string };
         Returns: boolean | null;
+      };
+      set_preferred_language: {
+        Args: { lang: string };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;

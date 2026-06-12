@@ -11,7 +11,11 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
 import { buildAuthEmail } from "@/auth/buildAuthEmail";
-import { registerPushToken, resetPushRegistration } from "@/features/push/registerPush";
+import {
+  registerPushToken,
+  resetPushRegistration,
+} from "@/features/push/registerPush";
+import { applyRemotePreferredLanguage } from "@/i18n";
 import type { UserProfileRow } from "@/shared/types";
 
 export class NotSurvivorError extends Error {
@@ -28,7 +32,11 @@ interface AuthState {
   profile: UserProfileRow | null;
   isSurvivor: boolean;
   signIn: (username: string, passphrase: string) => Promise<void>;
-  signUp: (username: string, passphrase: string, displayName: string) => Promise<void>;
+  signUp: (
+    username: string,
+    passphrase: string,
+    displayName: string,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -59,6 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const p = await fetchProfile(userId);
       if (mounted.current) setProfile(p);
+      // Cross-device sync: adopt the language last chosen on any device.
+      void applyRemotePreferredLanguage(p?.preferred_language);
     } catch {
       if (mounted.current) setProfile(null);
     }
@@ -99,7 +109,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (username: string, passphrase: string) => {
     const email = buildAuthEmail(username);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: passphrase });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: passphrase,
+    });
     if (error || !data.user) throw error ?? new Error("sign_in_failed");
 
     const p = await fetchProfile(data.user.id);
@@ -123,7 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If sign-up returned a session (email confirmation disabled for synthetic
       // emails), provision the survivor profile via the idempotent edge function.
       if (data.session) {
-        await supabase.functions.invoke("ensure_user_profile", { body: {} }).catch(() => {});
+        await supabase.functions
+          .invoke("ensure_user_profile", { body: {} })
+          .catch(() => {});
         await loadProfile(data.session.user.id);
       }
     },

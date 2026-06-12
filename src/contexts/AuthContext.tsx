@@ -1,115 +1,144 @@
-import React, { useEffect, useMemo, useState } from "react"
-import { Session, User } from "@supabase/supabase-js"
-import { supabase } from "@/lib/supabase"
-import { logError } from "@/lib/logger"
-import { AuthContext } from "@/contexts/auth-context"
-import { hasSupabase } from "@/lib/env"
-import { resetAppSessionState } from "@/store/appStore"
+import React, { useEffect, useMemo, useState } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import { logError } from "@/lib/logger";
+import { AuthContext } from "@/contexts/auth-context";
+import { hasSupabase } from "@/lib/env";
+import { resetAppSessionState } from "@/store/appStore";
+import { applyProfilePreferredLanguage } from "@/lib/languageSync";
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const isInvalidRefreshTokenError = (error: unknown) => {
     if (!error) {
-      return false
+      return false;
     }
-    const message = error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "message" in error
-        ? String((error as { message?: unknown }).message ?? "")
-        : String(error)
-    return /invalid refresh token|refresh token not found/i.test(message)
-  }
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null && "message" in error
+          ? String((error as { message?: unknown }).message ?? "")
+          : String(error);
+    return /invalid refresh token|refresh token not found/i.test(message);
+  };
 
   useEffect(() => {
     if (!hasSupabase) {
-      setLoading(false)
-      return
+      setLoading(false);
+      return;
     }
-    let mounted = true
+    let mounted = true;
     const loadSession = async () => {
-      const { data, error } = await supabase.auth.getSession()
+      const { data, error } = await supabase.auth.getSession();
       if (error) {
-        logError(error, { source: "auth.getSession" })
+        logError(error, { source: "auth.getSession" });
         if (isInvalidRefreshTokenError(error)) {
-          await supabase.auth.signOut()
+          await supabase.auth.signOut();
         }
       }
       if (!mounted) {
-        return
+        return;
       }
       if (error && isInvalidRefreshTokenError(error)) {
-        resetAppSessionState()
-        setSession(null)
-        setUser(null)
-        setLoading(false)
-        return
+        resetAppSessionState();
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
       }
-      setSession(data.session ?? null)
-      setUser(data.session?.user ?? null)
-      setLoading(false)
-    }
-    loadSession()
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(data.session ?? null);
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+      if (data.session?.user) {
+        void applyProfilePreferredLanguage(data.session.user.id);
+      }
+    };
+    loadSession();
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!nextSession?.user) {
-        resetAppSessionState()
+        resetAppSessionState();
       }
-      setSession(nextSession)
-      setUser(nextSession?.user ?? null)
-      setLoading(false)
-    })
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setLoading(false);
+      if (event === "SIGNED_IN" && nextSession?.user) {
+        void applyProfilePreferredLanguage(nextSession.user.id);
+      }
+    });
     return () => {
-      mounted = false
-      data?.subscription?.unsubscribe()
-    }
-  }, [])
-
-
+      mounted = false;
+      data?.subscription?.unsubscribe();
+    };
+  }, []);
 
   const signInWithPassword = async (email: string, password: string) => {
     if (!hasSupabase) {
-      return { error: new Error("Supabase is not configured"), session: null, user: null }
+      return {
+        error: new Error("Supabase is not configured"),
+        session: null,
+        user: null,
+      };
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
     if (error) {
-      const message = error.message.toLowerCase()
-      const isExpectedCredentialError = message.includes("invalid login credentials")
+      const message = error.message.toLowerCase();
+      const isExpectedCredentialError = message.includes(
+        "invalid login credentials",
+      );
       if (!isExpectedCredentialError) {
-        logError(error, { source: "auth.signInWithPassword" })
+        logError(error, { source: "auth.signInWithPassword" });
       }
-      return { error, session: null, user: null }
+      return { error, session: null, user: null };
     }
-    return { error: null, session: data.session ?? null, user: data.user ?? null }
-  }
+    return {
+      error: null,
+      session: data.session ?? null,
+      user: data.user ?? null,
+    };
+  };
 
   const signUpWithPassword = async (email: string, password: string) => {
     if (!hasSupabase) {
-      return { error: new Error("Supabase is not configured"), session: null, user: null }
+      return {
+        error: new Error("Supabase is not configured"),
+        session: null,
+        user: null,
+      };
     }
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
-      logError(error, { source: "auth.signUp" })
-      return { error, session: null, user: null }
+      logError(error, { source: "auth.signUp" });
+      return { error, session: null, user: null };
     }
-    return { error: null, session: data.session ?? null, user: data.user ?? null }
-  }
+    return {
+      error: null,
+      session: data.session ?? null,
+      user: data.user ?? null,
+    };
+  };
 
   const signOut = async () => {
-    resetAppSessionState()
+    resetAppSessionState();
     if (!hasSupabase) {
-      setSession(null)
-      setUser(null)
-      return
+      setSession(null);
+      setUser(null);
+      return;
     }
-    const { error } = await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut();
     if (error) {
-      logError(error, { source: "auth.signOut" })
+      logError(error, { source: "auth.signOut" });
     }
-    setSession(null)
-    setUser(null)
-  }
+    setSession(null);
+    setUser(null);
+  };
 
   const value = useMemo(
     () => ({
@@ -120,8 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signUpWithPassword,
       signOut,
     }),
-    [session, user, loading]
-  )
+    [session, user, loading],
+  );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
