@@ -18,10 +18,15 @@ const AuthInfoPanel: React.FC<AuthInfoPanelProps> = ({
   className,
 }) => {
   return (
-    <div className={cn("rounded-[28px] border border-white/10 bg-slate-900/60 p-6", className)}>
+    <div
+      className={cn(
+        "rounded-[28px] border border-white/10 bg-slate-900/60 p-6",
+        className,
+      )}
+    >
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/10">
-          <Icon className="h-5 w-5 text-blue-200" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-400/40 bg-purple-500/10">
+          <Icon className="h-5 w-5 text-purple-200" />
         </div>
         <div>
           <p className="text-sm font-semibold">{title}</p>

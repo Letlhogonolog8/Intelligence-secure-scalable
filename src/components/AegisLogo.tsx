@@ -30,13 +30,16 @@ export function AegisLogo({
     return (
       <div
         className={cn(
-          "flex items-center justify-center bg-gradient-to-br from-sky-500 via-blue-600 to-rose-500 shadow-lg shadow-blue-600/30",
+          "flex items-center justify-center bg-gradient-to-br from-violet-600 via-purple-500 to-pink-500 shadow-lg shadow-purple-600/30",
           rounded,
           className,
         )}
         style={dim}
       >
-        <Fallback className="text-white" style={{ height: size * 0.5, width: size * 0.5 }} />
+        <Fallback
+          className="text-white"
+          style={{ height: size * 0.5, width: size * 0.5 }}
+        />
       </div>
     );
   }

@@ -24,13 +24,15 @@ const AuthTopBar: React.FC<AuthTopBarProps> = ({
   onEmergencyClick,
 }) => {
   return (
-    <header className="fixed top-0 z-40 w-full border-b border-white/5 bg-[#0a1020]/85 backdrop-blur-xl">
+    <header className="fixed top-0 z-40 w-full border-b border-white/5 bg-[#120A1E]/85 backdrop-blur-xl">
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AegisLogo size={40} fallbackIcon={Icon} />
             <div>
-              <p className="text-[11px] uppercase tracking-[0.4em] text-blue-200/70">AEGIS-AI</p>
+              <p className="text-[11px] uppercase tracking-[0.4em] text-purple-200/70">
+                AEGIS-AI
+              </p>
               <h1 className="text-lg font-semibold">{title}</h1>
               <p className="text-xs text-slate-400">{subtitle}</p>
             </div>

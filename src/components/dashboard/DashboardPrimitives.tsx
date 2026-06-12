@@ -12,15 +12,15 @@ export const DashboardPage = ({
   children: ReactNode;
 }) => {
   const accentStyles = {
-    sky: "bg-[radial-gradient(circle_at_12%_18%,rgba(56,189,248,0.16),transparent_40%),radial-gradient(circle_at_90%_12%,rgba(16,185,129,0.14),transparent_42%),linear-gradient(160deg,#040812_0%,#081120_56%,#04070f_100%)]",
-    rose: "bg-[radial-gradient(circle_at_10%_14%,rgba(244,63,94,0.18),transparent_42%),radial-gradient(circle_at_88%_10%,rgba(59,130,246,0.18),transparent_44%),linear-gradient(160deg,#040812_0%,#0a1020_56%,#04070f_100%)]",
+    sky: "bg-[radial-gradient(circle_at_12%_18%,rgba(56,189,248,0.16),transparent_40%),radial-gradient(circle_at_90%_12%,rgba(16,185,129,0.14),transparent_42%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
+    rose: "bg-[radial-gradient(circle_at_10%_14%,rgba(244,63,94,0.18),transparent_42%),radial-gradient(circle_at_88%_10%,rgba(59,130,246,0.18),transparent_44%),linear-gradient(160deg,#0B0614_0%,#150B22_56%,#08040F_100%)]",
     emerald:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(16,185,129,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(6,182,212,0.14),transparent_44%),linear-gradient(160deg,#040812_0%,#081120_56%,#04070f_100%)]",
+      "bg-[radial-gradient(circle_at_12%_16%,rgba(16,185,129,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(6,182,212,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
     indigo:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(99,102,241,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(34,211,238,0.14),transparent_44%),linear-gradient(160deg,#040812_0%,#081120_56%,#04070f_100%)]",
-    cyan: "bg-[radial-gradient(circle_at_12%_16%,rgba(8,145,178,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(99,102,241,0.14),transparent_44%),linear-gradient(160deg,#040812_0%,#081120_56%,#04070f_100%)]",
+      "bg-[radial-gradient(circle_at_12%_16%,rgba(99,102,241,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(34,211,238,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
+    cyan: "bg-[radial-gradient(circle_at_12%_16%,rgba(8,145,178,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(99,102,241,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
     violet:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(168,85,247,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(59,130,246,0.14),transparent_44%),linear-gradient(160deg,#040812_0%,#081120_56%,#04070f_100%)]",
+      "bg-[radial-gradient(circle_at_12%_16%,rgba(168,85,247,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(59,130,246,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
   } as const;
 
   return (
@@ -226,7 +226,7 @@ export const EmptyState = ({
         <ul className="mt-3 space-y-2 text-xs text-slate-200">
           {guidance.map((entry) => (
             <li key={entry} className="flex gap-2">
-              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-400" />
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-purple-400" />
               <span>{entry}</span>
             </li>
           ))}
@@ -235,7 +235,7 @@ export const EmptyState = ({
     ) : null}
     {actionLabel && onAction ? (
       <Button
-        className="mt-4 border-white/20 bg-white/5 text-slate-50 hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-sky-300/70"
+        className="mt-4 border-white/20 bg-white/5 text-slate-50 hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-purple-300/70"
         variant="outline"
         size="sm"
         onClick={onAction}

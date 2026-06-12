@@ -1,7 +1,27 @@
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ModuleType, MODULE_LIST, MODULE_METADATA, useAlertsFeed, useJusticeCases, useRegions, useSystemMetrics, useUserProfile } from "@/data/aegisData";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  BellIcon, SearchIcon, MenuIcon, ClockIcon, SettingsIcon
+  ModuleType,
+  MODULE_LIST,
+  MODULE_METADATA,
+  useAlertsFeed,
+  useJusticeCases,
+  useRegions,
+  useSystemMetrics,
+  useUserProfile,
+} from "@/data/aegisData";
+import {
+  BellIcon,
+  SearchIcon,
+  MenuIcon,
+  ClockIcon,
+  SettingsIcon,
 } from "@/components/ui/AegisIcons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,8 +60,8 @@ type SearchResult = {
 
 const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
   const [showAlerts, setShowAlerts] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
   const [showSearch, setShowSearch] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -55,32 +75,49 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
   const { organizationName } = useOrganizationContext();
   const { data: regions = [] } = useRegions({ staleTime: 60000 });
   const { data: justiceCases = [] } = useJusticeCases({ staleTime: 60000 });
-  const { data: alertsFeed = [] } = useAlertsFeed({ staleTime: 5000, refetchInterval: 15000 });
-  const { data: systemMetricsData } = useSystemMetrics({ staleTime: 10000, refetchInterval: 30000 });
-  const locale = getSafeLocale(typeof navigator === "undefined" ? "en-US" : navigator.language);
+  const { data: alertsFeed = [] } = useAlertsFeed({
+    staleTime: 5000,
+    refetchInterval: 15000,
+  });
+  const { data: systemMetricsData } = useSystemMetrics({
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const locale = getSafeLocale(
+    typeof navigator === "undefined" ? "en-US" : navigator.language,
+  );
   const mod = moduleLabels[activeModule] ?? moduleLabels.command_center;
   const userUsername = user?.email ? user.email.split("@")[0] : "Admin";
   const roleKey = (profile?.role ?? "analyst") as UserRole;
   const roleLabel = ROLE_DEFINITIONS[roleKey]?.label ?? "Analyst";
   const userInitials = useMemo(
     () => (userUsername ? userUsername.slice(0, 2).toUpperCase() : "AD"),
-    [userUsername]
+    [userUsername],
   );
   const isAdmin = profile?.role === "admin";
   const systemMetrics = systemMetricsData ?? null;
   const criticalAlerts = useMemo(
-    () => alertsFeed.filter((alert) => alert.type === 'critical').length,
-    [alertsFeed]
+    () => alertsFeed.filter((alert) => alert.type === "critical").length,
+    [alertsFeed],
   );
   const timeFormatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
-    [locale]
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+    [locale],
   );
-  const formattedTime = useMemo(() => timeFormatter.format(currentTime), [currentTime, timeFormatter]);
+  const formattedTime = useMemo(
+    () => timeFormatter.format(currentTime),
+    [currentTime, timeFormatter],
+  );
   const deferredQuery = useDeferredValue(debouncedQuery);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
-  const desktopListboxId = 'aegis-search-results-desktop';
-  const mobileListboxId = 'aegis-search-results-mobile';
+  const desktopListboxId = "aegis-search-results-desktop";
+  const mobileListboxId = "aegis-search-results-mobile";
   const alertsPanelId = "aegis-alerts-panel";
   const mobileSearchId = "aegis-mobile-search";
   const shouldShowResults = normalizedQuery.length >= 2;
@@ -93,23 +130,38 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
     return MODULE_LIST.find((moduleId) => moduleId === normalized);
   }, []);
 
-  const getAlertButtons = useCallback(() => (
-    Array.from(alertsPanelRef.current?.querySelectorAll<HTMLButtonElement>('button[data-alert-item="true"]') ?? [])
-  ), []);
+  const getAlertButtons = useCallback(
+    () =>
+      Array.from(
+        alertsPanelRef.current?.querySelectorAll<HTMLButtonElement>(
+          'button[data-alert-item="true"]',
+        ) ?? [],
+      ),
+    [],
+  );
 
-  const getAlertFocusables = useCallback(() => (
-    Array.from(alertsPanelRef.current?.querySelectorAll<HTMLButtonElement>('button[data-alert-focusable="true"]') ?? [])
-  ), []);
+  const getAlertFocusables = useCallback(
+    () =>
+      Array.from(
+        alertsPanelRef.current?.querySelectorAll<HTMLButtonElement>(
+          'button[data-alert-focusable="true"]',
+        ) ?? [],
+      ),
+    [],
+  );
 
-  const focusAlertAt = useCallback((index: number) => {
-    const buttons = getAlertButtons();
-    if (!buttons.length) {
-      return;
-    }
-    const nextIndex = Math.max(0, Math.min(index, buttons.length - 1));
-    setActiveAlertIndex(nextIndex);
-    buttons[nextIndex]?.focus();
-  }, [getAlertButtons]);
+  const focusAlertAt = useCallback(
+    (index: number) => {
+      const buttons = getAlertButtons();
+      if (!buttons.length) {
+        return;
+      }
+      const nextIndex = Math.max(0, Math.min(index, buttons.length - 1));
+      setActiveAlertIndex(nextIndex);
+      buttons[nextIndex]?.focus();
+    },
+    [getAlertButtons],
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -156,31 +208,33 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
       return [];
     }
     const regionResults: SearchResult[] = regions
-      .filter((region) =>
-        region.name.toLowerCase().includes(normalizedQuery) ||
-        region.country.toLowerCase().includes(normalizedQuery)
+      .filter(
+        (region) =>
+          region.name.toLowerCase().includes(normalizedQuery) ||
+          region.country.toLowerCase().includes(normalizedQuery),
       )
       .slice(0, 3)
       .map((region) => ({
         id: `region-${region.id}`,
         title: region.name,
         subtitle: `${region.country} · Risk Score ${region.riskScore.toFixed(2)}`,
-        category: 'Region',
+        category: "Region",
         moduleId: "prediction" as ModuleType,
       }));
 
     const caseResults: SearchResult[] = justiceCases
-      .filter((item) =>
-        item.caseNumber.toLowerCase().includes(normalizedQuery) ||
-        item.type.toLowerCase().includes(normalizedQuery) ||
-        item.region.toLowerCase().includes(normalizedQuery)
+      .filter(
+        (item) =>
+          item.caseNumber.toLowerCase().includes(normalizedQuery) ||
+          item.type.toLowerCase().includes(normalizedQuery) ||
+          item.region.toLowerCase().includes(normalizedQuery),
       )
       .slice(0, 3)
       .map((item) => ({
         id: `case-${item.id}`,
         title: item.caseNumber,
         subtitle: `${item.type} · ${item.region}`,
-        category: 'Case',
+        category: "Case",
         moduleId: "justice" as ModuleType,
       }));
 
@@ -190,8 +244,8 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
       .map((alert) => ({
         id: `alert-${alert.id}`,
         title: alert.message,
-        subtitle: `${alert.time} · ${alert.module.replace('_', ' ')}`,
-        category: 'Alert',
+        subtitle: `${alert.time} · ${alert.module.replace("_", " ")}`,
+        category: "Alert",
         moduleId: resolveModuleId(alert.module),
       }));
 
@@ -217,25 +271,31 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
     return (
       <>
         <span>{value.slice(0, index)}</span>
-        <span className="text-indigo-300">{value.slice(index, index + normalizedQuery.length)}</span>
+        <span className="text-indigo-300">
+          {value.slice(index, index + normalizedQuery.length)}
+        </span>
         <span>{value.slice(index + normalizedQuery.length)}</span>
       </>
     );
   };
 
-  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (!searchResults.length) {
       return;
     }
-    if (event.key === 'ArrowDown') {
+    if (event.key === "ArrowDown") {
       event.preventDefault();
       setActiveResultIndex((prev) => (prev + 1) % searchResults.length);
     }
-    if (event.key === 'ArrowUp') {
+    if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveResultIndex((prev) => (prev - 1 + searchResults.length) % searchResults.length);
+      setActiveResultIndex(
+        (prev) => (prev - 1 + searchResults.length) % searchResults.length,
+      );
     }
-    if (event.key === 'Enter' && activeResultIndex >= 0) {
+    if (event.key === "Enter" && activeResultIndex >= 0) {
       event.preventDefault();
       const selected = searchResults[activeResultIndex];
       if (selected) {
@@ -253,69 +313,90 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
     setShowAlerts(false);
   };
 
-  const handleAlertSelect = useCallback((moduleValue: string) => {
-    const moduleId = resolveModuleId(moduleValue);
-    if (moduleId) {
-      setActiveModule(moduleId);
-    }
-    setShowAlerts(false);
-  }, [resolveModuleId, setActiveModule]);
+  const handleAlertSelect = useCallback(
+    (moduleValue: string) => {
+      const moduleId = resolveModuleId(moduleValue);
+      if (moduleId) {
+        setActiveModule(moduleId);
+      }
+      setShowAlerts(false);
+    },
+    [resolveModuleId, setActiveModule],
+  );
 
-  const handleAlertsKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!showAlerts) {
-      return;
-    }
-    if (event.key === "Tab") {
-      const focusables = getAlertFocusables();
-      if (!focusables.length) {
+  const handleAlertsKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!showAlerts) {
         return;
       }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.key === "Tab") {
+        const focusables = getAlertFocusables();
+        if (!focusables.length) {
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        const buttons = getAlertButtons();
+        if (!buttons.length) {
+          return;
+        }
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        const currentIndex = buttons.findIndex(
+          (button) => button === document.activeElement,
+        );
+        const baseIndex = currentIndex >= 0 ? currentIndex : activeAlertIndex;
+        if (event.key === "Home") {
+          focusAlertAt(0);
+          return;
+        }
+        if (event.key === "End") {
+          focusAlertAt(buttons.length - 1);
+          return;
+        }
+        const nextIndex =
+          event.key === "ArrowDown"
+            ? (baseIndex + 1) % buttons.length
+            : (baseIndex - 1 + buttons.length) % buttons.length;
+        focusAlertAt(nextIndex);
       }
-      return;
-    }
-    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-      const buttons = getAlertButtons();
-      if (!buttons.length) {
-        return;
-      }
-      event.preventDefault();
-      const currentIndex = buttons.findIndex((button) => button === document.activeElement);
-      const baseIndex = currentIndex >= 0 ? currentIndex : activeAlertIndex;
-      if (event.key === "Home") {
-        focusAlertAt(0);
-        return;
-      }
-      if (event.key === "End") {
-        focusAlertAt(buttons.length - 1);
-        return;
-      }
-      const nextIndex = event.key === "ArrowDown"
-        ? (baseIndex + 1) % buttons.length
-        : (baseIndex - 1 + buttons.length) % buttons.length;
-      focusAlertAt(nextIndex);
-    }
-  }, [showAlerts, getAlertButtons, getAlertFocusables, activeAlertIndex, focusAlertAt]);
+    },
+    [
+      showAlerts,
+      getAlertButtons,
+      getAlertFocusables,
+      activeAlertIndex,
+      focusAlertAt,
+    ],
+  );
 
-  const activeResultDesktopId = activeResultIndex >= 0 ? `${desktopListboxId}-item-${activeResultIndex}` : undefined;
-  const activeResultMobileId = activeResultIndex >= 0 ? `${mobileListboxId}-item-${activeResultIndex}` : undefined;
+  const activeResultDesktopId =
+    activeResultIndex >= 0
+      ? `${desktopListboxId}-item-${activeResultIndex}`
+      : undefined;
+  const activeResultMobileId =
+    activeResultIndex >= 0
+      ? `${mobileListboxId}-item-${activeResultIndex}`
+      : undefined;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setShowAlerts(false);
         setShowSearch(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   return (
@@ -331,15 +412,22 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
           <MenuIcon size={20} />
         </button>
         <div>
-          <h2 className="text-white font-semibold text-sm lg:text-base">{mod.title}</h2>
-          <p className="text-slate-500 text-[10px] lg:text-xs">{mod.subtitle}</p>
+          <h2 className="text-white font-semibold text-sm lg:text-base">
+            {mod.title}
+          </h2>
+          <p className="text-slate-500 text-[10px] lg:text-xs">
+            {mod.subtitle}
+          </p>
         </div>
       </div>
 
       {/* Center - Search */}
       <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
         <div className="relative w-full">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+          <SearchIcon
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+            size={16}
+          />
           <input
             type="text"
             value={searchQuery}
@@ -360,7 +448,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-white transition-colors"
               aria-label="Clear search"
             >
@@ -386,21 +474,29 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
                         onClick={() => handleResultSelect(result)}
                         className={`w-full text-left px-3 py-2 rounded transition-colors ${
                           index === activeResultIndex
-                            ? 'bg-slate-800/80 text-white'
-                            : 'hover:bg-slate-800/60 text-slate-200'
+                            ? "bg-slate-800/80 text-white"
+                            : "hover:bg-slate-800/60 text-slate-200"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium">{highlightText(result.title)}</p>
-                          <span className="text-[10px] uppercase tracking-widest text-slate-500">{result.category}</span>
+                          <p className="text-sm font-medium">
+                            {highlightText(result.title)}
+                          </p>
+                          <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                            {result.category}
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">{highlightText(result.subtitle)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {highlightText(result.subtitle)}
+                        </p>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-slate-500" role="status">No results found.</p>
+                <p className="text-xs text-slate-500" role="status">
+                  No results found.
+                </p>
               )}
             </div>
           )}
@@ -426,7 +522,9 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[10px] text-emerald-400 font-medium">LIVE</span>
           {systemMetrics?.agentsOnline !== undefined ? (
-            <span className="text-[10px] text-slate-500">{systemMetrics.agentsOnline} agents</span>
+            <span className="text-[10px] text-slate-500">
+              {systemMetrics.agentsOnline} agents
+            </span>
           ) : (
             <Skeleton className="h-3 w-10 bg-slate-800/60" />
           )}
@@ -463,7 +561,10 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
 
           {showAlerts && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowAlerts(false)} />
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowAlerts(false)}
+              />
               <div
                 id={alertsPanelId}
                 ref={alertsPanelRef}
@@ -475,8 +576,12 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
                 className="absolute right-0 top-full mt-2 w-96 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden"
               >
                 <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                  <h3 className="text-white font-semibold text-sm">System Alerts</h3>
-                  <span className="text-xs text-slate-500">{alertsFeed.length} alerts</span>
+                  <h3 className="text-white font-semibold text-sm">
+                    System Alerts
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    {alertsFeed.length} alerts
+                  </span>
                 </div>
                 <div className="max-h-96 overflow-y-auto">
                   {alertsFeed.map((alert) => (
@@ -489,17 +594,31 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
                       className="w-full text-left px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
-                          alert.type === 'critical' ? 'bg-red-500 animate-pulse' :
-                          alert.type === 'high' ? 'bg-orange-500' :
-                          alert.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
-                        }`} />
+                        <div
+                          className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                            alert.type === "critical"
+                              ? "bg-red-500 animate-pulse"
+                              : alert.type === "high"
+                                ? "bg-orange-500"
+                                : alert.type === "warning"
+                                  ? "bg-amber-500"
+                                  : "bg-blue-500"
+                          }`}
+                        />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-white leading-relaxed">{alert.message}</p>
+                          <p className="text-xs text-white leading-relaxed">
+                            {alert.message}
+                          </p>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-slate-500">{alert.time}</span>
-                            <span className="text-[10px] text-slate-600">|</span>
-                            <span className="text-[10px] text-indigo-400">{alert.module.replace('_', ' ')}</span>
+                            <span className="text-[10px] text-slate-500">
+                              {alert.time}
+                            </span>
+                            <span className="text-[10px] text-slate-600">
+                              |
+                            </span>
+                            <span className="text-[10px] text-indigo-400">
+                              {alert.module.replace("_", " ")}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -533,12 +652,18 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
 
         {/* User */}
         <div className="flex items-center gap-2 pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center">
             <span className="text-white text-xs font-bold">{userInitials}</span>
           </div>
           <div className="hidden lg:block">
-            <p className="text-xs text-white font-medium truncate max-w-[140px]">{userUsername}</p>
-            <p className="text-[10px] text-slate-500">{user ? `${roleLabel} · ${organizationName}` : "Level 5 Clearance"}</p>
+            <p className="text-xs text-white font-medium truncate max-w-[140px]">
+              {userUsername}
+            </p>
+            <p className="text-[10px] text-slate-500">
+              {user
+                ? `${roleLabel} · ${organizationName}`
+                : "Level 5 Clearance"}
+            </p>
           </div>
           {user && (
             <Button
@@ -560,7 +685,10 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
           className="absolute left-0 right-0 top-full md:hidden bg-slate-950/95 border-b border-slate-800/60 px-4 py-3"
         >
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <SearchIcon
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              size={16}
+            />
             <input
               ref={mobileSearchRef}
               type="text"
@@ -582,7 +710,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-white transition-colors"
                 aria-label="Clear search"
               >
@@ -609,21 +737,29 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
                         onClick={() => handleResultSelect(result)}
                         className={`w-full text-left px-3 py-2 rounded transition-colors ${
                           index === activeResultIndex
-                            ? 'bg-slate-800/80 text-white'
-                            : 'hover:bg-slate-800/60 text-slate-200'
+                            ? "bg-slate-800/80 text-white"
+                            : "hover:bg-slate-800/60 text-slate-200"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium">{highlightText(result.title)}</p>
-                          <span className="text-[10px] uppercase tracking-widest text-slate-500">{result.category}</span>
+                          <p className="text-sm font-medium">
+                            {highlightText(result.title)}
+                          </p>
+                          <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                            {result.category}
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">{highlightText(result.subtitle)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {highlightText(result.subtitle)}
+                        </p>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-slate-500" role="status">No results found.</p>
+                <p className="text-xs text-slate-500" role="status">
+                  No results found.
+                </p>
               )}
             </div>
           )}
