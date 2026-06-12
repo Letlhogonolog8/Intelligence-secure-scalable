@@ -175,3 +175,66 @@ export async function createVoiceEvidenceAudioUrl(
   if (error) return null;
   return data?.signedUrl ?? null;
 }
+
+/**
+ * Translate an archived note into `language` for the current viewer.
+ *
+ * Resolution order keeps evidence integrity and avoids duplicate AI calls:
+ * 1. the original transcript / stored translation if they already match;
+ * 2. the shared per-language cache (voice_evidence_translations);
+ * 3. the backend /api/ai/translate pipeline, after which the result is
+ *    cached best-effort for every other stakeholder with that language.
+ */
+export async function translateVoiceEvidence(
+  userId: string,
+  entry: Pick<
+    VoiceEvidenceEntry,
+    | "id"
+    | "originalText"
+    | "detectedLanguage"
+    | "translatedText"
+    | "targetLanguage"
+  >,
+  language: string,
+): Promise<string> {
+  if (entry.detectedLanguage === language) return entry.originalText;
+  if (entry.targetLanguage === language && entry.translatedText) {
+    return entry.translatedText;
+  }
+
+  const cached = await supabase
+    .from("voice_evidence_translations")
+    .select("translated_text")
+    .eq("evidence_id", entry.id)
+    .eq("language", language)
+    .maybeSingle();
+  if (cached.data?.translated_text) return cached.data.translated_text;
+
+  const apiBaseUrl = (
+    import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+  ).replace(/\/+$/, "");
+  const response = await fetch(`${apiBaseUrl}/ai/translate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: entry.originalText, target: language }),
+  });
+  if (!response.ok) throw new Error(`translate_failed_${response.status}`);
+  const payload = (await response.json()) as { translatedText?: string };
+  const translatedText = payload.translatedText?.trim();
+  if (!translatedText) throw new Error("translate_empty");
+
+  // Cache for every stakeholder sharing this language; a unique-constraint
+  // race or RLS hiccup must never break the translation the viewer already has.
+  try {
+    await supabase.from("voice_evidence_translations").insert({
+      evidence_id: entry.id,
+      language,
+      translated_text: translatedText,
+      translated_by: userId,
+    });
+  } catch {
+    // best-effort cache only
+  }
+
+  return translatedText;
+}

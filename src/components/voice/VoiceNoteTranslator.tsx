@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GlassPanel } from "@/components/dashboard/DashboardPrimitives";
+import { canSpeak, speakText } from "@/lib/speech";
 import { useAuth } from "@/hooks/use-auth";
 import {
   saveVoiceEvidence,
@@ -230,6 +231,17 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
               >
                 <Play className="mr-1.5 h-3.5 w-3.5" /> Play in{" "}
                 {languageLabel(result.targetLanguage)}
+              </Button>
+            ) : canSpeak() ? (
+              <Button
+                onClick={() =>
+                  speakText(result.translatedText, result.targetLanguage)
+                }
+                size="sm"
+                className="mt-3 h-9 bg-purple-600 text-xs font-bold hover:bg-purple-500"
+              >
+                <Volume2 className="mr-1.5 h-3.5 w-3.5" /> Play in{" "}
+                {languageLabel(result.targetLanguage)} (device voice)
               </Button>
             ) : (
               <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">

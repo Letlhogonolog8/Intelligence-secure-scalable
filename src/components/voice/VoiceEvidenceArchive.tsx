@@ -1,20 +1,27 @@
-import { useDeferredValue, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   Archive,
   FileAudio,
+  Languages,
   Loader2,
   Play,
   Search,
   Trash2,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GlassPanel } from "@/components/dashboard/DashboardPrimitives";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/lib/supabase";
+import { hasSupabase } from "@/lib/env";
+import { canSpeak, speakText, stopSpeaking } from "@/lib/speech";
 import {
   createVoiceEvidenceAudioUrl,
   deleteVoiceEvidence,
+  translateVoiceEvidence,
   useVoiceEvidence,
   VOICE_EVIDENCE_QUERY_KEY,
   type VoiceEvidenceEntry,
@@ -37,6 +44,7 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
 }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { i18n } = useTranslation();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const {
@@ -46,8 +54,82 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
   } = useVoiceEvidence(deferredSearch);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [viewerTranslations, setViewerTranslations] = useState<
+    Record<string, { language: string; text: string }>
+  >({});
   const [actionError, setActionError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // The viewer's UI language is their synced preferred language (item 4),
+  // so "my language" is whatever the portal is currently displayed in.
+  const viewerLanguage =
+    (i18n.resolvedLanguage || i18n.language || "en").split("-")[0] || "en";
+
+  // Realtime: refresh the archive the moment any responder saves a note —
+  // dashboards must never need a manual refresh.
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const channel = supabase
+      .channel("voice-evidence-feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "voice_evidence" },
+        () => {
+          void queryClient.invalidateQueries({
+            queryKey: VOICE_EVIDENCE_QUERY_KEY,
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  useEffect(() => () => stopSpeaking(), []);
+
+  const translateForViewer = async (entry: VoiceEvidenceEntry) => {
+    if (!user?.id || translatingId) return;
+    setActionError(null);
+    setTranslatingId(entry.id);
+    try {
+      const text = await translateVoiceEvidence(user.id, entry, viewerLanguage);
+      setViewerTranslations((prev) => ({
+        ...prev,
+        [entry.id]: { language: viewerLanguage, text },
+      }));
+    } catch {
+      setActionError(
+        "Couldn't translate that note right now. Please try again shortly.",
+      );
+    } finally {
+      setTranslatingId(null);
+    }
+  };
+
+  const speakEntry = (entry: VoiceEvidenceEntry) => {
+    if (speakingId === entry.id) {
+      stopSpeaking();
+      setSpeakingId(null);
+      return;
+    }
+    const viewer = viewerTranslations[entry.id];
+    const text =
+      viewer?.text ??
+      (entry.targetLanguage === viewerLanguage && entry.translatedText
+        ? entry.translatedText
+        : entry.originalText);
+    const language = viewer
+      ? viewer.language
+      : entry.targetLanguage === viewerLanguage && entry.translatedText
+        ? viewerLanguage
+        : (entry.detectedLanguage ?? viewerLanguage);
+    if (speakText(text, language, () => setSpeakingId(null))) {
+      setSpeakingId(entry.id);
+    }
+  };
 
   const playEntry = async (entry: VoiceEvidenceEntry) => {
     setActionError(null);
@@ -137,7 +219,7 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
                     </span>
                   )}
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
@@ -152,6 +234,44 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
                     )}
                     Play original
                   </Button>
+                  {viewerTranslations[entry.id]?.language !== viewerLanguage &&
+                    entry.detectedLanguage !== viewerLanguage &&
+                    !(
+                      entry.targetLanguage === viewerLanguage &&
+                      entry.translatedText
+                    ) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void translateForViewer(entry)}
+                        disabled={translatingId === entry.id}
+                        className="h-8 border-purple-500/25 bg-purple-500/10 text-[11px] font-bold text-purple-200 hover:bg-purple-500/20"
+                      >
+                        {translatingId === entry.id ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Languages className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        {languageLabel(viewerLanguage)}
+                      </Button>
+                    )}
+                  {canSpeak() && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => speakEntry(entry)}
+                      aria-label={
+                        speakingId === entry.id
+                          ? "Stop spoken playback"
+                          : "Listen in your language"
+                      }
+                      className="h-8 border-white/10 bg-white/5 text-[11px] font-bold"
+                    >
+                      <Volume2
+                        className={`h-3.5 w-3.5 ${speakingId === entry.id ? "animate-pulse text-purple-300" : ""}`}
+                      />
+                    </Button>
+                  )}
                   {user?.id === entry.uploadedBy && (
                     <Button
                       size="sm"
@@ -182,6 +302,19 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
                       {entry.translatedText}
                     </p>
                   </>
+                )}
+              {viewerTranslations[entry.id] &&
+                viewerTranslations[entry.id].language !==
+                  entry.targetLanguage && (
+                  <div className="mt-2 rounded-md border border-purple-500/25 bg-purple-500/10 p-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-purple-300">
+                      Your language ·{" "}
+                      {languageLabel(viewerTranslations[entry.id].language)}
+                    </p>
+                    <p className="text-sm leading-relaxed text-white">
+                      {viewerTranslations[entry.id].text}
+                    </p>
+                  </div>
                 )}
             </li>
           ))}

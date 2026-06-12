@@ -127,6 +127,22 @@ export type Database = {
           target_language?: string | null;
         }
       >;
+      voice_evidence_translations: TableDefinition<
+        {
+          id: string;
+          evidence_id: string;
+          language: string;
+          translated_text: string;
+          translated_by: string | null;
+          created_at: string;
+        },
+        {
+          evidence_id: string;
+          language: string;
+          translated_text: string;
+          translated_by?: string | null;
+        }
+      >;
       escalation_events: TableDefinition<{
         id: string;
         case_id: string | null;

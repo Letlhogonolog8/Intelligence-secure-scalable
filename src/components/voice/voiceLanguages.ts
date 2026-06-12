@@ -16,7 +16,10 @@ export const RESPONDER_LANGUAGES: Array<{ code: string; label: string }> = [
   { code: "nso", label: "Sepedi" },
 ];
 
+import { SUPPORTED_LANGUAGES as APP_LANGUAGES } from "@/i18n";
+
 export const languageLabel = (code: string | null | undefined): string =>
   RESPONDER_LANGUAGES.find((entry) => entry.code === code)?.label ??
+  APP_LANGUAGES.find((entry) => entry.code === code)?.nativeLabel ??
   code ??
   "unknown";

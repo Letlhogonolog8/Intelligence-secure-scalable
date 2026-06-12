@@ -1699,6 +1699,105 @@ app.post(
   },
 );
 
+// ----------------------------------------------------------------------------
+// TEXT TRANSLATION (LLM detect + translate)
+// Translates an existing transcript into a stakeholder's preferred language —
+// the text leg of the voice pipeline, used by the voice evidence archive so
+// each responder reads a note in their own language without re-uploading audio.
+// ----------------------------------------------------------------------------
+app.post(
+  "/api/ai/translate",
+  aiLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const requestId = (req as AppRequest).id;
+    try {
+      const text = String(req.body?.text ?? "").trim();
+      const target = String(req.body?.target ?? "en")
+        .toLowerCase()
+        .slice(0, 8);
+      if (
+        !text ||
+        text.length > 4000 ||
+        !/^[a-z]{2,3}(-[a-z]{2,4})?$/.test(target)
+      ) {
+        res.status(400).json({ error: "invalid_request" });
+        return;
+      }
+
+      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
+      if (!hfToken || hfToken.startsWith("[replace")) {
+        res.status(503).json({ error: "ai_unavailable" });
+        return;
+      }
+
+      const chatModel =
+        process.env.HUGGINGFACE_CHAT_MODEL ||
+        "meta-llama/Llama-3.1-8B-Instruct";
+      const llm = await fetch(
+        "https://router.huggingface.co/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: chatModel,
+            messages: [
+              {
+                role: "system",
+                content:
+                  'You are a precise translator for a gender-based-violence response platform. Reply ONLY with JSON: {"detected_language":"<ISO 639-1>","translation":"<text>"}. Preserve meaning and tone exactly; never summarise, soften, or omit details.',
+              },
+              {
+                role: "user",
+                content: `Translate to ${target}:\n\n${text}`,
+              },
+            ],
+            max_tokens: 900,
+            temperature: 0.2,
+          }),
+        },
+      );
+      if (!llm.ok) {
+        res.status(502).json({ error: "translation_failed" });
+        return;
+      }
+
+      const raw =
+        (
+          (await llm.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+          }
+        ).choices?.[0]?.message?.content ?? "";
+      const json = raw.match(/\{[\s\S]*\}/)?.[0];
+      let detectedLanguage: string | null = null;
+      let translatedText = "";
+      if (json) {
+        try {
+          const parsed = JSON.parse(json) as {
+            detected_language?: string;
+            translation?: string;
+          };
+          detectedLanguage = parsed.detected_language?.toLowerCase() ?? null;
+          translatedText = parsed.translation?.trim() ?? "";
+        } catch {
+          // fall through to the empty-translation guard below
+        }
+      }
+      if (!translatedText) {
+        res.status(502).json({ error: "translation_failed" });
+        return;
+      }
+
+      res.json({ detectedLanguage, translatedText, targetLanguage: target });
+    } catch (error) {
+      logger.error("Text translation failed", error, {}, requestId);
+      res.status(500).json({ error: "translate_failed" });
+    }
+  },
+);
+
 // ============================================================================
 // TELKOM USSD WEBHOOK
 // ============================================================================

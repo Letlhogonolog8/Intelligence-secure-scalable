@@ -1,4 +1,8 @@
-import { fetchVoiceEvidence, saveVoiceEvidence } from "@/data/voiceEvidence";
+import {
+  fetchVoiceEvidence,
+  saveVoiceEvidence,
+  translateVoiceEvidence,
+} from "@/data/voiceEvidence";
 
 const mockFrom = vi.fn();
 const mockStorageFrom = vi.fn();
@@ -24,6 +28,7 @@ const createQueryBuilder = (result: QueryResult) => {
     delete: vi.fn(),
     eq: vi.fn(),
     single: vi.fn(async () => result),
+    maybeSingle: vi.fn(async () => result),
     then: (onFulfilled: (value: QueryResult) => unknown) =>
       Promise.resolve(result).then(onFulfilled),
   };
@@ -165,5 +170,78 @@ describe("saveVoiceEvidence", () => {
     expect(remove).toHaveBeenCalledTimes(1);
     const [paths] = remove.mock.calls[0] as unknown as [string[]];
     expect(paths[0]).toMatch(/^user-1\//);
+  });
+});
+
+describe("translateVoiceEvidence", () => {
+  const entry = {
+    id: "ve-1",
+    originalText: "Ngicela usizo",
+    detectedLanguage: "zu",
+    translatedText: "Please help me",
+    targetLanguage: "en",
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the original transcript when it is already in the viewer language", async () => {
+    const text = await translateVoiceEvidence("user-1", entry, "zu");
+    expect(text).toBe("Ngicela usizo");
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("returns the stored translation when it matches the viewer language", async () => {
+    const text = await translateVoiceEvidence("user-1", entry, "en");
+    expect(text).toBe("Please help me");
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("serves the shared per-language cache without calling the API", async () => {
+    const builder = createQueryBuilder({
+      data: { translated_text: "Aidez-moi s'il vous plaît" },
+      error: null,
+    });
+    mockFrom.mockReturnValue(builder);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const text = await translateVoiceEvidence("user-1", entry, "fr");
+
+    expect(text).toBe("Aidez-moi s'il vous plaît");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("calls the translate API on cache miss and caches the result", async () => {
+    const builder = createQueryBuilder({ data: null, error: null });
+    mockFrom.mockReturnValue(builder);
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ translatedText: "Aidez-moi s'il vous plaît" }),
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const text = await translateVoiceEvidence("user-1", entry, "fr");
+
+    expect(text).toBe("Aidez-moi s'il vous plaît");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [
+      string,
+      { body: string },
+    ];
+    expect(url).toMatch(/\/ai\/translate$/);
+    expect(JSON.parse(init.body)).toEqual({
+      text: "Ngicela usizo",
+      target: "fr",
+    });
+    expect(builder.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evidence_id: "ve-1",
+        language: "fr",
+        translated_text: "Aidez-moi s'il vous plaît",
+        translated_by: "user-1",
+      }),
+    );
   });
 });
