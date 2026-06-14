@@ -64,6 +64,10 @@ vi.mock("@/components/evidence/SharedEvidencePanel", () => ({
   default: () => <div>mock-shared-evidence</div>,
 }));
 
+vi.mock("@/components/community/CommunityReportsPanel", () => ({
+  default: () => <div>mock-community-reports</div>,
+}));
+
 vi.mock("@/components/justice/CaseDispatchDialog", () => ({
   default: () => null,
 }));

@@ -23,6 +23,7 @@ import { createIntelligenceRoutes } from "./routes/intelligenceRoutes";
 import { validationMiddleware } from "./middleware/validation";
 import { idempotency } from "./middleware/idempotency";
 import whatsappRoutes from "./routes/whatsappRoutes";
+import { createCommunityRoutes } from "./routes/communityRoutes";
 import { createLogger } from "./utils/logger";
 import {
   metricsHandler,
@@ -1351,6 +1352,13 @@ app.use(
   createIntelligenceRoutes(supabase, auditLogService, requireAuth),
 );
 app.use("/api/whatsapp", whatsappRoutes);
+// Public, account-free community & witness reporting (tightly rate-limited:
+// submit reuses the escalation limiter since it creates cases; status reads
+// use the default limiter).
+app.use(
+  "/api/community",
+  createCommunityRoutes(supabase, escalationLimiter, defaultLimiter),
+);
 app.use(
   "/api/ussd",
   ussdJsonParser,

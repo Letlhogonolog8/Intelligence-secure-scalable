@@ -274,364 +274,383 @@ const LandingPage: React.FC = () => {
 
       <div className="relative z-10">
         <main>
-        <section
-          id="hero"
-          className="scroll-mt-28 px-4 pb-14 pt-32 sm:px-6 sm:pt-36 lg:px-8"
-        >
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="space-y-7"
-            >
+          <section
+            id="hero"
+            className="scroll-mt-28 px-4 pb-14 pt-32 sm:px-6 sm:pt-36 lg:px-8"
+          >
+            <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
               <motion.div
-                variants={itemVariants}
-                className="inline-flex items-center gap-2 rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-sky-100"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="space-y-7"
               >
-                Government Response Platform
+                <motion.div
+                  variants={itemVariants}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-sky-100"
+                >
+                  Government Response Platform
+                </motion.div>
+
+                <motion.h1
+                  variants={itemVariants}
+                  className="max-w-2xl text-4xl font-semibold leading-[1.05] text-white sm:text-5xl lg:text-6xl"
+                >
+                  <span className="bg-gradient-to-r from-sky-200 via-blue-100 to-rose-200 bg-clip-text text-transparent">
+                    {t(
+                      "landing.hero",
+                      "Secure coordination for GBV emergency response",
+                    )}
+                  </span>
+                </motion.h1>
+
+                <motion.p
+                  variants={itemVariants}
+                  className="max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg"
+                >
+                  {t(
+                    "landing.subhero",
+                    "AEGIS-AI unifies survivor services, law enforcement, and policy intelligence with encrypted workflows, real-time escalation, and accountable governance.",
+                  )}
+                </motion.p>
+
+                <motion.div
+                  variants={itemVariants}
+                  className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+                >
+                  <Button
+                    className="h-12 bg-rose-600 px-6 text-base font-semibold hover:bg-rose-500"
+                    onClick={openAuth}
+                  >
+                    {t("landing.reportIncident", "Report Incident")}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
+                    onClick={openAuth}
+                  >
+                    {t("landing.getHelp", "Get Help Now")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
+                    onClick={() => navigate("/community-report")}
+                  >
+                    {t(
+                      "landing.communityReport",
+                      "Report on behalf of someone",
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-12 justify-start px-0 text-base font-semibold text-sky-200 hover:bg-transparent hover:text-sky-100"
+                    onClick={() => navigate("/impact")}
+                  >
+                    View Impact Data
+                    <TrendingUp className="ml-2 h-4 w-4" />
+                  </Button>
+                </motion.div>
+
+                <motion.div
+                  variants={itemVariants}
+                  className="grid gap-3 sm:grid-cols-3"
+                >
+                  {stats.map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(2,6,23,0.35)]"
+                    >
+                      <p className="text-2xl font-semibold text-sky-200">
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {stat.label}
+                      </p>
+                    </div>
+                  ))}
+                </motion.div>
+
+                <motion.div
+                  variants={itemVariants}
+                  className="grid gap-3 sm:grid-cols-3"
+                >
+                  {trustPoints.map((point) => (
+                    <div
+                      key={point}
+                      className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-4"
+                    >
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                      <p className="text-sm text-slate-300">{point}</p>
+                    </div>
+                  ))}
+                </motion.div>
               </motion.div>
 
-              <motion.h1
-                variants={itemVariants}
-                className="max-w-2xl text-4xl font-semibold leading-[1.05] text-white sm:text-5xl lg:text-6xl"
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+                className="relative"
               >
-                <span className="bg-gradient-to-r from-sky-200 via-blue-100 to-rose-200 bg-clip-text text-transparent">
-                  {t(
-                    "landing.hero",
-                    "Secure coordination for GBV emergency response",
-                  )}
-                </span>
-              </motion.h1>
+                <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-br from-sky-500/10 via-transparent to-rose-500/10 blur-2xl" />
+                <div className="relative rounded-[30px] border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl sm:p-7">
+                  <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                        Operational Pulse
+                      </p>
+                      <h2 className="mt-2 text-2xl font-semibold text-white">
+                        Live coordination status
+                      </h2>
+                    </div>
+                    <span className="inline-flex w-fit items-center rounded-full border border-emerald-300/40 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                      Live
+                    </span>
+                  </div>
 
-              <motion.p
-                variants={itemVariants}
-                className="max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg"
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {pulseRows.map((row) => (
+                      <div
+                        key={row.label}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                          {row.label}
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-2 text-3xl font-semibold",
+                            row.tone,
+                          )}
+                        >
+                          {row.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                        <Clock3 className="h-5 w-5 text-sky-200" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          Response readiness
+                        </p>
+                        <p className="text-sm text-slate-400">
+                          Cross-agency routing remains available with monitored
+                          audit coverage.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 h-2 rounded-full bg-slate-800/80">
+                      <div className="h-full w-[98%] rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-blue-500" />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </section>
+
+          <section className="px-4 pb-6 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-6xl">
+              <div className="grid gap-3 rounded-[30px] border border-white/10 bg-slate-950/40 p-4 sm:grid-cols-2 lg:grid-cols-4 lg:p-5">
+                {[
+                  {
+                    title: "Rapid escalation",
+                    detail: "Incident intake to verified triage in minutes",
+                  },
+                  {
+                    title: "Protected data flow",
+                    detail: "Encrypted transfers across every responder role",
+                  },
+                  {
+                    title: "Governance visibility",
+                    detail: "Audit checkpoints embedded in each workflow step",
+                  },
+                  {
+                    title: "Survivor-first design",
+                    detail:
+                      "Access designed to reduce friction and preserve trust",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <p className="text-sm font-semibold text-white">
+                      {item.title}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-400">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="capabilities"
+            className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
+          >
+            <div className="mx-auto max-w-6xl">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+                className="mb-12 text-center"
               >
-                {t(
-                  "landing.subhero",
-                  "AEGIS-AI unifies survivor services, law enforcement, and policy intelligence with encrypted workflows, real-time escalation, and accountable governance.",
-                )}
-              </motion.p>
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                  Assurance Layer
+                </p>
+                <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
+                  {t("landing.capabilities", "Critical Capabilities")}
+                </h2>
+                <p className="mx-auto mt-4 max-w-2xl text-slate-400">
+                  {t(
+                    "landing.capabilitiesSubtitle",
+                    "Operational layers built for safety, urgency, and trust.",
+                  )}
+                </p>
+              </motion.div>
 
               <motion.div
-                variants={itemVariants}
-                className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
               >
+                {features.map((feature) => (
+                  <motion.div
+                    key={feature.title}
+                    variants={itemVariants}
+                    className="rounded-[28px] border border-white/10 bg-slate-950/70 p-7 shadow-[0_20px_50px_rgba(2,6,23,0.5)] backdrop-blur"
+                  >
+                    <div className="mb-4 inline-flex rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <feature.icon className="h-5 w-5 text-sky-200" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-white">
+                      {feature.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                      {feature.description}
+                    </p>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </section>
+
+          <section
+            id="workflow"
+            className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
+          >
+            <div className="mx-auto grid max-w-6xl gap-10 rounded-[32px] border border-white/10 bg-slate-950/45 p-6 lg:grid-cols-[0.45fr_0.55fr] lg:items-start lg:p-8">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+                className="space-y-5"
+              >
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                  Workflow Intelligence
+                </p>
+                <h2 className="text-3xl font-semibold sm:text-4xl">
+                  {t(
+                    "landing.cta.title",
+                    "Activate trusted response workflows",
+                  )}
+                </h2>
+                <p className="text-lg text-slate-400">
+                  {t(
+                    "landing.cta.subtitle",
+                    "Purpose-built to coordinate GBV emergency response with accountable, AI-driven intelligence.",
+                  )}
+                </p>
+              </motion.div>
+
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="space-y-4"
+              >
+                {workflowSteps.map((step, index) => (
+                  <motion.div
+                    key={step.title}
+                    variants={itemVariants}
+                    className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:flex-row sm:items-start"
+                  >
+                    <div className="flex items-start gap-4 sm:flex-1">
+                      <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
+                        <step.icon className="h-5 w-5 text-sky-200" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+                          Step {index + 1}
+                        </p>
+                        <h3 className="mt-1 text-lg font-semibold text-white">
+                          {step.title}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {step.description}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="w-fit rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-200">
+                      {step.metric}
+                    </p>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </section>
+
+          <section
+            id="about"
+            className="scroll-mt-28 px-4 pb-20 sm:px-6 lg:px-8"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="mx-auto max-w-5xl rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/90 to-slate-900/70 p-8 text-center shadow-[0_30px_80px_rgba(2,8,23,0.65)] sm:p-12"
+            >
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                About AEGIS-AI
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
+                Response infrastructure you can trust
+              </h2>
+              <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
+                AEGIS-AI is designed for secure, role-based, trauma-informed
+                response operations with measurable accountability.
+              </p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <Button
-                  className="h-12 bg-rose-600 px-6 text-base font-semibold hover:bg-rose-500"
+                  className="h-12 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-7 text-base font-semibold"
                   onClick={openAuth}
                 >
-                  {t("landing.reportIncident", "Report Incident")}
+                  {t("landing.cta.button", "Access Response Console")}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
-                  onClick={openAuth}
-                >
-                  {t("landing.getHelp", "Get Help Now")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="h-12 justify-start px-0 text-base font-semibold text-sky-200 hover:bg-transparent hover:text-sky-100"
+                  className="h-12 border-white/20 bg-white/5 px-7 text-base font-semibold text-slate-100 hover:bg-white/10"
                   onClick={() => navigate("/impact")}
                 >
                   View Impact Data
                   <TrendingUp className="ml-2 h-4 w-4" />
                 </Button>
-              </motion.div>
-
-              <motion.div
-                variants={itemVariants}
-                className="grid gap-3 sm:grid-cols-3"
-              >
-                {stats.map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(2,6,23,0.35)]"
-                  >
-                    <p className="text-2xl font-semibold text-sky-200">
-                      {stat.value}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {stat.label}
-                    </p>
-                  </div>
-                ))}
-              </motion.div>
-
-              <motion.div
-                variants={itemVariants}
-                className="grid gap-3 sm:grid-cols-3"
-              >
-                {trustPoints.map((point) => (
-                  <div
-                    key={point}
-                    className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-4"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-                    <p className="text-sm text-slate-300">{point}</p>
-                  </div>
-                ))}
-              </motion.div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.6 }}
-              className="relative"
-            >
-              <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-br from-sky-500/10 via-transparent to-rose-500/10 blur-2xl" />
-              <div className="relative rounded-[30px] border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl sm:p-7">
-                <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                      Operational Pulse
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
-                      Live coordination status
-                    </h2>
-                  </div>
-                  <span className="inline-flex w-fit items-center rounded-full border border-emerald-300/40 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
-                    Live
-                  </span>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {pulseRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                    >
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                        {row.label}
-                      </p>
-                      <p
-                        className={cn("mt-2 text-3xl font-semibold", row.tone)}
-                      >
-                        {row.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                      <Clock3 className="h-5 w-5 text-sky-200" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        Response readiness
-                      </p>
-                      <p className="text-sm text-slate-400">
-                        Cross-agency routing remains available with monitored
-                        audit coverage.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 h-2 rounded-full bg-slate-800/80">
-                    <div className="h-full w-[98%] rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-blue-500" />
-                  </div>
-                </div>
               </div>
             </motion.div>
-          </div>
-        </section>
-
-        <section className="px-4 pb-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">
-            <div className="grid gap-3 rounded-[30px] border border-white/10 bg-slate-950/40 p-4 sm:grid-cols-2 lg:grid-cols-4 lg:p-5">
-              {[
-                {
-                  title: "Rapid escalation",
-                  detail: "Incident intake to verified triage in minutes",
-                },
-                {
-                  title: "Protected data flow",
-                  detail: "Encrypted transfers across every responder role",
-                },
-                {
-                  title: "Governance visibility",
-                  detail: "Audit checkpoints embedded in each workflow step",
-                },
-                {
-                  title: "Survivor-first design",
-                  detail:
-                    "Access designed to reduce friction and preserve trust",
-                },
-              ].map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <p className="text-sm font-semibold text-white">
-                    {item.title}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-400">{item.detail}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section
-          id="capabilities"
-          className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
-        >
-          <div className="mx-auto max-w-6xl">
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-              className="mb-12 text-center"
-            >
-              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
-                Assurance Layer
-              </p>
-              <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
-                {t("landing.capabilities", "Critical Capabilities")}
-              </h2>
-              <p className="mx-auto mt-4 max-w-2xl text-slate-400">
-                {t(
-                  "landing.capabilitiesSubtitle",
-                  "Operational layers built for safety, urgency, and trust.",
-                )}
-              </p>
-            </motion.div>
-
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
-            >
-              {features.map((feature) => (
-                <motion.div
-                  key={feature.title}
-                  variants={itemVariants}
-                  className="rounded-[28px] border border-white/10 bg-slate-950/70 p-7 shadow-[0_20px_50px_rgba(2,6,23,0.5)] backdrop-blur"
-                >
-                  <div className="mb-4 inline-flex rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <feature.icon className="h-5 w-5 text-sky-200" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">
-                    {feature.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                    {feature.description}
-                  </p>
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-        </section>
-
-        <section
-          id="workflow"
-          className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
-        >
-          <div className="mx-auto grid max-w-6xl gap-10 rounded-[32px] border border-white/10 bg-slate-950/45 p-6 lg:grid-cols-[0.45fr_0.55fr] lg:items-start lg:p-8">
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-              className="space-y-5"
-            >
-              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
-                Workflow Intelligence
-              </p>
-              <h2 className="text-3xl font-semibold sm:text-4xl">
-                {t("landing.cta.title", "Activate trusted response workflows")}
-              </h2>
-              <p className="text-lg text-slate-400">
-                {t(
-                  "landing.cta.subtitle",
-                  "Purpose-built to coordinate GBV emergency response with accountable, AI-driven intelligence.",
-                )}
-              </p>
-            </motion.div>
-
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              className="space-y-4"
-            >
-              {workflowSteps.map((step, index) => (
-                <motion.div
-                  key={step.title}
-                  variants={itemVariants}
-                  className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:flex-row sm:items-start"
-                >
-                  <div className="flex items-start gap-4 sm:flex-1">
-                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
-                      <step.icon className="h-5 w-5 text-sky-200" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
-                        Step {index + 1}
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">
-                        {step.title}
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-400">
-                        {step.description}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="w-fit rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-200">
-                    {step.metric}
-                  </p>
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-        </section>
-
-        <section id="about" className="scroll-mt-28 px-4 pb-20 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="mx-auto max-w-5xl rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/90 to-slate-900/70 p-8 text-center shadow-[0_30px_80px_rgba(2,8,23,0.65)] sm:p-12"
-          >
-            <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
-              About AEGIS-AI
-            </p>
-            <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
-              Response infrastructure you can trust
-            </h2>
-            <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
-              AEGIS-AI is designed for secure, role-based, trauma-informed
-              response operations with measurable accountability.
-            </p>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Button
-                className="h-12 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-7 text-base font-semibold"
-                onClick={openAuth}
-              >
-                {t("landing.cta.button", "Access Response Console")}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                className="h-12 border-white/20 bg-white/5 px-7 text-base font-semibold text-slate-100 hover:bg-white/10"
-                onClick={() => navigate("/impact")}
-              >
-                View Impact Data
-                <TrendingUp className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </motion.div>
-        </section>
+          </section>
         </main>
 
         <footer className="border-t border-white/10 px-4 py-8 sm:px-6 lg:px-8">

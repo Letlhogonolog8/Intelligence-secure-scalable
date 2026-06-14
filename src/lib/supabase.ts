@@ -46,6 +46,7 @@ export type Database = {
         source: string | null;
         report_method: string | null;
         language: string | null;
+        category: string | null;
         status: string;
         risk_level: string;
         risk_score: number | null;
@@ -53,6 +54,11 @@ export type Database = {
         description: string | null;
         encrypted_location: string | null;
         location_iv: string | null;
+        location: { address?: string } | null;
+        is_anonymous: boolean | null;
+        reported_by: string | null;
+        public_reference: string | null;
+        reporter_relationship: string | null;
         created_at: string | null;
         updated_at: string | null;
       }>;

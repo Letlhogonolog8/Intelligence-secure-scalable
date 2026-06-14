@@ -28,6 +28,7 @@ import { useOrganizationContext } from "@/contexts/organizationContext";
 import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
 import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
+import CommunityReportsPanel from "@/components/community/CommunityReportsPanel";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -630,6 +631,7 @@ const NgoDashboard: React.FC = () => {
         <VoiceNoteTranslator />
         <VoiceEvidenceArchive />
         <SharedEvidencePanel />
+        <CommunityReportsPanel />
       </section>
     </DashboardPage>
   );

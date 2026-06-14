@@ -1,4 +1,3 @@
-
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -20,10 +19,13 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const RoleSelection = lazy(() => import("./pages/RoleSelection"));
 const AuthenticationFlow = lazy(() => import("./pages/AuthenticationFlow"));
-const ProfileInitialization = lazy(() => import("./pages/ProfileInitialization"));
+const ProfileInitialization = lazy(
+  () => import("./pages/ProfileInitialization"),
+);
 const Admin = lazy(() => import("./pages/Admin"));
 const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
 const SilentSosDemo = lazy(() => import("./pages/SilentSosDemo"));
+const CommunityReport = lazy(() => import("./pages/CommunityReport"));
 
 const App = () => (
   <ErrorBoundary>
@@ -36,8 +38,8 @@ const App = () => (
                 <Alert variant="warning">
                   <AlertTitle>Supabase not configured</AlertTitle>
                   <AlertDescription>
-                    Add VITE_SUPABASE_URL and VITE_SUPABASE_KEY to your .env file to enable
-                    authentication.
+                    Add VITE_SUPABASE_URL and VITE_SUPABASE_KEY to your .env
+                    file to enable authentication.
                   </AlertDescription>
                 </Alert>
               </div>
@@ -47,17 +49,41 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
+              <BrowserRouter
+                future={{
+                  v7_startTransition: true,
+                  v7_relativeSplatPath: true,
+                }}
+              >
+                <Suspense
+                  fallback={
+                    <div className="min-h-screen bg-background flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    </div>
+                  }
+                >
                   <Routes>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/auth" element={<RoleSelection />} />
-                    <Route path="/auth/verify" element={<AuthenticationFlow />} />
-                    <Route path="/auth/initialize" element={<ProfileInitialization />} />
+                    <Route
+                      path="/auth/verify"
+                      element={<AuthenticationFlow />}
+                    />
+                    <Route
+                      path="/auth/initialize"
+                      element={<ProfileInitialization />}
+                    />
                     <Route path="/app" element={<Index />} />
                     <Route path="/admin" element={<Admin />} />
                     <Route path="/impact" element={<ImpactDashboard />} />
-                    <Route path="/demo/silent-sos" element={<SilentSosDemo />} />
+                    <Route
+                      path="/community-report"
+                      element={<CommunityReport />}
+                    />
+                    <Route
+                      path="/demo/silent-sos"
+                      element={<SilentSosDemo />}
+                    />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>
