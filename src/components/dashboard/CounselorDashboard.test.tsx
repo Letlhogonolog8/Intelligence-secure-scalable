@@ -42,6 +42,10 @@ vi.mock("@/components/evidence/SharedEvidencePanel", () => ({
   default: () => <div>mock-shared-evidence</div>,
 }));
 
+vi.mock("@/components/coordination/CoordinationBoard", () => ({
+  default: () => <div>mock-coordination-board</div>,
+}));
+
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => (
     <div data-testid="chart">{children}</div>

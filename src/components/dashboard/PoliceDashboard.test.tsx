@@ -72,6 +72,10 @@ vi.mock("@/components/police/AiCaseAssistantPanel", () => ({
   default: () => <div>mock-ai-case-assistant</div>,
 }));
 
+vi.mock("@/components/coordination/CoordinationBoard", () => ({
+  default: () => <div>mock-coordination-board</div>,
+}));
+
 vi.mock("@/components/justice/CaseDispatchDialog", () => ({
   default: () => null,
 }));

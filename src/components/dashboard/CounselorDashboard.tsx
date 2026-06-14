@@ -26,6 +26,7 @@ import {
 } from "@/components/dashboard/DashboardPrimitives";
 import { EncryptedClinicalNotes } from "@/components/counselor/EncryptedClinicalNotes";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
+import CoordinationBoard from "@/components/coordination/CoordinationBoard";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -661,8 +662,9 @@ const CounselorDashboard: React.FC = () => {
         )}
       </section>
 
-      <section>
+      <section className="space-y-6">
         <SharedEvidencePanel />
+        <CoordinationBoard organizationId={profile?.organizationId} />
       </section>
     </DashboardPage>
   );

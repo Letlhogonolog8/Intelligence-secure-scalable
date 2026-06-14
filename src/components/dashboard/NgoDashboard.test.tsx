@@ -60,6 +60,10 @@ vi.mock("@/components/community/CommunityReportsPanel", () => ({
   default: () => <div>mock-community-reports</div>,
 }));
 
+vi.mock("@/components/coordination/CoordinationBoard", () => ({
+  default: () => <div>mock-coordination-board</div>,
+}));
+
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => (
     <div data-testid="chart">{children}</div>

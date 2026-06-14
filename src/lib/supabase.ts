@@ -169,6 +169,28 @@ export type Database = {
           revoked_at?: string | null;
         }
       >;
+      organization_coordination: TableDefinition<
+        {
+          id: string;
+          from_organization_id: string | null;
+          to_organization_id: string | null;
+          case_id: string | null;
+          referral_type: string;
+          status: string;
+          notes: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+          completed_at: string | null;
+        },
+        {
+          from_organization_id: string;
+          to_organization_id: string;
+          case_id: string;
+          referral_type: string;
+          status?: string;
+          notes?: string | null;
+        }
+      >;
       escalation_events: TableDefinition<{
         id: string;
         case_id: string | null;
