@@ -24,19 +24,28 @@ vi.mock("@/store/appStore", () => ({
 vi.mock("@/data/aegisData", () => ({
   useUserProfile: (...args: unknown[]) => mockUseUserProfile(...args),
   useAlertsFeed: (...args: unknown[]) => mockUseAlertsFeed(...args),
-  useEscalationReviews: (...args: unknown[]) => mockUseEscalationReviews(...args),
-  useOrganizationCoordination: (...args: unknown[]) => mockUseOrganizationCoordination(...args),
+  useEscalationReviews: (...args: unknown[]) =>
+    mockUseEscalationReviews(...args),
+  useOrganizationCoordination: (...args: unknown[]) =>
+    mockUseOrganizationCoordination(...args),
 }));
 
 vi.mock("@/data/liveDashboardData", () => ({
   useLiveJusticeCases: (...args: unknown[]) => mockUseLiveJusticeCases(...args),
   useLiveSafetyPlans: (...args: unknown[]) => mockUseLiveSafetyPlans(...args),
-  useLiveSurvivorChatSessions: (...args: unknown[]) => mockUseLiveSurvivorChatSessions(...args),
+  useLiveSurvivorChatSessions: (...args: unknown[]) =>
+    mockUseLiveSurvivorChatSessions(...args),
   useLiveSurvivors: (...args: unknown[]) => mockUseLiveSurvivors(...args),
 }));
 
+vi.mock("@/components/evidence/SharedEvidencePanel", () => ({
+  default: () => <div>mock-shared-evidence</div>,
+}));
+
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   BarChart: () => <div />,
   Bar: () => null,
   CartesianGrid: () => null,
@@ -47,16 +56,25 @@ vi.mock("recharts", () => ({
 
 describe("CounselorDashboard", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { id: "counselor-1" }, session: { expires_at: 1767225600 } });
+    mockUseAuth.mockReturnValue({
+      user: { id: "counselor-1" },
+      session: { expires_at: 1767225600 },
+    });
     mockUseAppStore.mockReturnValue({ setActiveModule: vi.fn() });
     mockUseUserProfile.mockReturnValue({ data: { role: "counselor" } });
     mockUseLiveJusticeCases.mockReturnValue({ data: [], isLoading: false });
-    mockUseLiveSurvivorChatSessions.mockReturnValue({ data: [], isLoading: false });
+    mockUseLiveSurvivorChatSessions.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
     mockUseLiveSurvivors.mockReturnValue({ data: [], isLoading: false });
     mockUseLiveSafetyPlans.mockReturnValue({ data: [], isLoading: false });
     mockUseEscalationReviews.mockReturnValue({ data: [], isLoading: false });
     mockUseAlertsFeed.mockReturnValue({ data: [], isLoading: false });
-    mockUseOrganizationCoordination.mockReturnValue({ data: [], isLoading: false });
+    mockUseOrganizationCoordination.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
   });
 
   it("blocks non-counselor users from the dashboard", () => {
@@ -65,7 +83,11 @@ describe("CounselorDashboard", () => {
     render(<CounselorDashboard />);
 
     expect(screen.getByText("Counselor access required")).toBeInTheDocument();
-    expect(screen.getByText("Your account does not have the required privileges to view the counselor operations board.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your account does not have the required privileges to view the counselor operations board.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows empty-state guidance when no live counselor data is available", () => {
@@ -82,8 +104,14 @@ describe("CounselorDashboard", () => {
 
     render(<CounselorDashboard />);
 
-    expect(mockUseLiveJusticeCases).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, assignedTo: "counselor-1" }));
-    expect(mockUseLiveSurvivorChatSessions).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, counselorId: "counselor-1" }));
-    expect(mockUseLiveSurvivors).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+    expect(mockUseLiveJusticeCases).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, assignedTo: "counselor-1" }),
+    );
+    expect(mockUseLiveSurvivorChatSessions).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, counselorId: "counselor-1" }),
+    );
+    expect(mockUseLiveSurvivors).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
   });
 });

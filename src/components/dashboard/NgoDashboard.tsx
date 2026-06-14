@@ -27,6 +27,7 @@ import {
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
 import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
+import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -628,6 +629,7 @@ const NgoDashboard: React.FC = () => {
       <section className="space-y-6">
         <VoiceNoteTranslator />
         <VoiceEvidenceArchive />
+        <SharedEvidencePanel />
       </section>
     </DashboardPage>
   );

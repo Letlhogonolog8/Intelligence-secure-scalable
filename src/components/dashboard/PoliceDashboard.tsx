@@ -13,6 +13,7 @@ import {
 import { renderMessageWithLinks } from "@/components/dashboard/renderAlertLinks";
 import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
 import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
+import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
 import {
   useLiveJusticeCases,
   useLiveOrganization,
@@ -805,6 +806,7 @@ const PoliceDashboard: React.FC = () => {
       <section className="space-y-6">
         <VoiceNoteTranslator />
         <VoiceEvidenceArchive />
+        <SharedEvidencePanel />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">

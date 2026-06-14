@@ -143,6 +143,26 @@ export type Database = {
           translated_by?: string | null;
         }
       >;
+      evidence_consents: TableDefinition<
+        {
+          id: string;
+          survivor_id: string;
+          storage_path: string;
+          file_name: string | null;
+          mime_type: string | null;
+          note: string | null;
+          granted_at: string;
+          revoked_at: string | null;
+        },
+        {
+          survivor_id: string;
+          storage_path: string;
+          file_name?: string | null;
+          mime_type?: string | null;
+          note?: string | null;
+          revoked_at?: string | null;
+        }
+      >;
       escalation_events: TableDefinition<{
         id: string;
         case_id: string | null;

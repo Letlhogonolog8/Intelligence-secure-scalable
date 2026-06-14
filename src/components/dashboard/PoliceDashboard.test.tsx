@@ -60,6 +60,10 @@ vi.mock("@/components/voice/VoiceEvidenceArchive", () => ({
   default: () => <div>mock-voice-archive</div>,
 }));
 
+vi.mock("@/components/evidence/SharedEvidencePanel", () => ({
+  default: () => <div>mock-shared-evidence</div>,
+}));
+
 vi.mock("@/components/justice/CaseDispatchDialog", () => ({
   default: () => null,
 }));

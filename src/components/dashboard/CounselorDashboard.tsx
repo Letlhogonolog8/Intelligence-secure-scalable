@@ -25,6 +25,7 @@ import {
   StatusPill,
 } from "@/components/dashboard/DashboardPrimitives";
 import { EncryptedClinicalNotes } from "@/components/counselor/EncryptedClinicalNotes";
+import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -658,6 +659,10 @@ const CounselorDashboard: React.FC = () => {
             />
           </SectionCard>
         )}
+      </section>
+
+      <section>
+        <SharedEvidencePanel />
       </section>
     </DashboardPage>
   );

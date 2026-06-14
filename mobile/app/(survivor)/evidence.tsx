@@ -56,6 +56,8 @@ export default function Evidence() {
     text: string;
   } | null>(null);
   const [playingPath, setPlayingPath] = useState<string | null>(null);
+  const [sharedPaths, setSharedPaths] = useState<Set<string>>(new Set());
+  const [sharingPath, setSharingPath] = useState<string | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
 
   const stopPlayback = useCallback(() => {
@@ -113,6 +115,19 @@ export default function Evidence() {
           }),
       );
       setItems(withUrls);
+
+      // Which items the survivor has actively shared with their case team.
+      const { data: consents } = await supabase
+        .from("evidence_consents")
+        .select("storage_path, revoked_at")
+        .eq("survivor_id", user.id);
+      setSharedPaths(
+        new Set(
+          (consents ?? [])
+            .filter((c: { revoked_at: string | null }) => c.revoked_at == null)
+            .map((c: { storage_path: string }) => c.storage_path),
+        ),
+      );
     } catch {
       setNote({
         tone: "info",
@@ -183,13 +198,82 @@ export default function Evidence() {
     }
   }
 
+  async function toggleShare(item: VaultItem) {
+    if (!user?.id) return;
+    setNote(null);
+    setSharingPath(item.path);
+    const currentlyShared = sharedPaths.has(item.path);
+    try {
+      if (currentlyShared) {
+        const { error } = await supabase
+          .from("evidence_consents")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("survivor_id", user.id)
+          .eq("storage_path", item.path);
+        if (error) throw error;
+        setSharedPaths((prev) => {
+          const next = new Set(prev);
+          next.delete(item.path);
+          return next;
+        });
+        setNote({
+          tone: "info",
+          text: t(
+            "consent.revoked",
+            "Stopped sharing. Your case team can no longer open this file.",
+          ),
+        });
+      } else {
+        const { error } = await supabase.from("evidence_consents").upsert(
+          {
+            survivor_id: user.id,
+            storage_path: item.path,
+            file_name: item.name,
+            revoked_at: null,
+            granted_at: new Date().toISOString(),
+          },
+          { onConflict: "survivor_id,storage_path" },
+        );
+        if (error) throw error;
+        setSharedPaths((prev) => new Set(prev).add(item.path));
+        setNote({
+          tone: "success",
+          text: t(
+            "consent.shared",
+            "Shared with your case team. You can stop sharing anytime.",
+          ),
+        });
+      }
+    } catch {
+      setNote({
+        tone: "danger",
+        text: t("consent.error", "Couldn't update sharing. Please try again."),
+      });
+    } finally {
+      setSharingPath(null);
+    }
+  }
+
   async function remove(path: string) {
     if (playingPath === path) stopPlayback();
     setBusy(true);
     try {
       const { error } = await supabase.storage.from(BUCKET).remove([path]);
       if (error) throw error;
+      // Drop any consent row so a deleted file leaves no dangling share grant.
+      if (user?.id) {
+        await supabase
+          .from("evidence_consents")
+          .delete()
+          .eq("survivor_id", user.id)
+          .eq("storage_path", path);
+      }
       setItems((prev) => prev.filter((i) => i.path !== path));
+      setSharedPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
     } catch {
       setNote({
         tone: "danger",
@@ -219,7 +303,7 @@ export default function Evidence() {
         <Muted style={{ fontSize: font.small }}>
           {t(
             "evidence.privacy",
-            "Files are private to you and encrypted at rest. Only you can open them from this account.",
+            "Files are private to you and encrypted at rest. Nothing is shared unless you choose to — you can share an item with your case team and stop sharing anytime.",
           )}
         </Muted>
       </Card>
@@ -313,6 +397,51 @@ export default function Evidence() {
                   <Text style={styles.delete}>✕</Text>
                 </Pressable>
               </View>
+              <Pressable
+                onPress={() => void toggleShare(item)}
+                disabled={sharingPath === item.path}
+                style={[
+                  styles.shareBtn,
+                  sharedPaths.has(item.path) && styles.shareBtnActive,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  sharedPaths.has(item.path)
+                    ? t("consent.stop", "Stop sharing with case team")
+                    : t("consent.share", "Share with case team")
+                }
+              >
+                {sharingPath === item.path ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={
+                        sharedPaths.has(item.path)
+                          ? "people"
+                          : "lock-closed-outline"
+                      }
+                      size={13}
+                      color={
+                        sharedPaths.has(item.path)
+                          ? colors.success
+                          : colors.textFaint
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.shareText,
+                        sharedPaths.has(item.path) && styles.shareTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {sharedPaths.has(item.path)
+                        ? t("consent.sharedShort", "Shared with team")
+                        : t("consent.shareShort", "Share with team")}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
             </Card>
           ))}
         </View>
@@ -346,4 +475,26 @@ const styles = StyleSheet.create({
   },
   fileName: { color: colors.textMuted, fontSize: font.tiny, flex: 1 },
   delete: { color: colors.danger, fontWeight: "900", fontSize: font.body },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    minHeight: 34,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingHorizontal: spacing.sm,
+  },
+  shareBtnActive: {
+    borderColor: colors.success + "66",
+    backgroundColor: colors.success + "14",
+  },
+  shareText: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    fontWeight: "700",
+  },
+  shareTextActive: { color: colors.success },
 });
