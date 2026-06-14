@@ -1806,6 +1806,121 @@ app.post(
   },
 );
 
+// ----------------------------------------------------------------------------
+// AI CASE SUMMARY + CLASSIFICATION (LLM)
+// A responder hands in raw case/report text and gets back a concise, neutral
+// summary, a severity classification, and recommended next actions — the
+// "AI Case Summaries / Incident Classification / Response Recommendations"
+// triad. Returns a degraded but safe shape if the model is unavailable so the
+// dashboard panel never hard-fails.
+// ----------------------------------------------------------------------------
+const CASE_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+
+app.post(
+  "/api/ai/case-summary",
+  aiLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const requestId = (req as AppRequest).id;
+    try {
+      const text = String(req.body?.text ?? "").trim();
+      const context = String(req.body?.context ?? "").slice(0, 500);
+      if (!text || text.length > 6000) {
+        res.status(400).json({ error: "invalid_request" });
+        return;
+      }
+
+      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
+      if (!hfToken || hfToken.startsWith("[replace")) {
+        res.status(503).json({ error: "ai_unavailable" });
+        return;
+      }
+
+      const chatModel =
+        process.env.HUGGINGFACE_CHAT_MODEL ||
+        "meta-llama/Llama-3.1-8B-Instruct";
+      const llm = await fetch(
+        "https://router.huggingface.co/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: chatModel,
+            messages: [
+              {
+                role: "system",
+                content:
+                  'You are a triage analyst for a gender-based-violence response platform supporting police, NGOs and counsellors. Read the case material and reply ONLY with JSON: {"summary":"<2-4 neutral factual sentences, no speculation>","severity":"low|medium|high|critical","recommended_actions":["<short imperative action>", "..."]}. Base severity on immediacy of danger, weapons, threats to life, children involved, and repeat patterns. Give 2-4 concrete recommended actions. Never invent facts not present in the material; never include the survivor\'s identifying details in the summary.',
+              },
+              {
+                role: "user",
+                content: context
+                  ? `Context: ${context}\n\nCase material:\n${text}`
+                  : `Case material:\n${text}`,
+              },
+            ],
+            max_tokens: 700,
+            temperature: 0.2,
+          }),
+        },
+      );
+      if (!llm.ok) {
+        res.status(502).json({ error: "summary_failed" });
+        return;
+      }
+
+      const raw =
+        (
+          (await llm.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+          }
+        ).choices?.[0]?.message?.content ?? "";
+      const json = raw.match(/\{[\s\S]*\}/)?.[0];
+      if (!json) {
+        res.status(502).json({ error: "summary_failed" });
+        return;
+      }
+
+      let summary = "";
+      let severity = "medium";
+      let recommendedActions: string[] = [];
+      try {
+        const parsed = JSON.parse(json) as {
+          summary?: string;
+          severity?: string;
+          recommended_actions?: unknown;
+        };
+        summary = parsed.summary?.trim() ?? "";
+        const sev = parsed.severity?.toLowerCase().trim() ?? "medium";
+        severity = (CASE_SEVERITIES as readonly string[]).includes(sev)
+          ? sev
+          : "medium";
+        if (Array.isArray(parsed.recommended_actions)) {
+          recommendedActions = parsed.recommended_actions
+            .map((a) => String(a).trim())
+            .filter(Boolean)
+            .slice(0, 6);
+        }
+      } catch {
+        res.status(502).json({ error: "summary_failed" });
+        return;
+      }
+
+      if (!summary) {
+        res.status(502).json({ error: "summary_failed" });
+        return;
+      }
+
+      res.json({ summary, severity, recommendedActions });
+    } catch (error) {
+      logger.error("AI case summary failed", error, {}, requestId);
+      res.status(500).json({ error: "case_summary_failed" });
+    }
+  },
+);
+
 // ============================================================================
 // TELKOM USSD WEBHOOK
 // ============================================================================

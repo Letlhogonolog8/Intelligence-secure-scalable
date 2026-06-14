@@ -15,6 +15,7 @@ import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
 import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
 import CommunityReportsPanel from "@/components/community/CommunityReportsPanel";
+import AiCaseAssistantPanel from "@/components/police/AiCaseAssistantPanel";
 import {
   useLiveJusticeCases,
   useLiveOrganization,
@@ -805,6 +806,7 @@ const PoliceDashboard: React.FC = () => {
       </section>
 
       <section className="space-y-6">
+        <AiCaseAssistantPanel />
         <VoiceNoteTranslator />
         <VoiceEvidenceArchive />
         <SharedEvidencePanel />
