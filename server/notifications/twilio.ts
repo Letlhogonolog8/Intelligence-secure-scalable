@@ -1,15 +1,16 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-import twilio from 'twilio';
-import { sendExpoPush } from './expoPush';
+import { SupabaseClient } from "@supabase/supabase-js";
+import twilio from "twilio";
+import { sendExpoPush } from "./expoPush";
+import { sendEmail } from "./email";
 
 export interface NotificationPayload {
-  recipientType: 'sms' | 'whatsapp' | 'email';
+  recipientType: "sms" | "whatsapp" | "email";
   recipientAddress: string;
   messageType: string;
   messageContent: string;
   caseId?: string;
   userId?: string;
-  priority?: 'low' | 'medium' | 'high' | 'critical';
+  priority?: "low" | "medium" | "high" | "critical";
 }
 
 export interface NotificationResult {
@@ -20,7 +21,7 @@ export interface NotificationResult {
   error?: string;
 }
 
-type QueueRecipientType = 'sms' | 'email' | 'push' | 'webhook';
+type QueueRecipientType = "sms" | "email" | "push" | "webhook";
 
 interface NotificationQueueRecord {
   id: string;
@@ -36,7 +37,7 @@ interface NotificationQueueRecord {
 }
 
 interface PhoneDispatchOptions {
-  channel: 'sms' | 'whatsapp';
+  channel: "sms" | "whatsapp";
   phoneNumber: string;
   message: string;
   messageType: string;
@@ -50,19 +51,25 @@ export class TwilioNotificationService {
   private accountSid = process.env.TWILIO_ACCOUNT_SID;
   private authToken = process.env.TWILIO_AUTH_TOKEN;
   private fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-  private whatsappFromNumber = process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER;
+  private whatsappFromNumber =
+    process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER;
   private client: ReturnType<typeof twilio> | null;
   private appBaseUrl = this.resolveAppBaseUrl();
   private notificationQueueAvailable = true;
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
-    this.client = this.accountSid && this.authToken ? twilio(this.accountSid, this.authToken) : null;
+    this.client =
+      this.accountSid && this.authToken
+        ? twilio(this.accountSid, this.authToken)
+        : null;
 
     if (this.client && this.fromPhoneNumber) {
-      console.log('🔔 Twilio notification service initialized');
+      console.log("🔔 Twilio notification service initialized");
     } else {
-      console.warn('Twilio credentials or sender number not configured. Phone notifications will remain failed in queue.');
+      console.warn(
+        "Twilio credentials or sender number not configured. Phone notifications will remain failed in queue.",
+      );
     }
   }
 
@@ -71,20 +78,22 @@ export class TwilioNotificationService {
     caseId: string,
     riskLevel: string,
     location: string,
-    survivorContact?: string
+    survivorContact?: string,
   ): Promise<NotificationResult[]> {
     const messageTemplate = `
 🚨 AEGIS EMERGENCY ESCALATION 🚨
 Case: ${caseId}
 Risk: ${riskLevel.toUpperCase()}
 Location: ${location}
-${survivorContact ? `Contact: ${survivorContact}` : ''}
+${survivorContact ? `Contact: ${survivorContact}` : ""}
 
 RESPOND IMMEDIATELY VIA APP
     `.trim();
 
     return Promise.all(
-      policePhoneNumbers.map((phone) => this.sendSMS(phone, messageTemplate, 'emergency', caseId))
+      policePhoneNumbers.map((phone) =>
+        this.sendSMS(phone, messageTemplate, "emergency", caseId),
+      ),
     );
   }
 
@@ -92,9 +101,11 @@ RESPOND IMMEDIATELY VIA APP
     counselorPhoneNumber: string,
     caseId: string,
     survivorName: string,
-    priority: string
+    priority: string,
   ): Promise<NotificationResult> {
-    const appLink = this.appBaseUrl ? `${this.appBaseUrl}/auth` : 'the AEGIS app';
+    const appLink = this.appBaseUrl
+      ? `${this.appBaseUrl}/auth`
+      : "the AEGIS app";
     const messageTemplate = `
 📋 AEGIS CASE ASSIGNMENT
 Case: ${caseId}
@@ -105,13 +116,18 @@ Open: ${appLink}
 Acknowledge in app to proceed.
     `.trim();
 
-    return this.sendSMS(counselorPhoneNumber, messageTemplate, 'assignment', caseId);
+    return this.sendSMS(
+      counselorPhoneNumber,
+      messageTemplate,
+      "assignment",
+      caseId,
+    );
   }
 
   public async sendSurvivorUpdate(
     survivorPhoneNumber: string,
     caseId: string,
-    updateMessage: string
+    updateMessage: string,
   ): Promise<NotificationResult> {
     const messageTemplate = `
 AEGIS Case Update
@@ -121,14 +137,14 @@ ${updateMessage}
 Reply with HELP for support.
     `.trim();
 
-    return this.sendSMS(survivorPhoneNumber, messageTemplate, 'update', caseId);
+    return this.sendSMS(survivorPhoneNumber, messageTemplate, "update", caseId);
   }
 
   public async sendNGONotification(
     ngoContactPhoneNumber: string,
     caseId: string,
     resourceNeeded: string,
-    urgency: string
+    urgency: string,
   ): Promise<NotificationResult> {
     const messageTemplate = `
 AEGIS NGO COORDINATION
@@ -139,17 +155,22 @@ Urgency: ${urgency}
 Check app for details.
     `.trim();
 
-    return this.sendSMS(ngoContactPhoneNumber, messageTemplate, 'assignment', caseId);
+    return this.sendSMS(
+      ngoContactPhoneNumber,
+      messageTemplate,
+      "assignment",
+      caseId,
+    );
   }
 
   public async sendSMS(
     phoneNumber: string,
     message: string,
     messageType: string,
-    caseId?: string
+    caseId?: string,
   ): Promise<NotificationResult> {
     return this.dispatchPhoneMessage({
-      channel: 'sms',
+      channel: "sms",
       phoneNumber,
       message,
       messageType,
@@ -162,10 +183,10 @@ Check app for details.
     message: string,
     messageType: string,
     caseId?: string,
-    _mediaUrl?: string
+    _mediaUrl?: string,
   ): Promise<NotificationResult> {
     return this.dispatchPhoneMessage({
-      channel: 'whatsapp',
+      channel: "whatsapp",
       phoneNumber,
       message,
       messageType,
@@ -174,8 +195,13 @@ Check app for details.
   }
 
   public async sendBulkSMS(
-    recipients: { phoneNumber: string; message: string; messageType: string; caseId?: string }[],
-    maxRetries: number = 3
+    recipients: {
+      phoneNumber: string;
+      message: string;
+      messageType: string;
+      caseId?: string;
+    }[],
+    maxRetries: number = 3,
   ): Promise<NotificationResult[]> {
     const results: NotificationResult[] = [];
 
@@ -188,7 +214,7 @@ Check app for details.
           recipient.phoneNumber,
           recipient.message,
           recipient.messageType,
-          recipient.caseId
+          recipient.caseId,
         );
 
         if (!result.success) {
@@ -202,9 +228,9 @@ Check app for details.
       results.push(
         result || {
           success: false,
-          status: 'max_retries_exceeded',
+          status: "max_retries_exceeded",
           sentAt: new Date().toISOString(),
-        }
+        },
       );
     }
 
@@ -236,17 +262,17 @@ Check app for details.
   }
 
   public async getNotificationStatus(
-    messageId: string
+    messageId: string,
   ): Promise<{ status: string; sentAt: string; deliveredAt?: string }> {
     try {
       if (!this.notificationQueueAvailable) {
-        return { status: 'unavailable', sentAt: '' };
+        return { status: "unavailable", sentAt: "" };
       }
 
       const { data, error } = await this.supabase
-        .from('notification_queue')
-        .select('status, sent_at')
-        .eq('id', messageId)
+        .from("notification_queue")
+        .select("status, sent_at")
+        .eq("id", messageId)
         .maybeSingle<NotificationQueueRecord>();
 
       if (error) {
@@ -255,28 +281,31 @@ Check app for details.
 
       if (data) {
         return {
-          status: data.status || 'unknown',
-          sentAt: data.sent_at || '',
+          status: data.status || "unknown",
+          sentAt: data.sent_at || "",
         };
       }
 
       if (this.client && /^SM/i.test(messageId)) {
         const providerMessage = await this.client.messages(messageId).fetch();
         return {
-          status: providerMessage.status || 'unknown',
-          sentAt: providerMessage.dateSent?.toISOString() || providerMessage.dateCreated?.toISOString() || '',
+          status: providerMessage.status || "unknown",
+          sentAt:
+            providerMessage.dateSent?.toISOString() ||
+            providerMessage.dateCreated?.toISOString() ||
+            "",
           deliveredAt: providerMessage.dateUpdated?.toISOString(),
         };
       }
 
-      return { status: 'unknown', sentAt: '' };
+      return { status: "unknown", sentAt: "" };
     } catch (error) {
       if (this.handleMissingNotificationQueue(error)) {
-        return { status: 'unavailable', sentAt: '' };
+        return { status: "unavailable", sentAt: "" };
       }
 
-      console.error('Failed to get notification status:', error);
-      return { status: 'error', sentAt: '' };
+      console.error("Failed to get notification status:", error);
+      return { status: "error", sentAt: "" };
     }
   }
 
@@ -290,15 +319,15 @@ Check app for details.
    */
   private async claimQueuedNotification(
     notificationId: string,
-    fromStatuses: string[] = ['pending', 'retry']
+    fromStatuses: string[] = ["pending", "retry"],
   ): Promise<boolean> {
     try {
       const { data, error } = await this.supabase
-        .from('notification_queue')
-        .update({ status: 'processing', claimed_at: new Date().toISOString() })
-        .eq('id', notificationId)
-        .in('status', fromStatuses)
-        .select('id');
+        .from("notification_queue")
+        .update({ status: "processing", claimed_at: new Date().toISOString() })
+        .eq("id", notificationId)
+        .in("status", fromStatuses)
+        .select("id");
 
       if (error) {
         throw error;
@@ -307,8 +336,8 @@ Check app for details.
       return (data?.length ?? 0) > 0;
     } catch (error) {
       console.warn(
-        'Notification claim failed (pre-claiming schema?); processing without claim:',
-        error instanceof Error ? error.message : error
+        "Notification claim failed (pre-claiming schema?); processing without claim:",
+        error instanceof Error ? error.message : error,
       );
       return true;
     }
@@ -319,16 +348,18 @@ Check app for details.
     const STALE_CLAIM_MS = 5 * 60 * 1000;
     try {
       await this.supabase
-        .from('notification_queue')
-        .update({ status: 'retry' })
-        .eq('status', 'processing')
-        .lt('claimed_at', new Date(Date.now() - STALE_CLAIM_MS).toISOString());
+        .from("notification_queue")
+        .update({ status: "retry" })
+        .eq("status", "processing")
+        .lt("claimed_at", new Date(Date.now() - STALE_CLAIM_MS).toISOString());
     } catch {
       // Pre-claiming schema or transient error — nothing to recover.
     }
   }
 
-  public async processPendingNotifications(limit: number = 25): Promise<number> {
+  public async processPendingNotifications(
+    limit: number = 25,
+  ): Promise<number> {
     try {
       if (!this.notificationQueueAvailable) {
         return 0;
@@ -337,10 +368,12 @@ Check app for details.
       await this.recoverStaleClaims();
 
       const { data: pendingNotifications, error } = await this.supabase
-        .from('notification_queue')
-        .select('id, recipient_type, recipient_address, message_content, message_type, case_id, attempt_count, max_attempts')
-        .in('status', ['pending', 'retry'])
-        .order('created_at', { ascending: true })
+        .from("notification_queue")
+        .select(
+          "id, recipient_type, recipient_address, message_content, message_type, case_id, attempt_count, max_attempts",
+        )
+        .in("status", ["pending", "retry"])
+        .order("created_at", { ascending: true })
         .limit(limit)
         .returns<NotificationQueueRecord[]>();
 
@@ -355,7 +388,7 @@ Check app for details.
           continue;
         }
 
-        if (notification.recipient_type === 'push') {
+        if (notification.recipient_type === "push") {
           const pushed = await this.dispatchPushMessage(notification);
           if (pushed) {
             processedCount++;
@@ -363,22 +396,35 @@ Check app for details.
           continue;
         }
 
-        if (notification.recipient_type && notification.recipient_type !== 'sms') {
+        if (notification.recipient_type === "email") {
+          const emailed = await this.dispatchEmailMessage(notification);
+          if (emailed) {
+            processedCount++;
+          }
+          continue;
+        }
+
+        if (
+          notification.recipient_type &&
+          notification.recipient_type !== "sms"
+        ) {
           await this.updateQueuedNotification(notification.id, {
-            status: 'failed',
+            status: "failed",
             last_error: `Unsupported recipient type: ${notification.recipient_type}`,
             attempt_count: (notification.attempt_count || 0) + 1,
           });
           continue;
         }
 
-        const messageType = notification.message_type || 'update';
-        const isWhatsapp = messageType.startsWith('whatsapp:');
+        const messageType = notification.message_type || "update";
+        const isWhatsapp = messageType.startsWith("whatsapp:");
         const result = await this.dispatchPhoneMessage({
-          channel: isWhatsapp ? 'whatsapp' : 'sms',
-          phoneNumber: notification.recipient_address || '',
-          message: notification.message_content || '',
-          messageType: isWhatsapp ? messageType.replace(/^whatsapp:/, '') : messageType,
+          channel: isWhatsapp ? "whatsapp" : "sms",
+          phoneNumber: notification.recipient_address || "",
+          message: notification.message_content || "",
+          messageType: isWhatsapp
+            ? messageType.replace(/^whatsapp:/, "")
+            : messageType,
           caseId: notification.case_id || undefined,
           notificationId: notification.id,
           attemptCount: notification.attempt_count || 0,
@@ -395,7 +441,7 @@ Check app for details.
         return 0;
       }
 
-      console.error('Pending notification processing failed:', error);
+      console.error("Pending notification processing failed:", error);
       return 0;
     }
   }
@@ -407,11 +453,13 @@ Check app for details.
       }
 
       const { data: failedNotifications, error } = await this.supabase
-        .from('notification_queue')
-        .select('id, recipient_address, message_content, message_type, case_id, attempt_count')
-        .eq('status', 'failed')
-        .lt('attempt_count', 3)
-        .order('created_at', { ascending: true });
+        .from("notification_queue")
+        .select(
+          "id, recipient_address, message_content, message_type, case_id, attempt_count",
+        )
+        .eq("status", "failed")
+        .lt("attempt_count", 3)
+        .order("created_at", { ascending: true });
 
       if (error) {
         throw error;
@@ -420,17 +468,21 @@ Check app for details.
       let retryCount = 0;
 
       for (const notification of failedNotifications || []) {
-        if (!(await this.claimQueuedNotification(notification.id, ['failed']))) {
+        if (
+          !(await this.claimQueuedNotification(notification.id, ["failed"]))
+        ) {
           continue;
         }
 
-        const messageType = notification.message_type || 'update';
-        const isWhatsapp = messageType.startsWith('whatsapp:');
+        const messageType = notification.message_type || "update";
+        const isWhatsapp = messageType.startsWith("whatsapp:");
         const result = await this.dispatchPhoneMessage({
-          channel: isWhatsapp ? 'whatsapp' : 'sms',
+          channel: isWhatsapp ? "whatsapp" : "sms",
           phoneNumber: notification.recipient_address,
           message: notification.message_content,
-          messageType: isWhatsapp ? messageType.replace(/^whatsapp:/, '') : messageType,
+          messageType: isWhatsapp
+            ? messageType.replace(/^whatsapp:/, "")
+            : messageType,
           caseId: notification.case_id || undefined,
           notificationId: notification.id,
           attemptCount: notification.attempt_count || 0,
@@ -448,74 +500,88 @@ Check app for details.
         return 0;
       }
 
-      console.error('Failed notification retry failed:', error);
+      console.error("Failed notification retry failed:", error);
       return 0;
     }
   }
 
-  private async dispatchPhoneMessage(options: PhoneDispatchOptions): Promise<NotificationResult> {
-    const normalizedPhoneNumber = this.normalizePhoneNumber(options.phoneNumber);
+  private async dispatchPhoneMessage(
+    options: PhoneDispatchOptions,
+  ): Promise<NotificationResult> {
+    const normalizedPhoneNumber = this.normalizePhoneNumber(
+      options.phoneNumber,
+    );
     const sentAt = new Date().toISOString();
     const nextAttemptCount = (options.attemptCount || 0) + 1;
 
-    if (!normalizedPhoneNumber || !this.isValidPhoneNumber(normalizedPhoneNumber)) {
+    if (
+      !normalizedPhoneNumber ||
+      !this.isValidPhoneNumber(normalizedPhoneNumber)
+    ) {
       if (options.notificationId) {
         await this.updateQueuedNotification(options.notificationId, {
-          status: 'failed',
-          last_error: 'Invalid phone number format',
+          status: "failed",
+          last_error: "Invalid phone number format",
           attempt_count: nextAttemptCount,
         });
       }
 
       return {
         success: false,
-        status: 'invalid_number',
+        status: "invalid_number",
         sentAt,
-        error: 'Invalid phone number format',
+        error: "Invalid phone number format",
       };
     }
 
-    const queueMessageType = options.channel === 'whatsapp'
-      ? `whatsapp:${options.messageType}`
-      : options.messageType;
+    const queueMessageType =
+      options.channel === "whatsapp"
+        ? `whatsapp:${options.messageType}`
+        : options.messageType;
 
-    const notificationId = options.notificationId || await this.queueNotification({
-      recipientType: 'sms',
-      recipientAddress: normalizedPhoneNumber,
-      messageType: queueMessageType,
-      messageContent: options.message,
-      caseId: options.caseId,
-    });
+    const notificationId =
+      options.notificationId ||
+      (await this.queueNotification({
+        recipientType: "sms",
+        recipientAddress: normalizedPhoneNumber,
+        messageType: queueMessageType,
+        messageContent: options.message,
+        caseId: options.caseId,
+      }));
 
     if (!notificationId) {
       return {
         success: false,
-        status: 'queue_failed',
+        status: "queue_failed",
         sentAt,
-        error: 'Unable to persist notification in queue',
+        error: "Unable to persist notification in queue",
       };
     }
 
-    const senderAddress = options.channel === 'whatsapp'
-      ? this.whatsappFromNumber ? `whatsapp:${this.normalizePhoneNumber(this.whatsappFromNumber)}` : undefined
-      : this.normalizePhoneNumber(this.fromPhoneNumber);
+    const senderAddress =
+      options.channel === "whatsapp"
+        ? this.whatsappFromNumber
+          ? `whatsapp:${this.normalizePhoneNumber(this.whatsappFromNumber)}`
+          : undefined
+        : this.normalizePhoneNumber(this.fromPhoneNumber);
 
-    const recipientAddress = options.channel === 'whatsapp'
-      ? `whatsapp:${normalizedPhoneNumber}`
-      : normalizedPhoneNumber;
+    const recipientAddress =
+      options.channel === "whatsapp"
+        ? `whatsapp:${normalizedPhoneNumber}`
+        : normalizedPhoneNumber;
 
     if (!this.client || !senderAddress) {
       await this.updateQueuedNotification(notificationId, {
-        status: 'failed',
-        last_error: 'Twilio is not fully configured',
+        status: "failed",
+        last_error: "Twilio is not fully configured",
         attempt_count: nextAttemptCount,
       });
 
       return {
         success: false,
-        status: 'provider_not_configured',
+        status: "provider_not_configured",
         sentAt,
-        error: 'Twilio is not fully configured',
+        error: "Twilio is not fully configured",
       };
     }
 
@@ -527,25 +593,28 @@ Check app for details.
       });
 
       await this.updateQueuedNotification(notificationId, {
-        status: 'sent',
+        status: "sent",
         sent_at: sentAt,
         last_error: null,
         attempt_count: nextAttemptCount,
       });
 
-      console.log(`📱 ${options.channel.toUpperCase()} sent to ${normalizedPhoneNumber}: ${response.sid}`);
+      console.log(
+        `📱 ${options.channel.toUpperCase()} sent to ${normalizedPhoneNumber}: ${response.sid}`,
+      );
 
       return {
         success: true,
         messageId: response.sid,
-        status: response.status || 'sent',
+        status: response.status || "sent",
         sentAt,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
 
       await this.updateQueuedNotification(notificationId, {
-        status: 'failed',
+        status: "failed",
         last_error: errorMessage,
         attempt_count: nextAttemptCount,
       });
@@ -554,7 +623,7 @@ Check app for details.
 
       return {
         success: false,
-        status: 'failed',
+        status: "failed",
         sentAt,
         error: errorMessage,
       };
@@ -566,19 +635,29 @@ Check app for details.
    * queue row. A token Expo reports as dead is deactivated in push_tokens so we
    * stop fanning out to it. Returns true on successful delivery.
    */
-  private async dispatchPushMessage(notification: NotificationQueueRecord): Promise<boolean> {
-    const token = notification.recipient_address || '';
+  private async dispatchPushMessage(
+    notification: NotificationQueueRecord,
+  ): Promise<boolean> {
+    const token = notification.recipient_address || "";
     const nextAttemptCount = (notification.attempt_count || 0) + 1;
-    const title = notification.message_type === 'escalation' ? '🚨 AEGIS Emergency' : 'AEGIS';
+    const title =
+      notification.message_type === "escalation"
+        ? "🚨 AEGIS Emergency"
+        : "AEGIS";
 
-    const result = await sendExpoPush(token, title, notification.message_content || '', {
-      type: notification.message_type,
-      caseId: notification.case_id,
-    });
+    const result = await sendExpoPush(
+      token,
+      title,
+      notification.message_content || "",
+      {
+        type: notification.message_type,
+        caseId: notification.case_id,
+      },
+    );
 
     if (result.success) {
       await this.updateQueuedNotification(notification.id, {
-        status: 'sent',
+        status: "sent",
         sent_at: new Date().toISOString(),
         last_error: null,
         attempt_count: nextAttemptCount,
@@ -588,7 +667,10 @@ Check app for details.
 
     if (result.invalidToken && token) {
       try {
-        await this.supabase.from('push_tokens').update({ is_active: false }).eq('token', token);
+        await this.supabase
+          .from("push_tokens")
+          .update({ is_active: false })
+          .eq("token", token);
       } catch {
         // best-effort: a missing push_tokens table must not break the drain loop
       }
@@ -596,22 +678,68 @@ Check app for details.
 
     const maxAttempts = notification.max_attempts ?? 5;
     await this.updateQueuedNotification(notification.id, {
-      status: nextAttemptCount >= maxAttempts ? 'failed' : 'retry',
+      status: nextAttemptCount >= maxAttempts ? "failed" : "retry",
       last_error: result.error || result.status,
       attempt_count: nextAttemptCount,
     });
     return false;
   }
 
-  private async queueNotification(payload: NotificationPayload): Promise<string | null> {
+  /**
+   * Deliver a queued 'email' notification via the email provider and update its
+   * queue row. When the provider isn't configured the row is marked failed
+   * without burning retries. Returns true on successful delivery.
+   */
+  private async dispatchEmailMessage(
+    notification: NotificationQueueRecord,
+  ): Promise<boolean> {
+    const to = notification.recipient_address || "";
+    const nextAttemptCount = (notification.attempt_count || 0) + 1;
+    const subject =
+      notification.message_type === "escalation"
+        ? "🚨 AEGIS Emergency Alert"
+        : "AEGIS Notification";
+
+    const result = await sendEmail(
+      to,
+      subject,
+      notification.message_content || "",
+    );
+
+    if (result.success) {
+      await this.updateQueuedNotification(notification.id, {
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        last_error: null,
+        attempt_count: nextAttemptCount,
+      });
+      return true;
+    }
+
+    // Not configured / invalid address won't fix on retry — fail terminally.
+    const maxAttempts = notification.max_attempts ?? 3;
+    const terminal =
+      result.notConfigured || result.status === "invalid_address";
+    await this.updateQueuedNotification(notification.id, {
+      status: terminal || nextAttemptCount >= maxAttempts ? "failed" : "retry",
+      last_error: result.error || result.status,
+      attempt_count: nextAttemptCount,
+    });
+    return false;
+  }
+
+  private async queueNotification(
+    payload: NotificationPayload,
+  ): Promise<string | null> {
     try {
       if (!this.notificationQueueAvailable) {
         return null;
       }
 
-      const recipientType: QueueRecipientType = payload.recipientType === 'email' ? 'email' : 'sms';
+      const recipientType: QueueRecipientType =
+        payload.recipientType === "email" ? "email" : "sms";
       const { data, error } = await this.supabase
-        .from('notification_queue')
+        .from("notification_queue")
         .insert({
           recipient_type: recipientType,
           recipient_address: payload.recipientAddress,
@@ -619,11 +747,11 @@ Check app for details.
           message_content: payload.messageContent,
           case_id: payload.caseId,
           user_id: payload.userId,
-          status: 'pending',
+          status: "pending",
           attempt_count: 0,
           created_at: new Date().toISOString(),
         })
-        .select('id')
+        .select("id")
         .single<{ id: string }>();
 
       if (error) {
@@ -636,7 +764,7 @@ Check app for details.
         return null;
       }
 
-      console.error('Failed to queue notification:', error);
+      console.error("Failed to queue notification:", error);
       return null;
     }
   }
@@ -644,11 +772,11 @@ Check app for details.
   private async updateQueuedNotification(
     notificationId: string,
     updates: {
-      status?: 'pending' | 'sent' | 'failed' | 'retry';
+      status?: "pending" | "sent" | "failed" | "retry";
       sent_at?: string;
       last_error?: string | null;
       attempt_count?: number;
-    }
+    },
   ): Promise<void> {
     if (!this.notificationQueueAvailable) {
       return;
@@ -673,26 +801,37 @@ Check app for details.
     }
 
     try {
-      const { error } = await this.supabase.from('notification_queue').update(payload).eq('id', notificationId);
+      const { error } = await this.supabase
+        .from("notification_queue")
+        .update(payload)
+        .eq("id", notificationId);
 
       if (error) {
         throw error;
       }
     } catch (error) {
       if (!this.handleMissingNotificationQueue(error)) {
-        console.error('Failed to update queued notification:', error);
+        console.error("Failed to update queued notification:", error);
       }
     }
   }
 
   private handleMissingNotificationQueue(error: unknown): boolean {
-    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-    const message = typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+    const message =
+      typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "";
 
-    const isMissingQueue = code === 'PGRST205'
-      || code === '42P01'
-      || (message.includes('notification_queue')
-        && (message.includes('Could not find the table') || message.includes('does not exist')));
+    const isMissingQueue =
+      code === "PGRST205" ||
+      code === "42P01" ||
+      (message.includes("notification_queue") &&
+        (message.includes("Could not find the table") ||
+          message.includes("does not exist")));
 
     if (!isMissingQueue) {
       return false;
@@ -700,7 +839,9 @@ Check app for details.
 
     if (this.notificationQueueAvailable) {
       this.notificationQueueAvailable = false;
-      console.warn('notification_queue table is unavailable. Notification queue features are disabled until migrations are applied.');
+      console.warn(
+        "notification_queue table is unavailable. Notification queue features are disabled until migrations are applied.",
+      );
     }
 
     return true;
@@ -715,17 +856,17 @@ Check app for details.
       return null;
     }
 
-    const cleaned = phoneNumber.replace(/[\s\-()]/g, '');
+    const cleaned = phoneNumber.replace(/[\s\-()]/g, "");
 
     if (!cleaned) {
       return null;
     }
 
-    if (cleaned.startsWith('+')) {
+    if (cleaned.startsWith("+")) {
       return cleaned;
     }
 
-    if (cleaned.startsWith('00')) {
+    if (cleaned.startsWith("00")) {
       return `+${cleaned.slice(2)}`;
     }
 
@@ -737,13 +878,14 @@ Check app for details.
   }
 
   private resolveAppBaseUrl(): string | undefined {
-    const configuredBaseUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL;
+    const configuredBaseUrl =
+      process.env.APP_BASE_URL || process.env.FRONTEND_URL;
     if (configuredBaseUrl) {
-      return configuredBaseUrl.replace(/\/+$/, '');
+      return configuredBaseUrl.replace(/\/+$/, "");
     }
 
-    const firstOrigin = process.env.CORS_ORIGIN?.split(',')[0]?.trim();
-    return firstOrigin ? firstOrigin.replace(/\/+$/, '') : undefined;
+    const firstOrigin = process.env.CORS_ORIGIN?.split(",")[0]?.trim();
+    return firstOrigin ? firstOrigin.replace(/\/+$/, "") : undefined;
   }
 
   private delay(ms: number): Promise<void> {

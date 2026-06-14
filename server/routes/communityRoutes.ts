@@ -17,6 +17,13 @@
 import express, { Router, Request, Response, NextFunction } from "express";
 import { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { fanOut } from "../notifications/fanout";
+
+const RELATIONSHIP_LABEL: Record<string, string> = {
+  on_behalf: "Report on behalf of someone",
+  witness: "Witness statement",
+  concern: "Community safety concern",
+};
 
 type Middleware = (
   req: Request,
@@ -98,6 +105,23 @@ export function createCommunityRoutes(
           });
 
           if (!error) {
+            // Unified fan-out: always surface in-app; push to responders for
+            // real incidents (on_behalf/witness), in-app only for concerns.
+            const label =
+              RELATIONSHIP_LABEL[relationship] ?? "Community report";
+            await fanOut(supabase, {
+              eventType: "community_report",
+              title: "New community report",
+              message: `${label} (${reference})${locationText ? ` · ${locationText}` : ""}: ${description.slice(0, 160)}`,
+              severity: relationship === "concern" ? "low" : "medium",
+              module: "police",
+              caseId: reference,
+              channels: {
+                inApp: true,
+                pushResponders: relationship !== "concern",
+              },
+            }).catch(() => undefined);
+
             res.status(201).json({ reference });
             return;
           }
