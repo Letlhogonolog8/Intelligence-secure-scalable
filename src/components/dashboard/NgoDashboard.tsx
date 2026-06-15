@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   useAlertsFeed,
   useEscalationReviews,
@@ -23,6 +23,7 @@ import {
   MetricCard,
   SectionCard,
   StatusPill,
+  TabBar,
 } from "@/components/dashboard/DashboardPrimitives";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
@@ -49,10 +50,18 @@ import {
   YAxis,
 } from "recharts";
 
+const NGO_TABS = [
+  { id: "operations", label: "Operations" },
+  { id: "referrals", label: "Referrals & care" },
+  { id: "programs", label: "Programs & trends" },
+] as const;
+type NgoTab = (typeof NGO_TABS)[number]["id"];
+
 const NgoDashboard: React.FC = () => {
   const { organizationId, organizationName } = useOrganizationContext();
   const { user, session } = useAuth();
   const { setActiveModule } = useAppStore();
+  const [activeTab, setActiveTab] = useState<NgoTab>("operations");
   const { data: profile } = useUserProfile(user?.id);
   const isNgo = profile?.role === "ngo";
   const resolvedRole = (profile?.role ?? "ngo") as UserRole;
@@ -313,323 +322,352 @@ const NgoDashboard: React.FC = () => {
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
-        <SectionCard
-          title="Live operations snapshot"
-          description="Current program, referral, and resource posture."
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            <ListItemCard
-              title="Program coverage"
-              subtitle="Active NGO programs for this organization"
-              meta={
-                <StatusPill tone="indigo">{activePrograms.length}</StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Referral turnaround"
-              subtitle="Average time from handoff to completion"
-              meta={
-                <StatusPill tone="emerald">
-                  {formatHours(averageCompletionHours)}
-                </StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Partner reach"
-              subtitle="Unique destination organizations in active pipeline"
-              meta={<StatusPill tone="sky">{partnerCoverage}</StatusPill>}
-            />
-            <ListItemCard
-              title="Urgent escalations"
-              subtitle="High-severity support items visible to the NGO queue"
-              meta={
-                <StatusPill
-                  tone={urgentEscalations.length > 0 ? "rose" : "emerald"}
-                >
-                  {urgentEscalations.length}
-                </StatusPill>
-              }
-            />
-          </div>
-        </SectionCard>
+      <TabBar
+        accent="cyan"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={NGO_TABS.map((t) => ({ id: t.id, label: t.label }))}
+      />
 
-        <SectionCard
-          title="Security & access"
-          description="Session and organization verification posture."
-        >
-          <div className="space-y-3">
-            <ListItemCard
-              title="Session expiry"
-              subtitle="Current secure NGO session window"
-              meta={sessionExpiry}
-            />
-            <ListItemCard
-              title="Organization verification"
-              subtitle="Trust posture for inter-agency coordination"
-              meta={
-                <StatusPill
-                  tone={organization?.isVerified ? "emerald" : "amber"}
-                >
-                  {organization?.isVerified ? "verified" : "pending"}
-                </StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Last handoff sync"
-              subtitle="Most recent referral update in your workspace"
-              meta={
-                lastCoordinationSync
-                  ? formatRelativeDateTime(lastCoordinationSync)
-                  : "Awaiting first referral"
-              }
-            />
-            <ListItemCard
-              title="Subscription tier"
-              subtitle="Active workspace level"
-              meta={organization?.subscriptionLevel || "standard"}
-            />
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard
-          title="Referral pipeline"
-          description="Live outbound and inbound referral queue."
-        >
-          <div className="space-y-3">
-            {organizationCoordination.length === 0 ? (
-              <EmptyState
-                title="No referral activity yet"
-                description="Partner coordination events will appear here as soon as cases are routed to or from your organization."
-                guidance={[
-                  "This queue fills automatically when your team accepts, forwards, or closes a partner handoff.",
-                  "If a referral was just created, allow the workspace sync to refresh before reviewing it here.",
-                ]}
-              />
-            ) : (
-              organizationCoordination
-                .slice(0, 6)
-                .map((entry) => (
-                  <ListItemCard
-                    key={entry.id}
-                    title={`${entry.referralType} referral`}
-                    subtitle={`Case ${entry.caseId.slice(0, 8)} · ${formatRelativeDateTime(entry.createdAt)}`}
-                    meta={
-                      <StatusPill
-                        tone={
-                          entry.status === "completed"
-                            ? "emerald"
-                            : entry.status === "pending"
-                              ? "amber"
-                              : "sky"
-                        }
-                      >
-                        {entry.status}
-                      </StatusPill>
-                    }
-                  />
-                ))
-            )}
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Realtime alerts"
-          description="Live operational alerts from the shared response grid."
-        >
-          <div className="space-y-3">
-            {alertHighlights.length === 0 ? (
-              <EmptyState
-                title="No active alerts"
-                description="Operational alerts for your organization will surface here automatically."
-                guidance={[
-                  "Response notices, care escalations, and partner warnings will appear here when they require NGO action.",
-                  "If another team has just updated a handoff, refresh once the live feed settles.",
-                ]}
-              />
-            ) : (
-              alertHighlights.map((entry) => (
+      {activeTab === "operations" && (
+        <>
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
+            <SectionCard
+              title="Live operations snapshot"
+              description="Current program, referral, and resource posture."
+            >
+              <div className="grid gap-3 md:grid-cols-2">
                 <ListItemCard
-                  key={entry.id}
-                  title={entry.message}
-                  subtitle={`${entry.module || "operations"} · ${entry.time}`}
+                  title="Program coverage"
+                  subtitle="Active NGO programs for this organization"
                   meta={
-                    <StatusPill
-                      tone={entry.type === "critical" ? "rose" : "amber"}
-                    >
-                      {entry.type || "notice"}
+                    <StatusPill tone="indigo">
+                      {activePrograms.length}
                     </StatusPill>
                   }
                 />
-              ))
-            )}
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
-        <SectionCard
-          title="Referral flow trend"
-          description="Weekly referral openings versus completed handoffs."
-        >
-          {coordinationTrend.some(
-            (entry) => entry.opened > 0 || entry.resolved > 0,
-          ) ? (
-            <ChartFrame label="Referral flow trend">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={coordinationTrend}>
-                  <CartesianGrid
-                    stroke="#1e293b"
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                  />
-                  <Tooltip />
-                  <Bar dataKey="opened" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-                  <Bar
-                    dataKey="resolved"
-                    fill="#10b981"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-          ) : (
-            <EmptyState
-              title="No referral flow yet"
-              description="This trend chart will render once partner handoffs start moving through the organization pipeline."
-              guidance={[
-                "New referrals and completions will appear here automatically when coordination records are created or updated.",
-                "If your team just routed a case, wait for the next workspace refresh and check again.",
-              ]}
-            />
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title="Program & resource network"
-          description="Live program registry and support-resource footprint."
-        >
-          <div className="space-y-3">
-            <ListItemCard
-              title="Active programs"
-              subtitle="Programs registered for this NGO workspace"
-              meta={
-                <StatusPill tone="indigo">{activePrograms.length}</StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Shelter resources"
-              subtitle="Shelter nodes currently mapped in accessible resource data"
-              meta={
-                <StatusPill tone="emerald">
-                  {shelterResources.length}
-                </StatusPill>
-              }
-            />
-            <ListItemCard
-              title="24/7 support resources"
-              subtitle="Always-on support channels and facilities"
-              meta={
-                <StatusPill tone="sky">{alwaysOnResources.length}</StatusPill>
-              }
-            />
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setActiveModule("admin_console")}
-                disabled={!permissions.canCreateUsers}
-              >
-                Manage partner workspace
-              </Button>
-            </div>
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
-        <SectionCard
-          title="Active programs"
-          description="Registered NGO programs sourced directly from workspace data."
-        >
-          <div className="space-y-3">
-            {activePrograms.length === 0 ? (
-              <EmptyState
-                title="No active programs configured"
-                description="Program records will appear here after they are configured for this organization."
-                guidance={[
-                  "Add and activate service programs for this workspace to show live coverage and focus areas here.",
-                  "Once a program is published, the dashboard refreshes automatically with the latest roster.",
-                ]}
-              />
-            ) : (
-              activePrograms.map((entry) => (
                 <ListItemCard
-                  key={entry.id}
-                  title={entry.programName}
-                  subtitle={`${entry.programType} · ${entry.focusAreas.join(", ") || "focus areas pending"}`}
-                  meta={<StatusPill tone="indigo">active</StatusPill>}
+                  title="Referral turnaround"
+                  subtitle="Average time from handoff to completion"
+                  meta={
+                    <StatusPill tone="emerald">
+                      {formatHours(averageCompletionHours)}
+                    </StatusPill>
+                  }
                 />
-              ))
-            )}
-          </div>
-        </SectionCard>
+                <ListItemCard
+                  title="Partner reach"
+                  subtitle="Unique destination organizations in active pipeline"
+                  meta={<StatusPill tone="sky">{partnerCoverage}</StatusPill>}
+                />
+                <ListItemCard
+                  title="Urgent escalations"
+                  subtitle="High-severity support items visible to the NGO queue"
+                  meta={
+                    <StatusPill
+                      tone={urgentEscalations.length > 0 ? "rose" : "emerald"}
+                    >
+                      {urgentEscalations.length}
+                    </StatusPill>
+                  }
+                />
+              </div>
+            </SectionCard>
 
-        <SectionCard
-          title="Urgent escalation watch"
-          description="High-severity escalations visible to the NGO support queue."
-        >
-          <div className="space-y-3">
-            {urgentEscalations.length === 0 ? (
-              <EmptyState
-                title="No urgent escalation items"
-                description="High-severity escalation reviews will surface here when intervention is needed."
-                guidance={[
-                  "Urgent intervention requests appear here when linked survivor cases need immediate NGO response.",
-                  "If a case was escalated moments ago, wait for the live queue to refresh before checking again.",
-                ]}
-              />
-            ) : (
-              urgentEscalations
-                .slice(0, 5)
-                .map((entry) => (
-                  <ListItemCard
-                    key={entry.id}
-                    title={entry.emotionDetected || "Escalation review"}
-                    subtitle={`${entry.status} · ${formatRelativeDateTime(entry.createdAt)}`}
-                    meta={
-                      <StatusPill
-                        tone={entry.riskLevel === "critical" ? "rose" : "amber"}
-                      >
-                        {entry.riskLevel}
-                      </StatusPill>
-                    }
+            <SectionCard
+              title="Security & access"
+              description="Session and organization verification posture."
+            >
+              <div className="space-y-3">
+                <ListItemCard
+                  title="Session expiry"
+                  subtitle="Current secure NGO session window"
+                  meta={sessionExpiry}
+                />
+                <ListItemCard
+                  title="Organization verification"
+                  subtitle="Trust posture for inter-agency coordination"
+                  meta={
+                    <StatusPill
+                      tone={organization?.isVerified ? "emerald" : "amber"}
+                    >
+                      {organization?.isVerified ? "verified" : "pending"}
+                    </StatusPill>
+                  }
+                />
+                <ListItemCard
+                  title="Last handoff sync"
+                  subtitle="Most recent referral update in your workspace"
+                  meta={
+                    lastCoordinationSync
+                      ? formatRelativeDateTime(lastCoordinationSync)
+                      : "Awaiting first referral"
+                  }
+                />
+                <ListItemCard
+                  title="Subscription tier"
+                  subtitle="Active workspace level"
+                  meta={organization?.subscriptionLevel || "standard"}
+                />
+              </div>
+            </SectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <SectionCard
+              title="Referral pipeline"
+              description="Live outbound and inbound referral queue."
+            >
+              <div className="space-y-3">
+                {organizationCoordination.length === 0 ? (
+                  <EmptyState
+                    title="No referral activity yet"
+                    description="Partner coordination events will appear here as soon as cases are routed to or from your organization."
+                    guidance={[
+                      "This queue fills automatically when your team accepts, forwards, or closes a partner handoff.",
+                      "If a referral was just created, allow the workspace sync to refresh before reviewing it here.",
+                    ]}
                   />
-                ))
-            )}
-          </div>
-        </SectionCard>
-      </section>
+                ) : (
+                  organizationCoordination
+                    .slice(0, 6)
+                    .map((entry) => (
+                      <ListItemCard
+                        key={entry.id}
+                        title={`${entry.referralType} referral`}
+                        subtitle={`Case ${entry.caseId.slice(0, 8)} · ${formatRelativeDateTime(entry.createdAt)}`}
+                        meta={
+                          <StatusPill
+                            tone={
+                              entry.status === "completed"
+                                ? "emerald"
+                                : entry.status === "pending"
+                                  ? "amber"
+                                  : "sky"
+                            }
+                          >
+                            {entry.status}
+                          </StatusPill>
+                        }
+                      />
+                    ))
+                )}
+              </div>
+            </SectionCard>
 
-      {/* Survivor assistance (consented evidence) + referral management. */}
-      <section className="space-y-6">
-        <SharedEvidencePanel />
-        <CoordinationBoard organizationId={effectiveOrganizationId} />
-      </section>
+            <SectionCard
+              title="Realtime alerts"
+              description="Live operational alerts from the shared response grid."
+            >
+              <div className="space-y-3">
+                {alertHighlights.length === 0 ? (
+                  <EmptyState
+                    title="No active alerts"
+                    description="Operational alerts for your organization will surface here automatically."
+                    guidance={[
+                      "Response notices, care escalations, and partner warnings will appear here when they require NGO action.",
+                      "If another team has just updated a handoff, refresh once the live feed settles.",
+                    ]}
+                  />
+                ) : (
+                  alertHighlights.map((entry) => (
+                    <ListItemCard
+                      key={entry.id}
+                      title={entry.message}
+                      subtitle={`${entry.module || "operations"} · ${entry.time}`}
+                      meta={
+                        <StatusPill
+                          tone={entry.type === "critical" ? "rose" : "amber"}
+                        >
+                          {entry.type || "notice"}
+                        </StatusPill>
+                      }
+                    />
+                  ))
+                )}
+              </div>
+            </SectionCard>
+          </section>
+        </>
+      )}
+
+      {activeTab === "programs" && (
+        <>
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
+            <SectionCard
+              title="Referral flow trend"
+              description="Weekly referral openings versus completed handoffs."
+            >
+              {coordinationTrend.some(
+                (entry) => entry.opened > 0 || entry.resolved > 0,
+              ) ? (
+                <ChartFrame label="Referral flow trend">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={coordinationTrend}>
+                      <CartesianGrid
+                        stroke="#1e293b"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#64748b"
+                        tickLine={false}
+                        axisLine={false}
+                        fontSize={10}
+                      />
+                      <YAxis
+                        stroke="#64748b"
+                        tickLine={false}
+                        axisLine={false}
+                        fontSize={10}
+                      />
+                      <Tooltip />
+                      <Bar
+                        dataKey="opened"
+                        fill="#38bdf8"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="resolved"
+                        fill="#10b981"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartFrame>
+              ) : (
+                <EmptyState
+                  title="No referral flow yet"
+                  description="This trend chart will render once partner handoffs start moving through the organization pipeline."
+                  guidance={[
+                    "New referrals and completions will appear here automatically when coordination records are created or updated.",
+                    "If your team just routed a case, wait for the next workspace refresh and check again.",
+                  ]}
+                />
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Program & resource network"
+              description="Live program registry and support-resource footprint."
+            >
+              <div className="space-y-3">
+                <ListItemCard
+                  title="Active programs"
+                  subtitle="Programs registered for this NGO workspace"
+                  meta={
+                    <StatusPill tone="indigo">
+                      {activePrograms.length}
+                    </StatusPill>
+                  }
+                />
+                <ListItemCard
+                  title="Shelter resources"
+                  subtitle="Shelter nodes currently mapped in accessible resource data"
+                  meta={
+                    <StatusPill tone="emerald">
+                      {shelterResources.length}
+                    </StatusPill>
+                  }
+                />
+                <ListItemCard
+                  title="24/7 support resources"
+                  subtitle="Always-on support channels and facilities"
+                  meta={
+                    <StatusPill tone="sky">
+                      {alwaysOnResources.length}
+                    </StatusPill>
+                  }
+                />
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setActiveModule("admin_console")}
+                    disabled={!permissions.canCreateUsers}
+                  >
+                    Manage partner workspace
+                  </Button>
+                </div>
+              </div>
+            </SectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
+            <SectionCard
+              title="Active programs"
+              description="Registered NGO programs sourced directly from workspace data."
+            >
+              <div className="space-y-3">
+                {activePrograms.length === 0 ? (
+                  <EmptyState
+                    title="No active programs configured"
+                    description="Program records will appear here after they are configured for this organization."
+                    guidance={[
+                      "Add and activate service programs for this workspace to show live coverage and focus areas here.",
+                      "Once a program is published, the dashboard refreshes automatically with the latest roster.",
+                    ]}
+                  />
+                ) : (
+                  activePrograms.map((entry) => (
+                    <ListItemCard
+                      key={entry.id}
+                      title={entry.programName}
+                      subtitle={`${entry.programType} · ${entry.focusAreas.join(", ") || "focus areas pending"}`}
+                      meta={<StatusPill tone="indigo">active</StatusPill>}
+                    />
+                  ))
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Urgent escalation watch"
+              description="High-severity escalations visible to the NGO support queue."
+            >
+              <div className="space-y-3">
+                {urgentEscalations.length === 0 ? (
+                  <EmptyState
+                    title="No urgent escalation items"
+                    description="High-severity escalation reviews will surface here when intervention is needed."
+                    guidance={[
+                      "Urgent intervention requests appear here when linked survivor cases need immediate NGO response.",
+                      "If a case was escalated moments ago, wait for the live queue to refresh before checking again.",
+                    ]}
+                  />
+                ) : (
+                  urgentEscalations
+                    .slice(0, 5)
+                    .map((entry) => (
+                      <ListItemCard
+                        key={entry.id}
+                        title={entry.emotionDetected || "Escalation review"}
+                        subtitle={`${entry.status} · ${formatRelativeDateTime(entry.createdAt)}`}
+                        meta={
+                          <StatusPill
+                            tone={
+                              entry.riskLevel === "critical" ? "rose" : "amber"
+                            }
+                          >
+                            {entry.riskLevel}
+                          </StatusPill>
+                        }
+                      />
+                    ))
+                )}
+              </div>
+            </SectionCard>
+          </section>
+        </>
+      )}
+
+      {activeTab === "referrals" && (
+        /* Survivor assistance (consented evidence) + referral management. */
+        <section className="space-y-6">
+          <SharedEvidencePanel />
+          <CoordinationBoard organizationId={effectiveOrganizationId} />
+        </section>
+      )}
     </DashboardPage>
   );
 };

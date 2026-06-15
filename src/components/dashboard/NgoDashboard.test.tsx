@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import NgoDashboard from "@/components/dashboard/NgoDashboard";
 
 const mockUseOrganizationContext = vi.fn();
@@ -130,8 +130,12 @@ describe("NgoDashboard", () => {
     render(<NgoDashboard />);
 
     expect(screen.getByText("Safe Network hub")).toBeInTheDocument();
+    // Operations tab (default): referral pipeline + realtime alerts.
     expect(screen.getByText("No referral activity yet")).toBeInTheDocument();
     expect(screen.getByText("No active alerts")).toBeInTheDocument();
+
+    // Programs & trends tab: flow trend + program registry + escalation watch.
+    fireEvent.click(screen.getByRole("tab", { name: "Programs & trends" }));
     expect(screen.getByText("No referral flow yet")).toBeInTheDocument();
     expect(
       screen.getByText("No active programs configured"),
