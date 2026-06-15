@@ -40,6 +40,18 @@ export type Database = {
         timestamp: string | null;
         created_at: string | null;
       }>;
+      alerts_feed: TableDefinition<{
+        id: string;
+        time: string | null;
+        type: string | null;
+        message: string | null;
+        module: string | null;
+        severity: string | null;
+        status: string | null;
+        acknowledged_at: string | null;
+        acknowledged_by: string | null;
+        created_at: string | null;
+      }>;
       case_reports: TableDefinition<{
         id: string;
         survivor_id: string | null;
