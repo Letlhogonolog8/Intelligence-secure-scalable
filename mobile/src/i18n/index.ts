@@ -42,12 +42,54 @@ export const SUPPORTED_LANGUAGES = [
   { code: "sw", label: "Kiswahili" },
   { code: "zu", label: "isiZulu" },
   { code: "af", label: "Afrikaans" },
+  // Engine languages (LLM translation + voice; UI falls back to English until
+  // a bundled translation is added). Brings the survivor app's selectable
+  // languages in line with the web portal — especially SA indigenous tongues.
+  { code: "xh", label: "isiXhosa" },
+  { code: "st", label: "Sesotho" },
+  { code: "tn", label: "Setswana" },
+  { code: "ts", label: "Xitsonga" },
+  { code: "ve", label: "Tshivenda" },
+  { code: "ss", label: "siSwati" },
+  { code: "nso", label: "Sepedi" },
+  { code: "nr", label: "isiNdebele" },
+  { code: "am", label: "አማርኛ" },
+  { code: "yo", label: "Yorùbá" },
+  { code: "ha", label: "Hausa" },
+  { code: "ig", label: "Igbo" },
+  { code: "so", label: "Soomaali" },
+  { code: "sn", label: "chiShona" },
+  { code: "lg", label: "Luganda" },
+  { code: "wo", label: "Wolof" },
+  { code: "nl", label: "Nederlands" },
+  { code: "uk", label: "Українська" },
+  { code: "pl", label: "Polski" },
+  { code: "sv", label: "Svenska" },
+  { code: "no", label: "Norsk" },
+  { code: "da", label: "Dansk" },
+  { code: "fi", label: "Suomi" },
+  { code: "el", label: "Ελληνικά" },
+  { code: "fa", label: "فارسی" },
+  { code: "he", label: "עברית" },
+  { code: "ku", label: "Kurdî" },
+  { code: "yue", label: "粵語" },
+  { code: "ja", label: "日本語" },
+  { code: "ko", label: "한국어" },
+  { code: "bn", label: "বাংলা" },
+  { code: "ur", label: "اردو" },
+  { code: "pa", label: "ਪੰਜਾਬੀ" },
+  { code: "ta", label: "தமிழ்" },
+  { code: "te", label: "తెలుగు" },
+  { code: "ml", label: "മലയാളം" },
+  { code: "th", label: "ไทย" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "tl", label: "Filipino" },
 ] as const;
 
 export type LanguageCode = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
 /** Languages that render right-to-left. */
-export const RTL_LANGUAGES: LanguageCode[] = ["ar"];
+export const RTL_LANGUAGES: LanguageCode[] = ["ar", "fa", "he", "ur"];
 export function isRTLLanguage(code: string): boolean {
   return RTL_LANGUAGES.includes(code as LanguageCode);
 }

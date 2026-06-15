@@ -3,7 +3,17 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import en from "./locales/en";
 
+/**
+ * Languages a user can select. The first block has a fully human-translated UI
+ * bundle (see loadLanguageResource); the rest are "engine" languages — the
+ * global language engine (LLM translation, Azure TTS where available, and the
+ * synced preferred-language target) serves them, while the interface chrome
+ * falls back to English until a vetted locale bundle is added. This is how the
+ * platform supports 50+ languages for survivor↔responder communication without
+ * shipping unreviewed UI translations for safety-critical text.
+ */
 export const SUPPORTED_LANGUAGES = [
+  // --- Fully localized UI (bundled translations) ---
   { code: "en", label: "English", nativeLabel: "English" },
   { code: "sw", label: "Swahili", nativeLabel: "Kiswahili" },
   { code: "fr", label: "French", nativeLabel: "Français" },
@@ -20,16 +30,63 @@ export const SUPPORTED_LANGUAGES = [
   { code: "nso", label: "Sepedi", nativeLabel: "Sepedi" },
   { code: "nr", label: "isiNdebele", nativeLabel: "isiNdebele" },
   { code: "ss", label: "SiSwati", nativeLabel: "SiSwati" },
+  // --- Additional African languages (engine) ---
+  { code: "ig", label: "Igbo", nativeLabel: "Igbo" },
+  { code: "so", label: "Somali", nativeLabel: "Soomaali" },
+  { code: "sn", label: "Shona", nativeLabel: "chiShona" },
+  { code: "lg", label: "Luganda", nativeLabel: "Luganda" },
+  { code: "wo", label: "Wolof", nativeLabel: "Wolof" },
+  // --- European (engine) ---
+  { code: "es", label: "Spanish", nativeLabel: "Español" },
+  { code: "pt", label: "Portuguese", nativeLabel: "Português" },
+  { code: "de", label: "German", nativeLabel: "Deutsch" },
+  { code: "it", label: "Italian", nativeLabel: "Italiano" },
+  { code: "nl", label: "Dutch", nativeLabel: "Nederlands" },
+  { code: "ru", label: "Russian", nativeLabel: "Русский" },
+  { code: "uk", label: "Ukrainian", nativeLabel: "Українська" },
+  { code: "pl", label: "Polish", nativeLabel: "Polski" },
+  { code: "sv", label: "Swedish", nativeLabel: "Svenska" },
+  { code: "no", label: "Norwegian", nativeLabel: "Norsk" },
+  { code: "da", label: "Danish", nativeLabel: "Dansk" },
+  { code: "fi", label: "Finnish", nativeLabel: "Suomi" },
+  { code: "el", label: "Greek", nativeLabel: "Ελληνικά" },
+  // --- Middle Eastern (engine) ---
+  { code: "ar", label: "Arabic", nativeLabel: "العربية" },
+  { code: "fa", label: "Persian", nativeLabel: "فارسی" },
+  { code: "he", label: "Hebrew", nativeLabel: "עברית" },
+  { code: "tr", label: "Turkish", nativeLabel: "Türkçe" },
+  { code: "ku", label: "Kurdish", nativeLabel: "Kurdî" },
+  // --- Asian (engine) ---
+  { code: "zh", label: "Chinese", nativeLabel: "中文" },
+  { code: "yue", label: "Cantonese", nativeLabel: "粵語" },
+  { code: "ja", label: "Japanese", nativeLabel: "日本語" },
+  { code: "ko", label: "Korean", nativeLabel: "한국어" },
+  { code: "hi", label: "Hindi", nativeLabel: "हिन्दी" },
+  { code: "bn", label: "Bengali", nativeLabel: "বাংলা" },
+  { code: "ur", label: "Urdu", nativeLabel: "اردو" },
+  { code: "pa", label: "Punjabi", nativeLabel: "ਪੰਜਾਬੀ" },
+  { code: "ta", label: "Tamil", nativeLabel: "தமிழ்" },
+  { code: "te", label: "Telugu", nativeLabel: "తెలుగు" },
+  { code: "ml", label: "Malayalam", nativeLabel: "മലയാളം" },
+  { code: "id", label: "Indonesian", nativeLabel: "Bahasa Indonesia" },
+  { code: "th", label: "Thai", nativeLabel: "ไทย" },
+  { code: "vi", label: "Vietnamese", nativeLabel: "Tiếng Việt" },
+  { code: "tl", label: "Filipino", nativeLabel: "Filipino" },
 ] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 type TranslationResource = typeof en;
 
-const supportedLanguageCodes = SUPPORTED_LANGUAGES.map((language) => language.code);
+const supportedLanguageCodes = SUPPORTED_LANGUAGES.map(
+  (language) => language.code,
+);
 const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
-  typeof value === "string" && supportedLanguageCodes.includes(value as SupportedLanguage);
+  typeof value === "string" &&
+  supportedLanguageCodes.includes(value as SupportedLanguage);
 
-const loadLanguageResource = async (language: SupportedLanguage): Promise<TranslationResource> => {
+const loadLanguageResource = async (
+  language: SupportedLanguage,
+): Promise<TranslationResource> => {
   switch (language) {
     case "en":
       return en;
@@ -70,7 +127,9 @@ const loadLanguageResource = async (language: SupportedLanguage): Promise<Transl
 
 const resolveInitialLanguage = (): SupportedLanguage => {
   const localStorageLanguage =
-    typeof window !== "undefined" ? window.localStorage.getItem("aegis_language") : null;
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("aegis_language")
+      : null;
   const navigatorLanguage =
     typeof navigator !== "undefined" ? navigator.language?.split("-")[0] : null;
 
@@ -87,43 +146,47 @@ const resolveInitialLanguage = (): SupportedLanguage => {
 
 const suppressLocizeNotice = () => {
   const shouldSuppress = (value: unknown) =>
-    typeof value === "string" && value.includes("i18next is maintained with support from Locize")
+    typeof value === "string" &&
+    value.includes("i18next is maintained with support from Locize");
 
-  const originalInfo = console.info.bind(console)
-  const originalWarn = console.warn.bind(console)
-  const originalLog = console.log.bind(console)
+  const originalInfo = console.info.bind(console);
+  const originalWarn = console.warn.bind(console);
+  const originalLog = console.log.bind(console);
 
   console.info = (...args: unknown[]) => {
     if (args.some(shouldSuppress)) {
-      return
+      return;
     }
-    originalInfo(...args)
-  }
+    originalInfo(...args);
+  };
 
   console.warn = (...args: unknown[]) => {
     if (args.some(shouldSuppress)) {
-      return
+      return;
     }
-    originalWarn(...args)
-  }
+    originalWarn(...args);
+  };
 
   console.log = (...args: unknown[]) => {
     if (args.some(shouldSuppress)) {
-      return
+      return;
     }
-    originalLog(...args)
-  }
+    originalLog(...args);
+  };
 
   return () => {
-    console.info = originalInfo
-    console.warn = originalWarn
-    console.log = originalLog
-  }
-}
+    console.info = originalInfo;
+    console.warn = originalWarn;
+    console.log = originalLog;
+  };
+};
 
 const ensureLanguageResource = async (language: string) => {
   const languageCode = language.split("-")[0];
-  if (!isSupportedLanguage(languageCode) || i18n.hasResourceBundle(languageCode, "translation")) {
+  if (
+    !isSupportedLanguage(languageCode) ||
+    i18n.hasResourceBundle(languageCode, "translation")
+  ) {
     return;
   }
 
@@ -134,12 +197,16 @@ const ensureLanguageResource = async (language: string) => {
 export const initializeI18n = async () => {
   const restoreConsole = suppressLocizeNotice();
   const initialLanguage = resolveInitialLanguage();
-  const initialResources: Partial<Record<SupportedLanguage, { translation: TranslationResource }>> = {
+  const initialResources: Partial<
+    Record<SupportedLanguage, { translation: TranslationResource }>
+  > = {
     en: { translation: en },
   };
 
   if (initialLanguage !== "en") {
-    initialResources[initialLanguage] = { translation: await loadLanguageResource(initialLanguage) };
+    initialResources[initialLanguage] = {
+      translation: await loadLanguageResource(initialLanguage),
+    };
   }
 
   i18n.on("languageChanged", async (language) => {
