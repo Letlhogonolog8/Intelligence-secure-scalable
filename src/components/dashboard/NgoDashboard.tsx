@@ -25,10 +25,7 @@ import {
   StatusPill,
 } from "@/components/dashboard/DashboardPrimitives";
 import { useOrganizationContext } from "@/contexts/organizationContext";
-import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
-import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
-import CommunityReportsPanel from "@/components/community/CommunityReportsPanel";
 import CoordinationBoard from "@/components/coordination/CoordinationBoard";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
@@ -628,11 +625,9 @@ const NgoDashboard: React.FC = () => {
         </SectionCard>
       </section>
 
+      {/* Survivor assistance (consented evidence) + referral management. */}
       <section className="space-y-6">
-        <VoiceNoteTranslator />
-        <VoiceEvidenceArchive />
         <SharedEvidencePanel />
-        <CommunityReportsPanel />
         <CoordinationBoard organizationId={effectiveOrganizationId} />
       </section>
     </DashboardPage>

@@ -35,7 +35,6 @@ import {
 } from "@/components/dashboard/DashboardPrimitives";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
 import { MFAEnforcementPanel } from "@/components/admin/MFAEnforcementPanel";
-import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import {
   AdminAuditSeveritySummary,
   AdminFeedHealthGrid,
@@ -1264,10 +1263,6 @@ const AdminDashboard: React.FC = () => {
 
       <section className="grid grid-cols-1 gap-6">
         <MFAEnforcementPanel />
-      </section>
-
-      <section>
-        <VoiceEvidenceArchive />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-1">
