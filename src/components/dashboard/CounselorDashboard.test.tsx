@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import CounselorDashboard from "@/components/dashboard/CounselorDashboard";
 
 const mockUseAuth = vi.fn();
@@ -98,8 +98,12 @@ describe("CounselorDashboard", () => {
     render(<CounselorDashboard />);
 
     expect(screen.getByText("Counselor operations board")).toBeInTheDocument();
+    // Caseload tab (default): alert queue + live queue.
     expect(screen.getByText("No new alerts")).toBeInTheDocument();
     expect(screen.getByText("No active queue items")).toBeInTheDocument();
+
+    // Documentation tab: session-flow trend.
+    fireEvent.click(screen.getByRole("tab", { name: "Documentation" }));
     expect(screen.getByText("No session flow yet")).toBeInTheDocument();
   });
 
