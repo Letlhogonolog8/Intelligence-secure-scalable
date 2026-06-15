@@ -1406,7 +1406,7 @@ app.post(
 
       const model =
         process.env.HUGGINGFACE_CHAT_MODEL ||
-        "meta-llama/Llama-3.1-8B-Instruct";
+        "meta-llama/Llama-3.3-70B-Instruct";
       // Single source of truth for the survivor-chat behaviour (the web and
       // mobile clients used to send this; now it lives only here).
       const system = `You are a compassionate, trauma-informed support companion within the AEGIS GBV (gender-based violence) response platform. Your role is to:
@@ -1605,7 +1605,7 @@ app.post(
       try {
         const chatModel =
           process.env.HUGGINGFACE_CHAT_MODEL ||
-          "meta-llama/Llama-3.1-8B-Instruct";
+          "meta-llama/Llama-3.3-70B-Instruct";
         const llm = await fetch(
           "https://router.huggingface.co/v1/chat/completions",
           {
@@ -1714,7 +1714,7 @@ app.post(
 
       const chatModel =
         process.env.HUGGINGFACE_CHAT_MODEL ||
-        "meta-llama/Llama-3.1-8B-Instruct";
+        "meta-llama/Llama-3.3-70B-Instruct";
       const llm = await fetch(
         "https://router.huggingface.co/v1/chat/completions",
         {
@@ -1852,7 +1852,7 @@ app.post(
 
       const chatModel =
         process.env.HUGGINGFACE_CHAT_MODEL ||
-        "meta-llama/Llama-3.1-8B-Instruct";
+        "meta-llama/Llama-3.3-70B-Instruct";
       const llm = await fetch(
         "https://router.huggingface.co/v1/chat/completions",
         {
