@@ -32,7 +32,7 @@ export const DashboardPage = ({
         )}
       />
       <div className="pointer-events-none absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:132px_132px]" />
-      <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-6">
         {children}
       </div>
     </div>
