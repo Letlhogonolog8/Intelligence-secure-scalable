@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MapPin,
   Users,
@@ -27,6 +27,7 @@ import { enqueueOfflineReport } from "@/hooks/useOfflineSync";
 import {
   DashboardHero,
   DashboardPage,
+  EmptyState,
   HeroBadge,
   ListItemCard,
   MetricCard,
@@ -40,7 +41,7 @@ interface ReferralEntry {
   id: string;
   survivorCode: string;
   serviceType: string;
-  status: "pending" | "accepted" | "completed";
+  status: string;
   createdAt: string;
   notes?: string;
 }
@@ -63,33 +64,90 @@ const SERVICE_TYPES = [
   "Child Protection",
 ];
 
+type Row = Record<string, unknown>;
+
+/**
+ * Live CHW field data. Referrals are the case_reports this worker filed
+ * (report_method "chw_referral"); visits are the escalation_events they logged
+ * (escalation_type "chw_visit"). No demo/seed rows — empty means nothing filed yet.
+ */
 async function fetchCHWStats(userId: string) {
   const [referrals, visits] = await Promise.allSettled([
     supabase
       .from("case_reports")
-      .select("id, status, created_at, risk_level")
-      .eq("survivor_id", userId)
+      .select("id, survivor_id, status, description, risk_level, created_at")
+      .eq("reported_by", userId)
+      .eq("report_method", "chw_referral")
       .order("created_at", { ascending: false })
-      .limit(20),
+      .limit(50),
     supabase
       .from("escalation_events")
-      .select("id, severity, status, triggered_at")
+      .select("id, reason, location, severity, status, triggered_at")
       .eq("triggered_by", userId)
+      .eq("escalation_type", "chw_visit")
       .order("triggered_at", { ascending: false })
-      .limit(10),
+      .limit(50),
   ]);
 
-  const referralData =
-    referrals.status === "fulfilled" ? (referrals.value.data ?? []) : [];
-  const visitData =
-    visits.status === "fulfilled" ? (visits.value.data ?? []) : [];
+  const referralData = (
+    referrals.status === "fulfilled" ? (referrals.value.data ?? []) : []
+  ) as Row[];
+  const visitData = (
+    visits.status === "fulfilled" ? (visits.value.data ?? []) : []
+  ) as Row[];
 
   return { referralData, visitData };
 }
 
+const str = (value: unknown, fallback = "") =>
+  typeof value === "string" && value.trim() ? value : fallback;
+
+/** The submit forms encode service/notes/outcome into free-text fields; parse them back for display. */
+const parseServiceType = (description: unknown) =>
+  str(description)
+    .match(/Service:\s*([^.]+)/i)?.[1]
+    ?.trim() || "Service referral";
+
+const parseSurvivorsReached = (reason: unknown) => {
+  const match = str(reason).match(/(\d+)\s+survivors?/i);
+  return match ? Number(match[1]) : 0;
+};
+
+const parseVisitOutcome = (reason: unknown) => {
+  const text = str(reason);
+  return text.match(/reached\.\s*(.+)$/i)?.[1]?.trim() || text || "Field visit";
+};
+
+const mapReferral = (row: Row): ReferralEntry => ({
+  id: str(row.id, crypto.randomUUID()),
+  survivorCode: str(row.survivor_id, "Unknown"),
+  serviceType: parseServiceType(row.description),
+  status: str(row.status, "open"),
+  createdAt: str(row.created_at, new Date().toISOString()),
+});
+
+const mapVisit = (row: Row): VisitLog => {
+  const location = row.location as { address?: string } | null;
+  return {
+    id: str(row.id, crypto.randomUUID()),
+    location: str(location?.address, "Field location"),
+    survivorsReached: parseSurvivorsReached(row.reason),
+    date: str(row.triggered_at, new Date().toISOString()),
+    outcome: parseVisitOutcome(row.reason),
+  };
+};
+
+const referralTone = (status: string) =>
+  /completed|resolved|closed/i.test(status)
+    ? "emerald"
+    : /accepted|progress|active/i.test(status)
+      ? "sky"
+      : "amber";
+
 const CHWDashboard: React.FC = () => {
   const { user } = useAuth();
   const { isOnline, pendingCount } = useOfflineSync();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<
     "overview" | "referrals" | "visits" | "report"
@@ -109,7 +167,7 @@ const CHWDashboard: React.FC = () => {
     outcome: "",
   });
 
-  const { data: _stats, isLoading } = useQuery({
+  const { data: stats, isLoading } = useQuery({
     queryKey: ["chw-stats", user?.id],
     queryFn: () => fetchCHWStats(user?.id ?? ""),
     enabled: !!user?.id,
@@ -117,56 +175,45 @@ const CHWDashboard: React.FC = () => {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  const localReferrals: ReferralEntry[] = [
-    {
-      id: "r1",
-      survivorCode: "SUR-001A",
-      serviceType: "Medical / Clinic",
-      status: "completed",
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: "r2",
-      survivorCode: "SUR-002B",
-      serviceType: "Safe Shelter",
-      status: "pending",
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: "r3",
-      survivorCode: "SUR-003C",
-      serviceType: "Legal Aid",
-      status: "accepted",
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-  ];
+  // Live updates: refresh the moment a referral or visit is written anywhere
+  // (this worker's web session, another device, or the mobile field app).
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`chw-stats:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "case_reports" },
+        () =>
+          queryClient.invalidateQueries({ queryKey: ["chw-stats", user.id] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "escalation_events" },
+        () =>
+          queryClient.invalidateQueries({ queryKey: ["chw-stats", user.id] }),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient, user?.id]);
 
-  const localVisits: VisitLog[] = [
-    {
-      id: "v1",
-      location: "Diepsloot Ward 3",
-      survivorsReached: 8,
-      date: new Date(Date.now() - 86400000 * 2).toISOString(),
-      outcome: "4 referrals made, 2 safety plans updated",
-    },
-    {
-      id: "v2",
-      location: "Orange Farm Ext 4",
-      survivorsReached: 5,
-      date: new Date(Date.now() - 86400000).toISOString(),
-      outcome: "3 survivors linked to shelter",
-    },
-  ];
-
-  const totalReached = localVisits.reduce(
-    (acc, v) => acc + v.survivorsReached,
-    0,
+  const referrals = useMemo<ReferralEntry[]>(
+    () => (stats?.referralData ?? []).map(mapReferral),
+    [stats],
   );
-  const pendingReferrals = localReferrals.filter(
-    (r) => r.status === "pending",
+  const visits = useMemo<VisitLog[]>(
+    () => (stats?.visitData ?? []).map(mapVisit),
+    [stats],
+  );
+
+  const totalReached = visits.reduce((acc, v) => acc + v.survivorsReached, 0);
+  const pendingReferrals = referrals.filter((r) =>
+    /pending|open|new/i.test(r.status),
   ).length;
-  const completedReferrals = localReferrals.filter(
-    (r) => r.status === "completed",
+  const completedReferrals = referrals.filter((r) =>
+    /completed|resolved|closed/i.test(r.status),
   ).length;
 
   const handleReferralSubmit = async () => {
@@ -175,6 +222,7 @@ const CHWDashboard: React.FC = () => {
     const payload = {
       id: `REF-${Date.now()}`,
       survivor_id: referralForm.survivorCode,
+      reported_by: user?.id ?? null,
       report_method: "chw_referral",
       description: `CHW Referral — Service: ${referralForm.serviceType}. Notes: ${referralForm.notes}`,
       status: "open",
@@ -187,6 +235,7 @@ const CHWDashboard: React.FC = () => {
     try {
       const { error } = await supabase.from("case_reports").insert(payload);
       if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["chw-stats", user?.id] });
     } catch {
       await enqueueOfflineReport({
         id: payload.id,
@@ -230,6 +279,7 @@ const CHWDashboard: React.FC = () => {
         .from("escalation_events")
         .insert(payload);
       if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["chw-stats", user?.id] });
     } catch {
       await enqueueOfflineReport({
         id: payload.id,
@@ -244,7 +294,7 @@ const CHWDashboard: React.FC = () => {
     setActiveTab("overview");
   };
 
-  const filteredReferrals = localReferrals.filter(
+  const filteredReferrals = referrals.filter(
     (r) =>
       r.survivorCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.serviceType.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -322,7 +372,7 @@ const CHWDashboard: React.FC = () => {
         />
         <MetricCard
           label="Field Visits"
-          value={localVisits.length}
+          value={visits.length}
           helper="Logged this month"
           accent="indigo"
           loading={isLoading}
@@ -563,31 +613,38 @@ const CHWDashboard: React.FC = () => {
           )}
 
           <div className="space-y-3">
-            {filteredReferrals.map((r) => (
-              <ListItemCard
-                key={r.id}
+            {filteredReferrals.length === 0 ? (
+              <EmptyState
                 title={
-                  <span className="flex items-center gap-2">
-                    <UserCheck className="h-4 w-4 shrink-0 text-slate-400" />
-                    {r.survivorCode}
-                  </span>
+                  referrals.length === 0
+                    ? "No referrals yet"
+                    : "No matching referrals"
                 }
-                subtitle={`${r.serviceType} · ${new Date(r.createdAt).toLocaleDateString()}`}
-                meta={
-                  <StatusPill
-                    tone={
-                      r.status === "completed"
-                        ? "emerald"
-                        : r.status === "accepted"
-                          ? "sky"
-                          : "amber"
-                    }
-                  >
-                    {r.status}
-                  </StatusPill>
+                description={
+                  referrals.length === 0
+                    ? "Referrals you file appear here in real time — including any synced from the field once you reconnect."
+                    : "No referrals match your search. Clear the search to see all of your referrals."
                 }
               />
-            ))}
+            ) : (
+              filteredReferrals.map((r) => (
+                <ListItemCard
+                  key={r.id}
+                  title={
+                    <span className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4 shrink-0 text-slate-400" />
+                      {r.survivorCode}
+                    </span>
+                  }
+                  subtitle={`${r.serviceType} · ${new Date(r.createdAt).toLocaleDateString()}`}
+                  meta={
+                    <StatusPill tone={referralTone(r.status)}>
+                      {r.status}
+                    </StatusPill>
+                  }
+                />
+              ))
+            )}
           </div>
         </motion.div>
       )}
@@ -599,33 +656,40 @@ const CHWDashboard: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-3"
         >
-          {localVisits.map((v) => (
-            <ListItemCard
-              key={v.id}
-              title={
-                <span className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
-                  {v.location}
-                </span>
-              }
-              subtitle={v.outcome}
-              meta={
-                <span className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-blue-400" />
-                    <span className="font-bold text-blue-400">
-                      {v.survivorsReached}
-                    </span>{" "}
-                    reached
-                  </span>
-                  <span className="flex items-center gap-1.5 text-slate-400">
-                    <Clock className="h-3.5 w-3.5" />
-                    {new Date(v.date).toLocaleDateString()}
-                  </span>
-                </span>
-              }
+          {visits.length === 0 ? (
+            <EmptyState
+              title="No field visits logged yet"
+              description="Visits you log from the field appear here in real time. Use the “Log Visit” tab to record outreach activity — it works offline and syncs when you reconnect."
             />
-          ))}
+          ) : (
+            visits.map((v) => (
+              <ListItemCard
+                key={v.id}
+                title={
+                  <span className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
+                    {v.location}
+                  </span>
+                }
+                subtitle={v.outcome}
+                meta={
+                  <span className="flex items-center gap-3">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-blue-400" />
+                      <span className="font-bold text-blue-400">
+                        {v.survivorsReached}
+                      </span>{" "}
+                      reached
+                    </span>
+                    <span className="flex items-center gap-1.5 text-slate-400">
+                      <Clock className="h-3.5 w-3.5" />
+                      {new Date(v.date).toLocaleDateString()}
+                    </span>
+                  </span>
+                }
+              />
+            ))
+          )}
         </motion.div>
       )}
 
