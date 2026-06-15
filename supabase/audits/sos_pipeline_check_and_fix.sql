@@ -65,6 +65,18 @@ LEFT  JOIN pg_publication_tables pt
 -- 20260609120000 (realtime). Run this if PART 1 showed a missing trigger
 -- and/or in_realtime = false.
 
+-- 2a-0. PREREQUISITE — heal drifted feed schema.
+--       Some DBs were created from an older alerts_feed definition missing
+--       `severity`/`status`. Because the bridge's INSERT is wrapped in
+--       EXCEPTION WHEN OTHERS (best-effort), that missing column made every SOS
+--       alert insert fail SILENTLY — the trigger fired but no row appeared.
+--       Add any missing columns so the bridge + backfill below actually work.
+ALTER TABLE public.alerts_feed ADD COLUMN IF NOT EXISTS severity        TEXT DEFAULT 'medium';
+ALTER TABLE public.alerts_feed ADD COLUMN IF NOT EXISTS status          TEXT DEFAULT 'pending';
+ALTER TABLE public.alerts_feed ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
+ALTER TABLE public.alerts_feed ADD COLUMN IF NOT EXISTS acknowledged_by UUID;
+ALTER TABLE public.alerts_feed ADD COLUMN IF NOT EXISTS created_at      TIMESTAMPTZ DEFAULT now();
+
 -- 2a. (Re)create the bridge: every new escalation writes an alerts_feed row
 --     (SECURITY DEFINER so it bypasses RLS) and fans out push jobs.
 CREATE OR REPLACE FUNCTION public.enqueue_escalation_notifications()
