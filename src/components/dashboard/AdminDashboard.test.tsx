@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import AdminDashboard from "@/components/dashboard/AdminDashboard";
 
 const mockUseAuth = vi.fn();
@@ -186,6 +186,7 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard />);
 
     expect(screen.getByText("Administrative oversight")).toBeInTheDocument();
+    // Overview tab (default): governance telemetry + identity mix.
     expect(screen.getByText("No governance telemetry yet")).toBeInTheDocument();
     expect(screen.getByText("No profiles available")).toBeInTheDocument();
     expect(
@@ -193,6 +194,9 @@ describe("AdminDashboard", () => {
         "Approve and activate role access so live identity coverage can populate this view.",
       ),
     ).toBeInTheDocument();
+
+    // Queues & audit tab: live alert feed.
+    fireEvent.click(screen.getByRole("tab", { name: "Queues & audit" }));
     expect(screen.getByText("No system alerts")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -261,8 +265,12 @@ describe("AdminDashboard", () => {
 
     render(<AdminDashboard />);
 
+    // Metric strip + hero badge are always visible.
     expect(screen.getByText("3 profiles tracked")).toBeInTheDocument();
     expect(screen.getByText("1 pending approvals")).toBeInTheDocument();
+
+    // Queues & audit tab: alerts, audit trail, recommended actions, thresholds.
+    fireEvent.click(screen.getByRole("tab", { name: "Queues & audit" }));
     expect(screen.getByText("Data drift detected")).toBeInTheDocument();
     expect(screen.getByText("Role updated")).toBeInTheDocument();
     expect(screen.getByText("Recommended actions")).toBeInTheDocument();
@@ -404,6 +412,8 @@ describe("AdminDashboard", () => {
 
     render(<AdminDashboard />);
 
+    // Audit trail + alert watch live in the Queues & audit tab.
+    fireEvent.click(screen.getByRole("tab", { name: "Queues & audit" }));
     expect(screen.getByText("Policy drift")).toBeInTheDocument();
     expect(screen.getByText("Permission reviewed")).toBeInTheDocument();
     expect(screen.getByText(/system • core •/i)).toBeInTheDocument();
@@ -467,7 +477,11 @@ describe("AdminDashboard", () => {
 
     render(<AdminDashboard />);
 
+    // Overview tab (default): priority board refresh-cadence pill.
     expect(screen.getByText("Alerts 9s • Metrics 45s")).toBeInTheDocument();
+
+    // Queues & audit tab: threshold notifications + efficiency notes.
+    fireEvent.click(screen.getByRole("tab", { name: "Queues & audit" }));
     expect(
       screen.getByText(
         /Approval 1, escalations 2, privacy 1, posture minimum 95%./i,

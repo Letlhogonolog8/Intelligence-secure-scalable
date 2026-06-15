@@ -32,6 +32,7 @@ import {
   SectionCard,
   StatTile,
   StatusPill,
+  TabBar,
 } from "@/components/dashboard/DashboardPrimitives";
 import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
 import { MFAEnforcementPanel } from "@/components/admin/MFAEnforcementPanel";
@@ -82,6 +83,13 @@ const severityTone = {
 } as const;
 
 const AUDIT_PAGE_SIZE = 6;
+
+const ADMIN_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "queues", label: "Queues & audit" },
+  { id: "access", label: "Access & posture" },
+] as const;
+type AdminTab = (typeof ADMIN_TABS)[number]["id"];
 
 const formatQueryError = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed";
@@ -209,6 +217,7 @@ const AdminDashboard: React.FC = () => {
   const [auditSeverity, setAuditSeverity] = useState<string>("all");
   const [auditDisplayLimit, setAuditDisplayLimit] = useState(AUDIT_PAGE_SIZE);
   const [refreshingData, setRefreshingData] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const deferredAuditSearch = useDeferredValue(auditSearch);
 
   useEffect(() => {
@@ -669,672 +678,702 @@ const AdminDashboard: React.FC = () => {
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <SectionCard
-          title="Priority board"
-          description="Triage the most urgent admin queues before moving into deeper analysis."
-          action={
-            <StatusPill tone="sky">
-              {documentVisible
-                ? `Alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s • Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s`
-                : "Polling paused (tab hidden)"}
-            </StatusPill>
-          }
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            {priorityBoard.map((item) => (
-              <ListItemCard
-                key={item.title}
-                title={item.title}
-                subtitle={item.subtitle}
-                meta={<StatusPill tone={item.tone}>{item.value}</StatusPill>}
-                action={
-                  <Button size="sm" variant="outline" onClick={item.action}>
-                    {item.actionLabel}
-                  </Button>
-                }
-              />
-            ))}
-          </div>
-        </SectionCard>
+      <TabBar
+        accent="sky"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={ADMIN_TABS.map((t) => ({ id: t.id, label: t.label }))}
+      />
 
-        <SectionCard
-          title="Operator snapshot"
-          description="A compact read on posture, throughput, and current workload."
-        >
-          {metricsError ? (
-            <AdminQueryErrorBanner
-              title="System metrics unavailable"
-              message={formatQueryError(metricsError)}
-              onRetry={() => void refetchMetrics()}
-            />
-          ) : null}
-          <div className="grid gap-3">
-            <ListItemCard
-              title="System uptime"
-              subtitle="Latest recorded service posture"
-              meta={
-                <StatusPill tone="emerald">
-                  {systemMetrics?.systemUptime ?? 0}%
+      {activeTab === "overview" && (
+        <>
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <SectionCard
+              title="Priority board"
+              description="Triage the most urgent admin queues before moving into deeper analysis."
+              action={
+                <StatusPill tone="sky">
+                  {documentVisible
+                    ? `Alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s • Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s`
+                    : "Polling paused (tab hidden)"}
                 </StatusPill>
               }
-            />
-            <ListItemCard
-              title="API requests today"
-              subtitle="Live platform usage"
-              meta={systemMetrics?.apiRequestsToday ?? 0}
-            />
-            <ListItemCard
-              title="Data points processed"
-              subtitle="Current analytics pipeline"
-              meta={systemMetrics?.dataPointsProcessed ?? "--"}
-            />
-            <ListItemCard
-              title="Alert surface"
-              subtitle="Combined alert watch and backlog pressure"
-              meta={
-                <StatusPill tone={criticalAlerts.length > 0 ? "rose" : "sky"}>
-                  {criticalAlerts.length > 0
-                    ? `${criticalAlerts.length} critical`
-                    : "Calm"}
-                </StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Recent audit actors"
-              subtitle="Unique operators in the latest audit activity window"
-              meta={<StatusPill tone="sky">{recentAuditActors}</StatusPill>}
-            />
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard
-          title="Governance telemetry"
-          description="Latest system throughput and governance event activity."
-        >
-          {incidentsError ? (
-            <AdminQueryErrorBanner
-              title="Incident telemetry unavailable"
-              message={formatQueryError(incidentsError)}
-              onRetry={() => void refetchIncidents()}
-            />
-          ) : null}
-          <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-            {sanitizedIncidentSeries.length > 0 ? (
-              <ChartFrame label="Governance incident signal over time">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={sanitizedIncidentSeries}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id={chartGradientId}
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="5%"
-                          stopColor="#38bdf8"
-                          stopOpacity={0.35}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#38bdf8"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      stroke="#1e293b"
-                      strokeDasharray="3 3"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#64748b"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={10}
-                    />
-                    <YAxis
-                      stroke="#64748b"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={10}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#0f172a",
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: "12px",
-                      }}
-                      labelStyle={{ color: "#e2e8f0" }}
-                      itemStyle={{ color: "#38bdf8" }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#38bdf8"
-                      fill={`url(#${chartGradientId})`}
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </ChartFrame>
-            ) : (
-              <EmptyState
-                title="No governance telemetry yet"
-                description="Incident telemetry will render here once the monitoring and governance feeds start publishing data."
-                guidance={[
-                  "Confirm incident telemetry is reaching the connected environment and is being persisted successfully.",
-                  "After new points are ingested, this chart will populate automatically on the next refresh cycle.",
-                ]}
-              />
-            )}
-            <div className="grid gap-3">
-              <ListItemCard
-                title="Security posture"
-                subtitle="Composite of uptime, encryption, and alert pressure"
-                meta={
-                  <StatusPill
-                    tone={
-                      securityPosture >= 85
-                        ? "emerald"
-                        : securityPosture >= 65
-                          ? "amber"
-                          : "rose"
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                {priorityBoard.map((item) => (
+                  <ListItemCard
+                    key={item.title}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    meta={
+                      <StatusPill tone={item.tone}>{item.value}</StatusPill>
                     }
-                  >
-                    {securityPosture}%
-                  </StatusPill>
-                }
-              />
-              <ListItemCard
-                title="Incident trend"
-                subtitle="Current delta compared with the previous interval"
-                meta={
-                  incidentTrend.delta === 0
-                    ? "Stable"
-                    : incidentTrend.delta > 0
-                      ? `+${incidentTrend.delta}`
-                      : incidentTrend.delta
-                }
-              />
-              <ListItemCard
-                title="Governance activity"
-                subtitle="Events opened across the weekly lifecycle"
-                meta={governanceTimeline.reduce(
-                  (sum, bucket) => sum + bucket.opened,
-                  0,
-                )}
-              />
-              <ListItemCard
-                title="Active alerts"
-                subtitle="Current monitoring watch surface"
-                meta={systemMetrics?.activeAlerts ?? criticalAlerts.length}
-              />
-            </div>
-          </div>
-        </SectionCard>
+                    action={
+                      <Button size="sm" variant="outline" onClick={item.action}>
+                        {item.actionLabel}
+                      </Button>
+                    }
+                  />
+                ))}
+              </div>
+            </SectionCard>
 
-        <SectionCard
-          title="Identity & role mix"
-          description="Real-time role distribution and access posture."
-        >
-          {usersError ? (
-            <AdminQueryErrorBanner
-              title="User directory unavailable"
-              message={formatQueryError(usersError)}
-              onRetry={() => void refetchUsers()}
-            />
-          ) : null}
-          <div className="space-y-3">
-            {roleDistribution.length === 0 ? (
-              <EmptyState
-                title="No profiles available"
-                description="User profiles will appear here as soon as they are synchronized."
-                guidance={[
-                  "Approve and activate role access so live identity coverage can populate this view.",
-                  "If accounts were created recently, allow the workspace sync to refresh before reviewing access posture again.",
-                ]}
-              />
-            ) : (
-              roleDistribution.map((entry) => (
-                <ListItemCard
-                  key={entry.role}
-                  title={<span className="capitalize">{entry.role}</span>}
-                  subtitle={`${percent(entry.count, users.length)}% of active identity surface`}
-                  meta={<StatusPill tone="sky">{entry.count}</StatusPill>}
+            <SectionCard
+              title="Operator snapshot"
+              description="A compact read on posture, throughput, and current workload."
+            >
+              {metricsError ? (
+                <AdminQueryErrorBanner
+                  title="System metrics unavailable"
+                  message={formatQueryError(metricsError)}
+                  onRetry={() => void refetchMetrics()}
                 />
-              ))
-            )}
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard
-          title="Case resolution lookup"
-          description="Shared live lookup for case status verification across admin workflows."
-        >
-          <CaseStatusLookup
-            description="Use a secure case reference to retrieve the current status, priority, and last movement in the case pipeline."
-            placeholder="Enter secure case ID"
-          />
-        </SectionCard>
-
-        <SectionCard
-          title="Recommended actions"
-          description="System-generated next steps based on current admin pressure points."
-        >
-          <AdminRecommendedActionsList
-            items={recommendedActions}
-            onAction={(module) => setActiveModule(module as never)}
-          />
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard
-          title="Attention matrix"
-          description="At-a-glance view of where intervention is most likely needed next."
-        >
-          {escalationsError || deletionsError ? (
-            <AdminQueryErrorBanner
-              title="Queue data partially unavailable"
-              message={
-                escalationsError && deletionsError
-                  ? `Escalations: ${formatQueryError(escalationsError)} · Deletion requests: ${formatQueryError(deletionsError)}`
-                  : escalationsError
-                    ? formatQueryError(escalationsError)
-                    : formatQueryError(deletionsError!)
-              }
-              onRetry={() => {
-                void refetchEscalations();
-                void refetchDeletions();
-              }}
-            />
-          ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ListItemCard
-              title="Approvals"
-              subtitle="Privileged identities waiting for enablement"
-              meta={
-                <StatusPill tone="amber">{pendingApprovals.length}</StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("admin_console")}
-                >
-                  Review
-                </Button>
-              }
-            />
-            <ListItemCard
-              title="Escalations"
-              subtitle="Risk cases still open in oversight"
-              meta={
-                <StatusPill tone="rose">
-                  {unresolvedEscalations.length}
-                </StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("justice")}
-                >
-                  Open queue
-                </Button>
-              }
-            />
-            <ListItemCard
-              title="Privacy"
-              subtitle="Deletion processing awaiting closure"
-              meta={
-                <StatusPill tone="indigo">
-                  {pendingDeletionRequests.length}
-                </StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("admin_console")}
-                >
-                  Process
-                </Button>
-              }
-            />
-            <ListItemCard
-              title="Signal watch"
-              subtitle="Critical alerts currently affecting posture"
-              meta={
-                <StatusPill
-                  tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
-                >
-                  {criticalAlerts.length > 0 ? criticalAlerts.length : "Clear"}
-                </StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("governance")}
-                >
-                  Inspect
-                </Button>
-              }
-            />
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Feed health"
-          description="Status of the main admin data surfaces used by the oversight console."
-        >
-          <AdminFeedHealthGrid items={feedHealth} />
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <SectionCard
-          title="Audit trail"
-          description="Realtime log stream filtered by severity and search."
-          action={
-            auditFeed.length > 0 ? (
-              <StatusPill tone="sky">{auditFeed.length} matches</StatusPill>
-            ) : undefined
-          }
-        >
-          {auditError ? (
-            <AdminQueryErrorBanner
-              title="Audit log unavailable"
-              message={formatQueryError(auditError)}
-              onRetry={() => void refetchAuditLogs()}
-            />
-          ) : null}
-          <div className="mb-4 flex flex-col gap-3 md:flex-row">
-            <label className="flex-1">
-              <span className="sr-only">Search audit trail</span>
-              <input
-                aria-label="Search audit trail"
-                value={auditSearch}
-                onChange={(event) => {
-                  setAuditSearch(event.target.value);
-                  setAuditDisplayLimit(AUDIT_PAGE_SIZE);
-                }}
-                placeholder="Search actions, modules, or users"
-                className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
-              />
-            </label>
-            <label>
-              <span className="sr-only">Filter audit severity</span>
-              <select
-                aria-label="Filter audit severity"
-                value={auditSeverity}
-                onChange={(event) => {
-                  setAuditSeverity(event.target.value);
-                  setAuditDisplayLimit(AUDIT_PAGE_SIZE);
-                }}
-                className="h-11 rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
-              >
-                <option value="all">All severities</option>
-                <option value="critical">Critical</option>
-                <option value="error">Error</option>
-                <option value="warning">Warning</option>
-                <option value="info">Info</option>
-              </select>
-            </label>
-          </div>
-          <AdminAuditSeveritySummary summary={auditSeveritySummary} />
-          <div className="space-y-3">
-            {visibleAuditFeed.length === 0 ? (
-              <EmptyState
-                title="No matching audit events"
-                description="Adjust your search or severity filters to inspect the governance ledger."
-              />
-            ) : (
-              visibleAuditFeed.map((entry, index) => (
+              ) : null}
+              <div className="grid gap-3">
                 <ListItemCard
-                  key={`${entry.time}-${entry.action}-${entry.user}-${entry.module}-${index}`}
-                  title={entry.action}
-                  subtitle={`${entry.user} • ${entry.module} • ${formatRelativeDateTime(entry.time)}`}
+                  title="System uptime"
+                  subtitle="Latest recorded service posture"
                   meta={
-                    <StatusPill
-                      tone={
-                        severityTone[
-                          entry.severity as keyof typeof severityTone
-                        ] ?? "slate"
-                      }
-                    >
-                      {entry.severity}
+                    <StatusPill tone="emerald">
+                      {systemMetrics?.systemUptime ?? 0}%
                     </StatusPill>
                   }
                 />
-              ))
-            )}
-          </div>
-          {auditFeed.length > AUDIT_PAGE_SIZE ? (
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {auditDisplayLimit < auditFeed.length ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setAuditDisplayLimit((n) =>
-                      Math.min(n + AUDIT_PAGE_SIZE, auditFeed.length),
-                    )
-                  }
-                >
-                  Load more ({auditFeed.length - auditDisplayLimit} remaining)
-                </Button>
-              ) : null}
-              {auditDisplayLimit > AUDIT_PAGE_SIZE ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAuditDisplayLimit(AUDIT_PAGE_SIZE)}
-                >
-                  Show less
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </SectionCard>
-
-        <SectionCard
-          title="Alert & activity watch"
-          description="Live alert feed and governance activity volume."
-        >
-          {alertsError ? (
-            <AdminQueryErrorBanner
-              title="Alert feed unavailable"
-              message={formatQueryError(alertsError)}
-              onRetry={() => void refetchAlerts()}
-            />
-          ) : null}
-          <div className="grid gap-3">
-            {uniqueAlerts.slice(0, 4).map((entry) => (
-              <ListItemCard
-                key={entry.id}
-                title={entry.message}
-                subtitle={`${entry.module} • ${entry.time}`}
-                meta={
-                  <StatusPill
-                    tone={entry.type === "critical" ? "rose" : "amber"}
-                  >
-                    {entry.type || "notice"}
-                  </StatusPill>
-                }
-              />
-            ))}
-            {uniqueAlerts.length === 0 ? (
-              <EmptyState
-                title="No system alerts"
-                description="Critical and warning signals will appear here in real time."
-                guidance={[
-                  "Platform, security, and governance notices will appear here when the system detects something that needs review.",
-                  "If you expected alerts from a recent workflow, refresh after the next monitoring cycle completes.",
-                ]}
-              />
-            ) : null}
-          </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <StatTile
-              label="Critical signals"
-              value={criticalAlerts.length}
-              icon={<AlertTriangle className="h-5 w-5" />}
-              tone="rose"
-            />
-            <StatTile
-              label="Privileged identities"
-              value={privilegedUsers.length}
-              icon={<Users className="h-5 w-5" />}
-              tone="sky"
-            />
-            <StatTile
-              label="Escalation watch"
-              value={unresolvedEscalations.length}
-              icon={<AlertTriangle className="h-5 w-5" />}
-              tone="amber"
-            />
-            <StatTile
-              label="Privacy queue"
-              value={pendingDeletionRequests.length}
-              icon={<Database className="h-5 w-5" />}
-              tone="indigo"
-            />
-          </div>
-          <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-              Governance activity
-            </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-4">
-              {governanceTimeline.map((bucket) => (
-                <StatTile
-                  key={bucket.label}
-                  label={bucket.label}
-                  value={bucket.opened}
-                  sub="events"
-                  className="bg-slate-950/60 p-3"
+                <ListItemCard
+                  title="API requests today"
+                  subtitle="Live platform usage"
+                  meta={systemMetrics?.apiRequestsToday ?? 0}
                 />
-              ))}
-            </div>
-          </div>
-        </SectionCard>
-      </section>
+                <ListItemCard
+                  title="Data points processed"
+                  subtitle="Current analytics pipeline"
+                  meta={systemMetrics?.dataPointsProcessed ?? "--"}
+                />
+                <ListItemCard
+                  title="Alert surface"
+                  subtitle="Combined alert watch and backlog pressure"
+                  meta={
+                    <StatusPill
+                      tone={criticalAlerts.length > 0 ? "rose" : "sky"}
+                    >
+                      {criticalAlerts.length > 0
+                        ? `${criticalAlerts.length} critical`
+                        : "Calm"}
+                    </StatusPill>
+                  }
+                />
+                <ListItemCard
+                  title="Recent audit actors"
+                  subtitle="Unique operators in the latest audit activity window"
+                  meta={<StatusPill tone="sky">{recentAuditActors}</StatusPill>}
+                />
+              </div>
+            </SectionCard>
+          </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <SectionCard
-          title="Threshold notifications"
-          description="Alerts generated when key admin queues exceed operational thresholds."
-        >
-          <AdminThresholdNotifications items={thresholdNotifications} />
-        </SectionCard>
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <SectionCard
+              title="Governance telemetry"
+              description="Latest system throughput and governance event activity."
+            >
+              {incidentsError ? (
+                <AdminQueryErrorBanner
+                  title="Incident telemetry unavailable"
+                  message={formatQueryError(incidentsError)}
+                  onRetry={() => void refetchIncidents()}
+                />
+              ) : null}
+              <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+                {sanitizedIncidentSeries.length > 0 ? (
+                  <ChartFrame label="Governance incident signal over time">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={sanitizedIncidentSeries}
+                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient
+                            id={chartGradientId}
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#38bdf8"
+                              stopOpacity={0.35}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#38bdf8"
+                              stopOpacity={0}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid
+                          stroke="#1e293b"
+                          strokeDasharray="3 3"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="date"
+                          stroke="#64748b"
+                          tickLine={false}
+                          axisLine={false}
+                          fontSize={10}
+                        />
+                        <YAxis
+                          stroke="#64748b"
+                          tickLine={false}
+                          axisLine={false}
+                          fontSize={10}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#0f172a",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: "12px",
+                          }}
+                          labelStyle={{ color: "#e2e8f0" }}
+                          itemStyle={{ color: "#38bdf8" }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#38bdf8"
+                          fill={`url(#${chartGradientId})`}
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </ChartFrame>
+                ) : (
+                  <EmptyState
+                    title="No governance telemetry yet"
+                    description="Incident telemetry will render here once the monitoring and governance feeds start publishing data."
+                    guidance={[
+                      "Confirm incident telemetry is reaching the connected environment and is being persisted successfully.",
+                      "After new points are ingested, this chart will populate automatically on the next refresh cycle.",
+                    ]}
+                  />
+                )}
+                <div className="grid gap-3">
+                  <ListItemCard
+                    title="Security posture"
+                    subtitle="Composite of uptime, encryption, and alert pressure"
+                    meta={
+                      <StatusPill
+                        tone={
+                          securityPosture >= 85
+                            ? "emerald"
+                            : securityPosture >= 65
+                              ? "amber"
+                              : "rose"
+                        }
+                      >
+                        {securityPosture}%
+                      </StatusPill>
+                    }
+                  />
+                  <ListItemCard
+                    title="Incident trend"
+                    subtitle="Current delta compared with the previous interval"
+                    meta={
+                      incidentTrend.delta === 0
+                        ? "Stable"
+                        : incidentTrend.delta > 0
+                          ? `+${incidentTrend.delta}`
+                          : incidentTrend.delta
+                    }
+                  />
+                  <ListItemCard
+                    title="Governance activity"
+                    subtitle="Events opened across the weekly lifecycle"
+                    meta={governanceTimeline.reduce(
+                      (sum, bucket) => sum + bucket.opened,
+                      0,
+                    )}
+                  />
+                  <ListItemCard
+                    title="Active alerts"
+                    subtitle="Current monitoring watch surface"
+                    meta={systemMetrics?.activeAlerts ?? criticalAlerts.length}
+                  />
+                </div>
+              </div>
+            </SectionCard>
 
-        <SectionCard
-          title="Admin efficiency notes"
-          description="Pragmatic improvements that will keep the oversight console maintainable."
-        >
-          <div className="space-y-3">
-            <ListItemCard
-              title="Thresholds now come from the backend"
-              subtitle={`Approval ${adminThresholds.pendingApprovalsWarning}, escalations ${adminThresholds.unresolvedEscalationsWarning}, privacy ${adminThresholds.pendingDeletionRequestsWarning}, posture minimum ${adminThresholds.securityPostureMinimum}%.`}
-            />
-            <ListItemCard
-              title="Polling policy is centralized"
-              subtitle={`Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s, alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s, audit ${Math.round(refreshIntervals.auditMs / 1000)}s.`}
-            />
-            <ListItemCard
-              title="Normalize data upstream"
-              subtitle="Alert, incident, and audit sanitization now sits outside the render layer and should continue moving into shared data services."
-            />
-          </div>
-        </SectionCard>
-      </section>
+            <SectionCard
+              title="Identity & role mix"
+              description="Real-time role distribution and access posture."
+            >
+              {usersError ? (
+                <AdminQueryErrorBanner
+                  title="User directory unavailable"
+                  message={formatQueryError(usersError)}
+                  onRetry={() => void refetchUsers()}
+                />
+              ) : null}
+              <div className="space-y-3">
+                {roleDistribution.length === 0 ? (
+                  <EmptyState
+                    title="No profiles available"
+                    description="User profiles will appear here as soon as they are synchronized."
+                    guidance={[
+                      "Approve and activate role access so live identity coverage can populate this view.",
+                      "If accounts were created recently, allow the workspace sync to refresh before reviewing access posture again.",
+                    ]}
+                  />
+                ) : (
+                  roleDistribution.map((entry) => (
+                    <ListItemCard
+                      key={entry.role}
+                      title={<span className="capitalize">{entry.role}</span>}
+                      subtitle={`${percent(entry.count, users.length)}% of active identity surface`}
+                      meta={<StatusPill tone="sky">{entry.count}</StatusPill>}
+                    />
+                  ))
+                )}
+              </div>
+            </SectionCard>
+          </section>
+        </>
+      )}
 
-      <section className="grid grid-cols-1 gap-6">
-        <MFAEnforcementPanel />
-      </section>
+      {activeTab === "queues" && (
+        <>
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <SectionCard
+              title="Case resolution lookup"
+              description="Shared live lookup for case status verification across admin workflows."
+            >
+              <CaseStatusLookup
+                description="Use a secure case reference to retrieve the current status, priority, and last movement in the case pipeline."
+                placeholder="Enter secure case ID"
+              />
+            </SectionCard>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-1">
-        <SectionCard
-          title="Live posture summary"
-          description="Quick, role-specific admin guidance for the next move."
-        >
-          <div className="grid gap-3 md:grid-cols-3">
-            <ListItemCard
-              title="Identity controls"
-              subtitle="Open the admin console when you need to provision, approve, or recover privileged accounts."
-              meta={
-                <StatusPill tone="sky">
-                  <ShieldCheck className="mr-1 h-3.5 w-3.5 inline" />
-                  Control ready
-                </StatusPill>
-              }
+            <SectionCard
+              title="Recommended actions"
+              description="System-generated next steps based on current admin pressure points."
+            >
+              <AdminRecommendedActionsList
+                items={recommendedActions}
+                onAction={(module) => setActiveModule(module as never)}
+              />
+            </SectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <SectionCard
+              title="Attention matrix"
+              description="At-a-glance view of where intervention is most likely needed next."
+            >
+              {escalationsError || deletionsError ? (
+                <AdminQueryErrorBanner
+                  title="Queue data partially unavailable"
+                  message={
+                    escalationsError && deletionsError
+                      ? `Escalations: ${formatQueryError(escalationsError)} · Deletion requests: ${formatQueryError(deletionsError)}`
+                      : escalationsError
+                        ? formatQueryError(escalationsError)
+                        : formatQueryError(deletionsError!)
+                  }
+                  onRetry={() => {
+                    void refetchEscalations();
+                    void refetchDeletions();
+                  }}
+                />
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ListItemCard
+                  title="Approvals"
+                  subtitle="Privileged identities waiting for enablement"
+                  meta={
+                    <StatusPill tone="amber">
+                      {pendingApprovals.length}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("admin_console")}
+                    >
+                      Review
+                    </Button>
+                  }
+                />
+                <ListItemCard
+                  title="Escalations"
+                  subtitle="Risk cases still open in oversight"
+                  meta={
+                    <StatusPill tone="rose">
+                      {unresolvedEscalations.length}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("justice")}
+                    >
+                      Open queue
+                    </Button>
+                  }
+                />
+                <ListItemCard
+                  title="Privacy"
+                  subtitle="Deletion processing awaiting closure"
+                  meta={
+                    <StatusPill tone="indigo">
+                      {pendingDeletionRequests.length}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("admin_console")}
+                    >
+                      Process
+                    </Button>
+                  }
+                />
+                <ListItemCard
+                  title="Signal watch"
+                  subtitle="Critical alerts currently affecting posture"
+                  meta={
+                    <StatusPill
+                      tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
+                    >
+                      {criticalAlerts.length > 0
+                        ? criticalAlerts.length
+                        : "Clear"}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("governance")}
+                    >
+                      Inspect
+                    </Button>
+                  }
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Feed health"
+              description="Status of the main admin data surfaces used by the oversight console."
+            >
+              <AdminFeedHealthGrid items={feedHealth} />
+            </SectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <SectionCard
+              title="Audit trail"
+              description="Realtime log stream filtered by severity and search."
               action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("admin_console")}
-                >
-                  Open console
-                </Button>
+                auditFeed.length > 0 ? (
+                  <StatusPill tone="sky">{auditFeed.length} matches</StatusPill>
+                ) : undefined
               }
-            />
-            <ListItemCard
-              title="Governance review"
-              subtitle="Use the governance hub to inspect alert-driven policy or fairness issues across the platform."
-              meta={
-                <StatusPill
-                  tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
-                >
-                  {criticalAlerts.length > 0 ? "Needs review" : "Stable"}
-                </StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("governance")}
-                >
-                  Open governance
-                </Button>
-              }
-            />
-            <ListItemCard
-              title="Operational escalation"
-              subtitle="Jump into the justice queue when sensitive escalations require cross-team follow-up."
-              meta={
-                <StatusPill
-                  tone={unresolvedEscalations.length > 0 ? "amber" : "emerald"}
-                >
-                  {unresolvedEscalations.length > 0
-                    ? "Backlog active"
-                    : "Queue clear"}
-                </StatusPill>
-              }
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActiveModule("justice")}
-                >
-                  Open justice
-                </Button>
-              }
-            />
-          </div>
-        </SectionCard>
-      </section>
+            >
+              {auditError ? (
+                <AdminQueryErrorBanner
+                  title="Audit log unavailable"
+                  message={formatQueryError(auditError)}
+                  onRetry={() => void refetchAuditLogs()}
+                />
+              ) : null}
+              <div className="mb-4 flex flex-col gap-3 md:flex-row">
+                <label className="flex-1">
+                  <span className="sr-only">Search audit trail</span>
+                  <input
+                    aria-label="Search audit trail"
+                    value={auditSearch}
+                    onChange={(event) => {
+                      setAuditSearch(event.target.value);
+                      setAuditDisplayLimit(AUDIT_PAGE_SIZE);
+                    }}
+                    placeholder="Search actions, modules, or users"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">Filter audit severity</span>
+                  <select
+                    aria-label="Filter audit severity"
+                    value={auditSeverity}
+                    onChange={(event) => {
+                      setAuditSeverity(event.target.value);
+                      setAuditDisplayLimit(AUDIT_PAGE_SIZE);
+                    }}
+                    className="h-11 rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none"
+                  >
+                    <option value="all">All severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="error">Error</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </label>
+              </div>
+              <AdminAuditSeveritySummary summary={auditSeveritySummary} />
+              <div className="space-y-3">
+                {visibleAuditFeed.length === 0 ? (
+                  <EmptyState
+                    title="No matching audit events"
+                    description="Adjust your search or severity filters to inspect the governance ledger."
+                  />
+                ) : (
+                  visibleAuditFeed.map((entry, index) => (
+                    <ListItemCard
+                      key={`${entry.time}-${entry.action}-${entry.user}-${entry.module}-${index}`}
+                      title={entry.action}
+                      subtitle={`${entry.user} • ${entry.module} • ${formatRelativeDateTime(entry.time)}`}
+                      meta={
+                        <StatusPill
+                          tone={
+                            severityTone[
+                              entry.severity as keyof typeof severityTone
+                            ] ?? "slate"
+                          }
+                        >
+                          {entry.severity}
+                        </StatusPill>
+                      }
+                    />
+                  ))
+                )}
+              </div>
+              {auditFeed.length > AUDIT_PAGE_SIZE ? (
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {auditDisplayLimit < auditFeed.length ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setAuditDisplayLimit((n) =>
+                          Math.min(n + AUDIT_PAGE_SIZE, auditFeed.length),
+                        )
+                      }
+                    >
+                      Load more ({auditFeed.length - auditDisplayLimit}{" "}
+                      remaining)
+                    </Button>
+                  ) : null}
+                  {auditDisplayLimit > AUDIT_PAGE_SIZE ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAuditDisplayLimit(AUDIT_PAGE_SIZE)}
+                    >
+                      Show less
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </SectionCard>
+
+            <SectionCard
+              title="Alert & activity watch"
+              description="Live alert feed and governance activity volume."
+            >
+              {alertsError ? (
+                <AdminQueryErrorBanner
+                  title="Alert feed unavailable"
+                  message={formatQueryError(alertsError)}
+                  onRetry={() => void refetchAlerts()}
+                />
+              ) : null}
+              <div className="grid gap-3">
+                {uniqueAlerts.slice(0, 4).map((entry) => (
+                  <ListItemCard
+                    key={entry.id}
+                    title={entry.message}
+                    subtitle={`${entry.module} • ${entry.time}`}
+                    meta={
+                      <StatusPill
+                        tone={entry.type === "critical" ? "rose" : "amber"}
+                      >
+                        {entry.type || "notice"}
+                      </StatusPill>
+                    }
+                  />
+                ))}
+                {uniqueAlerts.length === 0 ? (
+                  <EmptyState
+                    title="No system alerts"
+                    description="Critical and warning signals will appear here in real time."
+                    guidance={[
+                      "Platform, security, and governance notices will appear here when the system detects something that needs review.",
+                      "If you expected alerts from a recent workflow, refresh after the next monitoring cycle completes.",
+                    ]}
+                  />
+                ) : null}
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <StatTile
+                  label="Critical signals"
+                  value={criticalAlerts.length}
+                  icon={<AlertTriangle className="h-5 w-5" />}
+                  tone="rose"
+                />
+                <StatTile
+                  label="Privileged identities"
+                  value={privilegedUsers.length}
+                  icon={<Users className="h-5 w-5" />}
+                  tone="sky"
+                />
+                <StatTile
+                  label="Escalation watch"
+                  value={unresolvedEscalations.length}
+                  icon={<AlertTriangle className="h-5 w-5" />}
+                  tone="amber"
+                />
+                <StatTile
+                  label="Privacy queue"
+                  value={pendingDeletionRequests.length}
+                  icon={<Database className="h-5 w-5" />}
+                  tone="indigo"
+                />
+              </div>
+              <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  Governance activity
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                  {governanceTimeline.map((bucket) => (
+                    <StatTile
+                      key={bucket.label}
+                      label={bucket.label}
+                      value={bucket.opened}
+                      sub="events"
+                      className="bg-slate-950/60 p-3"
+                    />
+                  ))}
+                </div>
+              </div>
+            </SectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <SectionCard
+              title="Threshold notifications"
+              description="Alerts generated when key admin queues exceed operational thresholds."
+            >
+              <AdminThresholdNotifications items={thresholdNotifications} />
+            </SectionCard>
+
+            <SectionCard
+              title="Admin efficiency notes"
+              description="Pragmatic improvements that will keep the oversight console maintainable."
+            >
+              <div className="space-y-3">
+                <ListItemCard
+                  title="Thresholds now come from the backend"
+                  subtitle={`Approval ${adminThresholds.pendingApprovalsWarning}, escalations ${adminThresholds.unresolvedEscalationsWarning}, privacy ${adminThresholds.pendingDeletionRequestsWarning}, posture minimum ${adminThresholds.securityPostureMinimum}%.`}
+                />
+                <ListItemCard
+                  title="Polling policy is centralized"
+                  subtitle={`Metrics ${Math.round(refreshIntervals.metricsMs / 1000)}s, alerts ${Math.round(refreshIntervals.alertsMs / 1000)}s, audit ${Math.round(refreshIntervals.auditMs / 1000)}s.`}
+                />
+                <ListItemCard
+                  title="Normalize data upstream"
+                  subtitle="Alert, incident, and audit sanitization now sits outside the render layer and should continue moving into shared data services."
+                />
+              </div>
+            </SectionCard>
+          </section>
+        </>
+      )}
+
+      {activeTab === "access" && (
+        <>
+          <section className="grid grid-cols-1 gap-6">
+            <MFAEnforcementPanel />
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-1">
+            <SectionCard
+              title="Live posture summary"
+              description="Quick, role-specific admin guidance for the next move."
+            >
+              <div className="grid gap-3 md:grid-cols-3">
+                <ListItemCard
+                  title="Identity controls"
+                  subtitle="Open the admin console when you need to provision, approve, or recover privileged accounts."
+                  meta={
+                    <StatusPill tone="sky">
+                      <ShieldCheck className="mr-1 h-3.5 w-3.5 inline" />
+                      Control ready
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("admin_console")}
+                    >
+                      Open console
+                    </Button>
+                  }
+                />
+                <ListItemCard
+                  title="Governance review"
+                  subtitle="Use the governance hub to inspect alert-driven policy or fairness issues across the platform."
+                  meta={
+                    <StatusPill
+                      tone={criticalAlerts.length > 0 ? "rose" : "emerald"}
+                    >
+                      {criticalAlerts.length > 0 ? "Needs review" : "Stable"}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("governance")}
+                    >
+                      Open governance
+                    </Button>
+                  }
+                />
+                <ListItemCard
+                  title="Operational escalation"
+                  subtitle="Jump into the justice queue when sensitive escalations require cross-team follow-up."
+                  meta={
+                    <StatusPill
+                      tone={
+                        unresolvedEscalations.length > 0 ? "amber" : "emerald"
+                      }
+                    >
+                      {unresolvedEscalations.length > 0
+                        ? "Backlog active"
+                        : "Queue clear"}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("justice")}
+                    >
+                      Open justice
+                    </Button>
+                  }
+                />
+              </div>
+            </SectionCard>
+          </section>
+        </>
+      )}
     </DashboardPage>
   );
 };
