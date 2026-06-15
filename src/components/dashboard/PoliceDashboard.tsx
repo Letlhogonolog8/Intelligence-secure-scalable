@@ -387,8 +387,8 @@ const PoliceDashboard: React.FC = () => {
       await queryClient.invalidateQueries({
         queryKey: ["aegis", "policeAlertsFeed"],
       });
-    } catch {
-      // Keep failure silent in the dashboard shell; the queue will retry on refresh.
+    } catch (error) {
+      console.error("Failed to acknowledge alert", error);
     }
   };
 

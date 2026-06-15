@@ -1520,14 +1520,22 @@ export const acknowledgePoliceAlert = async (alertId: string) => {
   // alerts_feed manage RLS policy as deleteAlert. The server POST is a
   // best-effort secondary for audit/notification side-effects only.
   if (hasSupabase) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("alerts_feed")
       .update({
         status: "acknowledged",
         acknowledged_at: new Date().toISOString(),
       })
-      .eq("id", alertId);
+      .eq("id", alertId)
+      .select("id");
     if (error && !isMissingTableError(error)) throw error;
+    // An RLS-blocked write returns success with 0 rows and no error — surface
+    // it so the button never fails silently.
+    if (!error && (!data || data.length === 0)) {
+      throw new Error(
+        `Could not acknowledge alert ${alertId}: 0 rows affected (RLS likely blocked it — confirm you are signed in as an active responder).`,
+      );
+    }
   }
   try {
     await apiClient.post(`/police/alerts/${alertId}/acknowledge`);
@@ -1542,11 +1550,18 @@ export const acknowledgePoliceAlert = async (alertId: string) => {
  */
 export const deleteAlert = async (alertId: string) => {
   if (!hasSupabase) return;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("alerts_feed")
     .delete()
-    .eq("id", alertId);
+    .eq("id", alertId)
+    .select("id");
   if (error && !isMissingTableError(error)) throw error;
+  // An RLS-blocked delete returns success with 0 rows and no error — surface it.
+  if (!error && (!data || data.length === 0)) {
+    throw new Error(
+      `Could not delete alert ${alertId}: 0 rows affected (RLS likely blocked it — confirm you are signed in as an active responder).`,
+    );
+  }
 };
 
 /**
