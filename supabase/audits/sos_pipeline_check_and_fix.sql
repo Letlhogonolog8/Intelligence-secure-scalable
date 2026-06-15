@@ -15,23 +15,26 @@
 
 -- ============================== PART 1 — DIAGNOSE ===========================
 
--- 1a. Did the SOS actually land in this database? (newest first)
---     If EMPTY: the SOS insert never reached THIS project — check the mobile/web
---     app's SUPABASE_URL points here, and that escalation_events RLS/migrations
---     are applied (the INSERT policy needs user_id = auth.uid()).
-SELECT id, user_id, triggered_by, escalation_type, severity, status, triggered_at, created_at
-FROM   public.escalation_events
-ORDER  BY created_at DESC NULLS LAST
-LIMIT  5;
+-- 1a-i. What columns does the LIVE escalation_events table actually have?
+--       (The app/types expect: id, case_id, triggered_by, user_id,
+--       escalation_type, severity, reason, location, status, triggered_at,
+--       created_at, ... — if any are MISSING, the live DB is behind the
+--       migrations and the SOS trigger / CHW visit feature will misbehave.)
+SELECT column_name, data_type
+FROM   information_schema.columns
+WHERE  table_schema = 'public' AND table_name = 'escalation_events'
+ORDER  BY ordinal_position;
 
--- 1b. Did the bridge create a feed row for it? (newest first)
---     If 1a has rows but this is EMPTY: the bridge trigger is missing or failed
---     -> run PART 2.
-SELECT id, type, module, severity, status, message, created_at
-FROM   public.alerts_feed
-WHERE  type = 'sos_alert'
-ORDER  BY created_at DESC NULLS LAST
-LIMIT  5;
+-- 1a-ii. Did the SOS actually land in this database? (SELECT * = column-agnostic)
+--        If EMPTY: the SOS insert never reached THIS project — check the
+--        mobile/web app's SUPABASE_URL points here, and that escalation_events
+--        RLS/migrations are applied (INSERT policy needs user_id = auth.uid()).
+SELECT * FROM public.escalation_events LIMIT 5;
+
+-- 1b. Did the bridge create a feed row for it?
+--     If 1a-ii has rows but this is EMPTY: the bridge trigger is missing or
+--     failed -> run PART 2.
+SELECT * FROM public.alerts_feed WHERE type = 'sos_alert' LIMIT 5;
 
 -- 1c. Does the bridge trigger exist on escalation_events?
 --     If EMPTY: the trigger was never created -> run PART 2.

@@ -83,7 +83,7 @@ async function fetchCHWStats(userId: string) {
     supabase
       .from("escalation_events")
       .select("id, reason, location, severity, status, triggered_at")
-      .eq("triggered_by", userId)
+      .eq("user_id", userId)
       .eq("escalation_type", "chw_visit")
       .order("triggered_at", { ascending: false })
       .limit(50),
@@ -264,10 +264,9 @@ const CHWDashboard: React.FC = () => {
     const payload = {
       id: `VISIT-${Date.now()}`,
       case_id: null,
-      // user_id must equal auth.uid(): the escalation_events INSERT policy
-      // (users_create_own_escalations) checks user_id, not triggered_by.
+      // user_id is the canonical owner column (escalation_events INSERT policy
+      // checks user_id = auth.uid()); the live table has no triggered_by column.
       user_id: user?.id ?? null,
-      triggered_by: user?.id ?? "chw",
       escalation_type: "chw_visit",
       severity: "low",
       reason: `Field visit — ${visitForm.survivorsReached} survivors reached. ${visitForm.outcome}`,

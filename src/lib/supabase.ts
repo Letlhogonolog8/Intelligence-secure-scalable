@@ -194,7 +194,6 @@ export type Database = {
       escalation_events: TableDefinition<{
         id: string;
         case_id: string | null;
-        triggered_by: string | null;
         user_id: string | null;
         escalation_type: string | null;
         severity: string;
