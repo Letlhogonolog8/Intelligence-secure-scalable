@@ -351,7 +351,7 @@ function generateResources(riskLevel: string, language: string): string[] {
     critical: [
       "🚨 Police: 10111 (or 112 from any mobile)",
       "📞 GBV Crisis Line: 0800 428 428 (free, 24/7)",
-      "📱 USSD without internet: *123*456#",
+      "📱 USSD without internet: *135*1782#",
       "🏥 Nearest hospital emergency unit",
       "🛡️ Trusted crisis support centre",
     ],

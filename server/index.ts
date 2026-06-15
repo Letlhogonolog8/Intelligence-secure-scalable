@@ -1394,7 +1394,7 @@ app.post(
         messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
       const craftFallback = () =>
         /danger|hurt|kill|die|attack|emergency/i.test(lastUser)
-          ? "CRISIS ALERT: Please call Police: 10111 or Crisis Line: 0800 428 428 immediately. Dial *123*456# from any phone — no internet needed. You are not alone."
+          ? "CRISIS ALERT: Please call Police: 10111 or Crisis Line: 0800 428 428 immediately. Dial *135*1782# from any phone — no internet needed. You are not alone."
           : "I hear you, and I'm glad you reached out. You are safe here. Can you share a little more so I can help guide you?";
 
       const hfToken = process.env.HUGGINGFACE_API_TOKEN;
@@ -1414,7 +1414,7 @@ app.post(
 1. Provide a safe, non-judgmental space for survivors to share what they are experiencing
 2. Respond with empathy, validation, and grounding language
 3. Always remind users they are not alone and that help is available
-4. If the user describes immediate danger, active violence, or suicidal ideation, respond with CRISIS ALERT: and provide emergency numbers (Police: 10111, Crisis line: 0800 428 428, USSD: *123*456#)
+4. If the user describes immediate danger, active violence, or suicidal ideation, respond with CRISIS ALERT: and provide emergency numbers (Police: 10111, Crisis line: 0800 428 428, USSD: *135*1782#)
 5. Never blame, minimize, or question the survivor's experience
 6. Keep responses concise (2-4 sentences max) and human
 7. Encourage the user to use the platform's case reporting and counselor features when appropriate

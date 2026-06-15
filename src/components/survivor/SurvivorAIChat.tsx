@@ -70,10 +70,10 @@ async function sendToAI(
 function getOfflineFallback(userMessage: string): string {
   const lower = userMessage.toLowerCase();
   if (/danger|help|attack|hurt|kill|die|emergency/i.test(lower)) {
-    return "CRISIS ALERT: Please call Police: 10111 or the 24/7 Crisis Line: 0800 428 428 immediately. You can also dial *123*456# from any phone — no internet needed. You are not alone.";
+    return "CRISIS ALERT: Please call Police: 10111 or the 24/7 Crisis Line: 0800 428 428 immediately. You can also dial *135*1782# from any phone — no internet needed. You are not alone.";
   }
   if (/shelter|place|stay|home|leave/i.test(lower)) {
-    return "Finding a safe place is a brave step. Use AEGIS to connect with nearby shelters, or dial *123*456# from any phone for immediate referrals.";
+    return "Finding a safe place is a brave step. Use AEGIS to connect with nearby shelters, or dial *135*1782# from any phone for immediate referrals.";
   }
   if (/rights|law|report|police/i.test(lower)) {
     return "You have the right to report safely and anonymously. AEGIS can connect you with legal advisors. Would you like to file a report through the platform?";

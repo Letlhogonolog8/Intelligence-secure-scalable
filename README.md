@@ -2,7 +2,7 @@
 
 > **Inclusive, edge-aware, trauma-informed AI for gender-based violence response in South Africa and across the continent.**
 
-AEGIS-AI is a single-repository, full-stack platform that unifies **survivors, NGOs, counselors, police, and policy analysts** on one secure, real-time response grid. It runs **online in the browser**, **offline-first via USSD `*123*456#`**, **on WhatsApp**, and **on a low-cost ESP32 BLE wearable panic button** — a genuine omnichannel safety net for communities where smartphones, data, or both are unreliable.
+AEGIS-AI is a single-repository, full-stack platform that unifies **survivors, NGOs, counselors, police, and policy analysts** on one secure, real-time response grid. It runs **online in the browser**, **offline-first via USSD `*135*1782#`**, **on WhatsApp**, and **on a low-cost ESP32 BLE wearable panic button** — a genuine omnichannel safety net for communities where smartphones, data, or both are unreliable.
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen)](.github/workflows/ci.yml) [![POPIA](https://img.shields.io/badge/POPIA-aligned-blue)](SECURITY.md) [![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey)](LICENSE) [![Stack](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20Supabase-0ea5e9)](ARCHITECTURE.md) [![Edge](https://img.shields.io/badge/edge-Supabase%20Functions-000000)](supabase/functions) [![Robotics](https://img.shields.io/badge/robotics-ESP32--C3%20BLE-purple)](firmware/silent-sos-esp32)
 
@@ -24,7 +24,7 @@ This is the exact mandate of [Ele-vate AI Africa](https://ele-vate.co.za/): _"At
 | **Edge computing**   | Supabase Edge Functions (`aegis-survivor-chat`, `nlp-classify`, `vda-chat`, `ussd-gateway`), Cloudflare Workers config, PWA service worker with `NetworkFirst` API caching and offline asset shell |
 | **Robotics / IoT**   | ESP32-C3 BLE Silent SOS firmware (~USD 5–8 BOM) + Web Bluetooth bridge at `/demo/silent-sos`                                                                                                       |
 | **Automation**       | BullMQ-backed notification + escalation queue, Twilio SMS/voice fallback, idempotent emergency escalation, hash-chained audit cron                                                                 |
-| **Inclusion**        | 15 SADC + African languages (en, zu, af, xh, st, tn, ts, ve, nso, nr, ss, sw, fr, am, ar), USSD `*123*456#` flow for any feature phone, WhatsApp Cloud channel, WCAG 2.1 AA-tested UI              |
+| **Inclusion**        | 15 SADC + African languages (en, zu, af, xh, st, tn, ts, ve, nso, nr, ss, sw, fr, am, ar), USSD `*135*1782#` flow for any feature phone, WhatsApp Cloud channel, WCAG 2.1 AA-tested UI             |
 | **Security & POPIA** | AES-256-GCM at rest, HMAC-signed Telkom callbacks, hash-chained immutable audit log, MFA TOTP, Supabase RLS hardening, intrusion detection, secret-scan pre-commit hook                            |
 | **Observability**    | Prometheus metrics, Grafana provisioning, Sentry + Datadog wiring, k8s-ready readiness/liveness, hash-chain integrity cron                                                                         |
 
@@ -63,7 +63,7 @@ npm run preflight    # lint + typecheck + test + build (all must pass)
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
 | Web (PWA)        | `npm run dev:client` → http://localhost:8080                                                          |
 | Backend API      | `npm run dev:server` → http://localhost:3001                                                          |
-| USSD (offline)   | `*123*456#` (Telkom callback verified by HMAC) — local sim: `npm run ussd:local`                      |
+| USSD (offline)   | `*135*1782#` (Telkom callback verified by HMAC) — local sim: `npm run ussd:local`                     |
 | WhatsApp         | Meta WhatsApp Cloud API → `POST /api/whatsapp/webhook`, sessions in Redis (`aegis:wa:session:<E164>`) |
 | Voice (web)      | `VoiceIncidentReporter.tsx` (Web Speech API, falls back to text)                                      |
 | Silent SOS (BLE) | ESP32-C3 wearable → Web Bluetooth → `/demo/silent-sos` → `POST /api/cases/escalate`                   |

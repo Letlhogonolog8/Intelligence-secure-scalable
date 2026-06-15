@@ -306,7 +306,7 @@ const PeerSupportNetwork: React.FC = () => {
               right now. Please call{" "}
               <span className="font-mono font-bold">0800 428 428</span> (24/7
               crisis line) or dial{" "}
-              <span className="font-mono font-bold">*123*456#</span> for
+              <span className="font-mono font-bold">*135*1782#</span> for
               immediate support.
             </p>
           </div>
