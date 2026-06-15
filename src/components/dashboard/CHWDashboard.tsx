@@ -335,9 +335,9 @@ const CHWDashboard: React.FC = () => {
         active={activeTab}
         onChange={setActiveTab}
         tabs={[
-          { id: "overview", label: "overview" },
-          { id: "referrals", label: "referrals" },
-          { id: "visits", label: "visits" },
+          { id: "overview", label: "Overview" },
+          { id: "referrals", label: "Referrals" },
+          { id: "visits", label: "Visits" },
           { id: "report", label: "Log Visit" },
         ]}
       />
