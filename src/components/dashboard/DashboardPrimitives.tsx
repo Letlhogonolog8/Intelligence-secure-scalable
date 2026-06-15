@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -415,37 +415,94 @@ const TAB_ACCENTS = {
   violet: "border-purple-500",
 } as const;
 
-/** Underline tab strip shared by tabbed dashboards. */
+/**
+ * Underline tab strip shared by tabbed dashboards. Implements the WAI-ARIA
+ * tabs pattern: roving tabindex plus Arrow/Home/End keyboard navigation with
+ * automatic activation. Scrolls horizontally rather than wrapping on narrow
+ * viewports.
+ */
 export const TabBar = <T extends string>({
   tabs,
   active,
   onChange,
   accent = "emerald",
+  ariaLabel = "Dashboard sections",
 }: {
   tabs: Array<{ id: T; label: string }>;
   active: T;
   onChange: (tab: T) => void;
   accent?: keyof typeof TAB_ACCENTS;
-}) => (
-  <div className="flex gap-1 border-b border-white/10 pb-1" role="tablist">
-    {tabs.map((tab) => (
-      <button
-        key={tab.id}
-        role="tab"
-        aria-selected={active === tab.id}
-        onClick={() => onChange(tab.id)}
-        className={cn(
-          "rounded-t px-4 py-2 text-sm font-bold capitalize transition-all",
-          active === tab.id
-            ? cn("border-b-2 text-white", TAB_ACCENTS[accent])
-            : "text-slate-400 hover:text-white",
-        )}
-      >
-        {tab.label}
-      </button>
-    ))}
-  </div>
-);
+  ariaLabel?: string;
+}) => {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const activate = (index: number) => {
+    const next = (index + tabs.length) % tabs.length;
+    onChange(tabs[next].id);
+    tabRefs.current[next]?.focus();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const current = tabs.findIndex((tab) => tab.id === active);
+    if (current < 0) return;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        event.preventDefault();
+        activate(current + 1);
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        event.preventDefault();
+        activate(current - 1);
+        break;
+      case "Home":
+        event.preventDefault();
+        activate(0);
+        break;
+      case "End":
+        event.preventDefault();
+        activate(tabs.length - 1);
+        break;
+      default:
+        break;
+    }
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      onKeyDown={handleKeyDown}
+      className="flex gap-1 overflow-x-auto border-b border-white/10 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {tabs.map((tab, index) => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            ref={(node) => {
+              tabRefs.current[index] = node;
+            }}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              "shrink-0 whitespace-nowrap rounded-t border-b-2 px-4 py-2 text-sm font-bold capitalize outline-none transition-all focus-visible:ring-2 focus-visible:ring-white/40",
+              isActive
+                ? cn("bg-white/5 text-white", TAB_ACCENTS[accent])
+                : "border-transparent text-slate-400 hover:text-white",
+            )}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 const BANNER_TONES = {
   emerald: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",

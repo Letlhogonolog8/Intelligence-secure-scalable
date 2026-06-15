@@ -141,6 +141,64 @@ describe("DashboardPrimitives", () => {
     expect(onChange).toHaveBeenCalledWith("visits");
   });
 
+  it("exposes an accessible tablist and roving tabindex", () => {
+    render(
+      <TabBar
+        tabs={[
+          { id: "overview", label: "overview" },
+          { id: "visits", label: "visits" },
+        ]}
+        active="overview"
+        onChange={vi.fn()}
+        ariaLabel="Field sections"
+      />,
+    );
+
+    expect(
+      screen.getByRole("tablist", { name: "Field sections" }),
+    ).toBeInTheDocument();
+    // Only the active tab is in the tab order; inactive tabs are reachable via arrows.
+    expect(screen.getByRole("tab", { name: "overview" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(screen.getByRole("tab", { name: "visits" })).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+  });
+
+  it("moves between tabs with arrow, Home, and End keys", () => {
+    const onChange = vi.fn();
+
+    render(
+      <TabBar
+        tabs={[
+          { id: "a", label: "alpha" },
+          { id: "b", label: "bravo" },
+          { id: "c", label: "charlie" },
+        ]}
+        active="a"
+        onChange={onChange}
+      />,
+    );
+
+    const tablist = screen.getByRole("tablist");
+
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenLastCalledWith("b");
+
+    // Wraps from the first tab to the last on ArrowLeft.
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenLastCalledWith("c");
+
+    fireEvent.keyDown(tablist, { key: "End" });
+    expect(onChange).toHaveBeenLastCalledWith("c");
+
+    fireEvent.keyDown(tablist, { key: "Home" });
+    expect(onChange).toHaveBeenLastCalledWith("a");
+  });
+
   it("renders notice banners with tone content", () => {
     render(
       <NoticeBanner tone="amber">Offline — 3 reports queued</NoticeBanner>,
