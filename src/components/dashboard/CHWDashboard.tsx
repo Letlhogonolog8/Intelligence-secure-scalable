@@ -264,6 +264,9 @@ const CHWDashboard: React.FC = () => {
     const payload = {
       id: `VISIT-${Date.now()}`,
       case_id: null,
+      // user_id must equal auth.uid(): the escalation_events INSERT policy
+      // (users_create_own_escalations) checks user_id, not triggered_by.
+      user_id: user?.id ?? null,
       triggered_by: user?.id ?? "chw",
       escalation_type: "chw_visit",
       severity: "low",
