@@ -30,6 +30,7 @@ import { useOrganizationContext } from "@/contexts/organizationContext";
 import { ROLE_DEFINITIONS, UserRole } from "@/lib/roleConfig";
 import { useAppStore } from "@/store/appStore";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import PresenceIndicator from "@/components/presence/PresenceIndicator";
 
 interface HeaderProps {
   activeModule: ModuleType;
@@ -649,6 +650,8 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
             <SettingsIcon size={18} />
           </button>
         )}
+
+        <PresenceIndicator className="hidden sm:block" />
 
         {/* User */}
         <div className="flex items-center gap-2 pl-3 border-l border-slate-800">
