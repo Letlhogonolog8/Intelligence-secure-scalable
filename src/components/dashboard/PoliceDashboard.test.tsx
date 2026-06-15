@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import PoliceDashboard from "@/components/dashboard/PoliceDashboard";
 
 const mockUseAuth = vi.fn();
@@ -156,10 +156,17 @@ describe("PoliceDashboard", () => {
   it("shows empty-state guidance when no live police data is available", () => {
     render(<PoliceDashboard />);
 
+    // Hero + the default "Cases & response" tab are visible immediately.
     expect(screen.getByText("Police emergency response")).toBeInTheDocument();
     expect(screen.getByText("Queue is clear")).toBeInTheDocument();
     expect(screen.getByText("No unacknowledged alerts")).toBeInTheDocument();
+
+    // Coordination empty-state lives in the "Evidence & tools" tab.
+    fireEvent.click(screen.getByRole("tab", { name: "Evidence & tools" }));
     expect(screen.getByText("No coordination events")).toBeInTheDocument();
+
+    // Recommended-actions empty-state lives in the "Intelligence" tab.
+    fireEvent.click(screen.getByRole("tab", { name: "Intelligence" }));
     expect(screen.getByText("No urgent follow-up")).toBeInTheDocument();
   });
 
@@ -209,13 +216,20 @@ describe("PoliceDashboard", () => {
 
     render(<PoliceDashboard />);
 
+    // "Cases & response" tab (default): queue + alert normalization.
     expect(screen.getAllByText("Case A-102")[0]).toBeInTheDocument();
     expect(
       screen.getByText(/intake.*Region pending.*updated/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Officer assistance required")).toBeInTheDocument();
     expect(screen.getByText(/core.*--.*response: 5min/i)).toBeInTheDocument();
+
+    // "Evidence & tools" tab: partner-referral normalization.
+    fireEvent.click(screen.getByRole("tab", { name: "Evidence & tools" }));
     expect(screen.getByText(/Referral case-1-r/i)).toBeInTheDocument();
+
+    // "Intelligence" tab: recommended-action derivation.
+    fireEvent.click(screen.getByRole("tab", { name: "Intelligence" }));
     expect(
       screen.getByText("Reduce unassigned investigations"),
     ).toBeInTheDocument();
