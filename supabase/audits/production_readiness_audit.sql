@@ -5,6 +5,10 @@
 -- verify what actually applied, vs. what the migration files intend. It makes
 -- NO changes. Work top-to-bottom; anything flagged ⛔ is a launch blocker.
 --
+-- HOW TO RUN: the Supabase SQL editor only shows the LAST statement's result.
+-- So run ONE section at a time — highlight just that section's query (down to
+-- its semicolon) and press Ctrl/Cmd+Enter. Each section is numbered below.
+--
 -- Why this exists: migration files describe intent, but this project has
 -- already hit a "marked-applied-but-never-run" case, so live state must be
 -- confirmed directly before going to real-time production with real PII.
@@ -122,18 +126,25 @@ ORDER  BY replica_identity, table_name;
 
 -- ----------------------------------------------------------------------------
 -- 6. ROW COUNTS  — is the dashboard data real, or just seeded demo rows?
---    (Live estimate from the planner; exact enough to tell empty vs seeded vs
---    organically growing.)
+--    EXACT counts (planner estimates show -1 for never-analyzed tables, which
+--    looks empty but isn't). Check escalation_events / alerts_feed here to
+--    confirm your SOS test actually landed and was bridged.
 -- ----------------------------------------------------------------------------
-SELECT c.relname AS table_name,
-       c.reltuples::bigint AS approx_rows
-FROM   pg_class c
-JOIN   pg_namespace n ON n.oid=c.relnamespace
-WHERE  n.nspname='public' AND c.relkind='r'
-  AND  c.relname IN (
-        'regions','incidents','incident_timeseries','continental_stats',
-        'justice_cases','justice_convictions','justice_bottlenecks',
-        'case_reports','escalation_events','survivors','survivor_chat_sessions',
-        'alerts_feed','anomaly_alerts','governance_models','fairness_metrics',
-        'region_forecasts','risk_predictions')
-ORDER  BY approx_rows DESC, table_name;
+SELECT 'regions'                AS table_name, count(*) AS rows FROM public.regions
+UNION ALL SELECT 'incidents',               count(*) FROM public.incidents
+UNION ALL SELECT 'incident_timeseries',     count(*) FROM public.incident_timeseries
+UNION ALL SELECT 'continental_stats',       count(*) FROM public.continental_stats
+UNION ALL SELECT 'justice_cases',           count(*) FROM public.justice_cases
+UNION ALL SELECT 'justice_convictions',     count(*) FROM public.justice_convictions
+UNION ALL SELECT 'justice_bottlenecks',     count(*) FROM public.justice_bottlenecks
+UNION ALL SELECT 'case_reports',            count(*) FROM public.case_reports
+UNION ALL SELECT 'escalation_events',       count(*) FROM public.escalation_events
+UNION ALL SELECT 'alerts_feed',             count(*) FROM public.alerts_feed
+UNION ALL SELECT 'survivors',               count(*) FROM public.survivors
+UNION ALL SELECT 'survivor_chat_sessions',  count(*) FROM public.survivor_chat_sessions
+UNION ALL SELECT 'anomaly_alerts',          count(*) FROM public.anomaly_alerts
+UNION ALL SELECT 'governance_models',       count(*) FROM public.governance_models
+UNION ALL SELECT 'fairness_metrics',        count(*) FROM public.fairness_metrics
+UNION ALL SELECT 'region_forecasts',        count(*) FROM public.region_forecasts
+UNION ALL SELECT 'risk_predictions',        count(*) FROM public.risk_predictions
+ORDER BY rows DESC, table_name;
