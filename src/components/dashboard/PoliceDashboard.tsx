@@ -167,15 +167,11 @@ const PoliceDashboard: React.FC = () => {
       limit: 30,
     });
 
+  // Track real load time: from mount until live data first finishes loading
+  // (not until unmount — that previously logged session duration, not load).
+  const loadTrackedRef = useRef(false);
   useEffect(() => {
     policeMonitor.startTracking("dashboard-load");
-
-    return () => {
-      policeMonitor.endTracking("dashboard-load");
-      if (import.meta.env.DEV) {
-        policeMonitor.logReport();
-      }
-    };
   }, []);
 
   const isLoadingData =
@@ -184,6 +180,16 @@ const PoliceDashboard: React.FC = () => {
     casesLoading ||
     alertsLoading ||
     referralsLoading;
+
+  useEffect(() => {
+    if (!isLoadingData && !loadTrackedRef.current) {
+      loadTrackedRef.current = true;
+      policeMonitor.endTracking("dashboard-load");
+      if (import.meta.env.DEV) {
+        policeMonitor.logReport();
+      }
+    }
+  }, [isLoadingData]);
 
   const sanitizedCases = useMemo(
     () => normalizePoliceCasesEnhanced(justiceCases),
