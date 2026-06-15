@@ -4,40 +4,41 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+/** Per-accent aurora glow blobs layered over the shared midnight base. */
+const AURORA_ACCENTS = {
+  sky: "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(56,189,248,0.22),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(34,211,238,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(99,102,241,0.16),transparent_60%)]",
+  rose: "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(244,63,94,0.24),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(217,70,239,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(129,140,248,0.16),transparent_60%)]",
+  emerald:
+    "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(16,185,129,0.22),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(45,212,191,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(34,211,238,0.16),transparent_60%)]",
+  indigo:
+    "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(129,140,248,0.24),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(34,211,238,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(168,85,247,0.16),transparent_60%)]",
+  cyan: "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(34,211,238,0.22),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(99,102,241,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(56,189,248,0.16),transparent_60%)]",
+  violet:
+    "bg-[radial-gradient(60%_55%_at_8%_0%,rgba(168,85,247,0.24),transparent_60%),radial-gradient(55%_50%_at_100%_0%,rgba(236,72,153,0.18),transparent_60%),radial-gradient(70%_60%_at_50%_120%,rgba(99,102,241,0.16),transparent_60%)]",
+} as const;
+
 export const DashboardPage = ({
   accent,
   children,
 }: {
-  accent: "sky" | "rose" | "emerald" | "indigo" | "cyan" | "violet";
+  accent: keyof typeof AURORA_ACCENTS;
   children: ReactNode;
-}) => {
-  const accentStyles = {
-    sky: "bg-[radial-gradient(circle_at_12%_18%,rgba(56,189,248,0.16),transparent_40%),radial-gradient(circle_at_90%_12%,rgba(16,185,129,0.14),transparent_42%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
-    rose: "bg-[radial-gradient(circle_at_10%_14%,rgba(244,63,94,0.18),transparent_42%),radial-gradient(circle_at_88%_10%,rgba(59,130,246,0.18),transparent_44%),linear-gradient(160deg,#0B0614_0%,#150B22_56%,#08040F_100%)]",
-    emerald:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(16,185,129,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(6,182,212,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
-    indigo:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(99,102,241,0.16),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(34,211,238,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
-    cyan: "bg-[radial-gradient(circle_at_12%_16%,rgba(8,145,178,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(99,102,241,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
-    violet:
-      "bg-[radial-gradient(circle_at_12%_16%,rgba(168,85,247,0.18),transparent_40%),radial-gradient(circle_at_88%_12%,rgba(59,130,246,0.14),transparent_44%),linear-gradient(160deg,#0B0614_0%,#120A1E_56%,#08040F_100%)]",
-  } as const;
-
-  return (
-    <div className="relative min-h-screen overflow-hidden px-4 py-6 text-slate-50 sm:px-6 lg:px-8">
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0",
-          accentStyles[accent],
-        )}
-      />
-      <div className="pointer-events-none absolute inset-0 opacity-15 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:132px_132px]" />
-      <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-6">
-        {children}
-      </div>
+}) => (
+  <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(165deg,#0A0A1F_0%,#0D0A22_45%,#070510_100%)] px-4 py-6 text-slate-50 sm:px-6 lg:px-8">
+    {/* Aurora glow layer (per role accent) */}
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0 opacity-90 blur-[2px]",
+        AURORA_ACCENTS[accent],
+      )}
+    />
+    {/* Fine grid texture, kept faint for breathing room */}
+    <div className="pointer-events-none absolute inset-0 opacity-[0.06] bg-[linear-gradient(90deg,rgba(255,255,255,0.9)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.9)_1px,transparent_1px)] bg-[size:148px_148px]" />
+    <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-7">
+      {children}
     </div>
-  );
-};
+  </div>
+);
 
 export const DashboardHero = ({
   eyebrow,
@@ -52,29 +53,33 @@ export const DashboardHero = ({
   badges?: ReactNode[];
   actions?: ReactNode;
 }) => (
-  <section className="rounded-3xl border border-white/20 bg-slate-950/75 p-6 shadow-[0_30px_80px_rgba(2,8,23,0.55)] backdrop-blur-xl sm:p-8">
-    <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-      <div className="space-y-4">
-        <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-slate-100">
-          {eyebrow}
+  <div className="rounded-[30px] bg-gradient-to-br from-violet-500/40 via-fuchsia-500/15 to-cyan-400/40 p-px shadow-[0_30px_90px_-30px_rgba(124,58,237,0.55)]">
+    <section className="relative overflow-hidden rounded-[29px] bg-[#0B0A1A]/92 p-6 backdrop-blur-2xl sm:p-9">
+      {/* aurora glow accent */}
+      <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-gradient-to-br from-violet-500/30 via-fuchsia-500/20 to-cyan-400/20 blur-3xl" />
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-4">
+          <div className="inline-flex items-center rounded-full border border-violet-400/30 bg-violet-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.28em] text-violet-100">
+            {eyebrow}
+          </div>
+          <div className="space-y-3">
+            <h1 className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-4xl font-light leading-[1.1] tracking-tight text-transparent sm:text-5xl">
+              {title}
+            </h1>
+            <p className="max-w-3xl text-sm leading-relaxed text-slate-300 sm:text-base">
+              {description}
+            </p>
+          </div>
+          {badges.length > 0 && (
+            <div className="flex flex-wrap gap-2">{badges}</div>
+          )}
         </div>
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">
-            {title}
-          </h1>
-          <p className="max-w-3xl text-sm text-slate-200 sm:text-base">
-            {description}
-          </p>
-        </div>
-        {badges.length > 0 && (
-          <div className="flex flex-wrap gap-2">{badges}</div>
-        )}
+        {actions ? (
+          <div className="flex flex-wrap items-center gap-3">{actions}</div>
+        ) : null}
       </div>
-      {actions ? (
-        <div className="flex flex-wrap items-center gap-3">{actions}</div>
-      ) : null}
-    </div>
-  </section>
+    </section>
+  </div>
 );
 
 export const HeroBadge = ({
@@ -116,11 +121,26 @@ export const MetricCard = ({
     slate: "border-white/15 bg-white/[0.08] text-slate-100",
   } as const;
 
+  const accentBars = {
+    sky: "from-sky-400 to-cyan-300",
+    rose: "from-rose-400 to-fuchsia-400",
+    emerald: "from-emerald-400 to-teal-300",
+    indigo: "from-indigo-400 to-violet-400",
+    amber: "from-amber-400 to-orange-300",
+    slate: "from-slate-400 to-slate-300",
+  } as const;
+
   return (
-    <Card className="border-white/20 bg-slate-950/75 p-5 backdrop-blur-xl">
+    <Card className="group relative overflow-hidden rounded-3xl border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.015] p-5 shadow-[0_20px_60px_-24px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_28px_70px_-22px_rgba(124,58,237,0.45)]">
       <div
         className={cn(
-          "inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+          "absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-80",
+          accentBars[accent ?? "slate"],
+        )}
+      />
+      <div
+        className={cn(
+          "inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
           accents[accent ?? "slate"],
         )}
       >
@@ -128,14 +148,16 @@ export const MetricCard = ({
       </div>
       {loading ? (
         <>
-          <Skeleton className="mt-4 h-8 w-24 bg-white/10" />
+          <Skeleton className="mt-4 h-9 w-24 bg-white/10" />
           {helper ? <Skeleton className="mt-3 h-4 w-32 bg-white/10" /> : null}
         </>
       ) : (
         <>
-          <div className="mt-4 text-3xl font-semibold text-white">{value}</div>
+          <div className="mt-4 text-4xl font-light tracking-tight text-white">
+            {value}
+          </div>
           {helper ? (
-            <div className="mt-2 text-sm text-slate-200">{helper}</div>
+            <div className="mt-2 text-sm text-slate-300">{helper}</div>
           ) : null}
         </>
       )}
@@ -158,15 +180,17 @@ export const SectionCard = ({
 }) => (
   <Card
     className={cn(
-      "border-white/20 bg-slate-950/75 shadow-xl backdrop-blur-xl",
+      "overflow-hidden rounded-3xl border-white/10 bg-slate-950/55 shadow-[0_24px_70px_-32px_rgba(0,0,0,0.85)] backdrop-blur-xl",
       className,
     )}
   >
-    <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
+    <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/[0.02] px-6 py-5">
       <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-white">
+          {title}
+        </h2>
         {description ? (
-          <p className="mt-1 text-sm text-slate-300">{description}</p>
+          <p className="mt-1 text-sm text-slate-400">{description}</p>
         ) : null}
       </div>
       {action}
@@ -186,12 +210,12 @@ export const ListItemCard = ({
   meta?: ReactNode;
   action?: ReactNode;
 }) => (
-  <div className="rounded-2xl border border-white/15 bg-slate-900/80 p-4 shadow-[0_18px_36px_rgba(2,8,23,0.24)]">
+  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-colors duration-200 hover:border-white/20 hover:bg-white/[0.06]">
     <div className="flex items-start justify-between gap-4">
       <div className="space-y-1">
         <div className="text-sm font-medium text-white">{title}</div>
         {subtitle ? (
-          <div className="text-xs text-slate-300">{subtitle}</div>
+          <div className="text-xs text-slate-400">{subtitle}</div>
         ) : null}
       </div>
       {meta ? <div className="text-xs text-slate-200">{meta}</div> : null}
@@ -304,7 +328,7 @@ export const StatTile = ({
 }) => (
   <div
     className={cn(
-      "rounded-2xl border border-white/10 bg-slate-900/70 p-4",
+      "rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-colors duration-200 hover:border-white/20",
       className,
     )}
   >
@@ -339,7 +363,7 @@ export const ChartFrame = ({
 }) => (
   <div
     className={cn(
-      "rounded-2xl border border-white/10 bg-slate-900/70 p-4",
+      "rounded-2xl border border-white/10 bg-white/[0.02] p-4",
       className,
     )}
     style={{ height }}
@@ -372,7 +396,7 @@ export const GlassPanel = ({
 }) => (
   <div
     className={cn(
-      "rounded-2xl border border-white/10 bg-slate-900/40 p-6 backdrop-blur-xl",
+      "rounded-3xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl",
       className,
     )}
   >
@@ -407,12 +431,21 @@ export const GlassPanel = ({
 );
 
 const TAB_ACCENTS = {
-  emerald: "border-emerald-500",
-  sky: "border-sky-500",
-  rose: "border-rose-500",
-  indigo: "border-indigo-500",
-  cyan: "border-cyan-500",
-  violet: "border-purple-500",
+  emerald: "border-emerald-400",
+  sky: "border-sky-400",
+  rose: "border-rose-400",
+  indigo: "border-indigo-400",
+  cyan: "border-cyan-400",
+  violet: "border-purple-400",
+} as const;
+
+const TAB_ACTIVE_FILL = {
+  emerald: "from-emerald-500/20 to-teal-400/5",
+  sky: "from-sky-500/20 to-cyan-400/5",
+  rose: "from-rose-500/20 to-fuchsia-400/5",
+  indigo: "from-indigo-500/20 to-violet-400/5",
+  cyan: "from-cyan-500/20 to-sky-400/5",
+  violet: "from-violet-500/20 to-fuchsia-400/5",
 } as const;
 
 /**
@@ -490,10 +523,14 @@ export const TabBar = <T extends string>({
             tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(tab.id)}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-t border-b-2 px-4 py-2 text-sm font-bold capitalize outline-none transition-all focus-visible:ring-2 focus-visible:ring-white/40",
+              "shrink-0 whitespace-nowrap rounded-t-xl border-b-2 px-4 py-2.5 text-sm font-semibold capitalize outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-white/40",
               isActive
-                ? cn("bg-white/5 text-white", TAB_ACCENTS[accent])
-                : "border-transparent text-slate-400 hover:text-white",
+                ? cn(
+                    "bg-gradient-to-b text-white",
+                    TAB_ACTIVE_FILL[accent],
+                    TAB_ACCENTS[accent],
+                  )
+                : "border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-white",
             )}
           >
             {tab.label}
