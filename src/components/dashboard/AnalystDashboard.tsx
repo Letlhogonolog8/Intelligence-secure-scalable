@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   useAlertsFeed,
   useAnomalyAlerts,
@@ -20,6 +20,7 @@ import {
   MetricCard,
   SectionCard,
   StatusPill,
+  TabBar,
 } from "@/components/dashboard/DashboardPrimitives";
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
@@ -39,9 +40,17 @@ import {
 } from "recharts";
 import HotspotHeatmap from "@/components/analytics/HotspotHeatmap";
 
+const ANALYST_TABS = [
+  { id: "trends", label: "Trends" },
+  { id: "signals", label: "Signals" },
+  { id: "intel", label: "Hotspots & compliance" },
+] as const;
+type AnalystTab = (typeof ANALYST_TABS)[number]["id"];
+
 const AnalystDashboard: React.FC = () => {
   const { setActiveModule } = useAppStore();
   const { user, session } = useAuth();
+  const [activeTab, setActiveTab] = useState<AnalystTab>("trends");
   const { data: profile } = useUserProfile(user?.id);
   const resolvedRole = (profile?.role ?? "analyst") as UserRole;
   const permissions = PERMISSIONS[resolvedRole];
@@ -260,298 +269,323 @@ const AnalystDashboard: React.FC = () => {
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard
-          title="Incident trend"
-          description="Actual versus forecasted incident movement from the shared intelligence timeseries."
-        >
-          {incidentChartData.length === 0 ? (
-            <EmptyState
-              title="No incident telemetry yet"
-              description="Incident timeseries will render automatically as live telemetry arrives from the analytics pipeline."
-              guidance={[
-                "Confirm incident_timeseries is populated in Supabase for your connected environment.",
-                "Once new points are ingested, this chart refreshes through realtime invalidation and polling.",
-              ]}
-            />
-          ) : (
-            <ChartFrame label="Incident trend over time" height={320}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={incidentChartData}>
-                  <defs>
-                    <linearGradient
-                      id="analyst-actual"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop
-                        offset="5%"
-                        stopColor="#22d3ee"
-                        stopOpacity={0.35}
-                      />
-                      <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient
-                      id="analyst-predicted"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    stroke="#1e293b"
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                  />
-                  <Tooltip />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#22d3ee"
-                    fill="url(#analyst-actual)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="predicted"
-                    stroke="#6366f1"
-                    fill="url(#analyst-predicted)"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-          )}
-        </SectionCard>
+      <TabBar
+        accent="indigo"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={ANALYST_TABS.map((t) => ({ id: t.id, label: t.label }))}
+      />
 
-        <SectionCard
-          title="Fairness breakdown"
-          description="Current model-level fairness metric scores."
-        >
-          {fairnessChartData.length === 0 ? (
-            <EmptyState
-              title="No fairness metrics yet"
-              description="Fairness indicators appear here once governance metrics are published to the live feed."
-              guidance={[
-                "Verify fairness_metrics has recent records in Supabase.",
-                "Metric updates are consumed automatically through the same live query channel.",
-              ]}
-            />
-          ) : (
-            <ChartFrame label="Fairness metric scores" height={320}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fairnessChartData}>
-                  <CartesianGrid
-                    stroke="#1e293b"
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="metric"
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                    interval={0}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                    domain={[0, 100]}
-                  />
-                  <Tooltip />
-                  <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                    {fairnessChartData.map((entry, index) => (
-                      <Cell
-                        key={`${entry.metric}-${index}`}
-                        fill={
-                          entry.status === "fail"
-                            ? "#fb7185"
-                            : entry.status === "warning"
-                              ? "#f59e0b"
-                              : "#6366f1"
+      {activeTab === "trends" && (
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <SectionCard
+            title="Incident trend"
+            description="Actual versus forecasted incident movement from the shared intelligence timeseries."
+          >
+            {incidentChartData.length === 0 ? (
+              <EmptyState
+                title="No incident telemetry yet"
+                description="Incident timeseries will render automatically as live telemetry arrives from the analytics pipeline."
+                guidance={[
+                  "Confirm incident_timeseries is populated in Supabase for your connected environment.",
+                  "Once new points are ingested, this chart refreshes through realtime invalidation and polling.",
+                ]}
+              />
+            ) : (
+              <ChartFrame label="Incident trend over time" height={320}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={incidentChartData}>
+                    <defs>
+                      <linearGradient
+                        id="analyst-actual"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#22d3ee"
+                          stopOpacity={0.35}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#22d3ee"
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                      <linearGradient
+                        id="analyst-predicted"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#6366f1"
+                          stopOpacity={0.3}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#6366f1"
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      stroke="#1e293b"
+                      strokeDasharray="3 3"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                    />
+                    <YAxis
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                    />
+                    <Tooltip />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#22d3ee"
+                      fill="url(#analyst-actual)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="predicted"
+                      stroke="#6366f1"
+                      fill="url(#analyst-predicted)"
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Fairness breakdown"
+            description="Current model-level fairness metric scores."
+          >
+            {fairnessChartData.length === 0 ? (
+              <EmptyState
+                title="No fairness metrics yet"
+                description="Fairness indicators appear here once governance metrics are published to the live feed."
+                guidance={[
+                  "Verify fairness_metrics has recent records in Supabase.",
+                  "Metric updates are consumed automatically through the same live query channel.",
+                ]}
+              />
+            ) : (
+              <ChartFrame label="Fairness metric scores" height={320}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={fairnessChartData}>
+                    <CartesianGrid
+                      stroke="#1e293b"
+                      strokeDasharray="3 3"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="metric"
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                      interval={0}
+                    />
+                    <YAxis
+                      stroke="#64748b"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={10}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                      {fairnessChartData.map((entry, index) => (
+                        <Cell
+                          key={`${entry.metric}-${index}`}
+                          fill={
+                            entry.status === "fail"
+                              ? "#fb7185"
+                              : entry.status === "warning"
+                                ? "#f59e0b"
+                                : "#6366f1"
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </SectionCard>
+        </section>
+      )}
+
+      {activeTab === "signals" && (
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <SectionCard
+            title="Anomaly intelligence"
+            description="Live anomaly feed ordered by latest detection."
+          >
+            <div className="space-y-3">
+              {anomalyPreview.length === 0 ? (
+                <EmptyState
+                  title="No anomalies detected"
+                  description="The anomaly stream is clear at the moment."
+                  guidance={[
+                    "Model and telemetry anomalies will appear here when monitoring detects unusual behavior.",
+                    "If you just ran a new workload, wait for the next analysis cycle before checking again.",
+                  ]}
+                />
+              ) : (
+                anomalyPreview.map((entry) => (
+                  <ListItemCard
+                    key={entry.id}
+                    title={entry.type}
+                    subtitle={`${entry.region} · ${entry.time}`}
+                    meta={
+                      <StatusPill
+                        tone={
+                          entry.severity === "critical"
+                            ? "rose"
+                            : entry.severity === "high"
+                              ? "amber"
+                              : "sky"
                         }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-          )}
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <SectionCard
-          title="Anomaly intelligence"
-          description="Live anomaly feed ordered by latest detection."
-        >
-          <div className="space-y-3">
-            {anomalyPreview.length === 0 ? (
-              <EmptyState
-                title="No anomalies detected"
-                description="The anomaly stream is clear at the moment."
-                guidance={[
-                  "Model and telemetry anomalies will appear here when monitoring detects unusual behavior.",
-                  "If you just ran a new workload, wait for the next analysis cycle before checking again.",
-                ]}
-              />
-            ) : (
-              anomalyPreview.map((entry) => (
-                <ListItemCard
-                  key={entry.id}
-                  title={entry.type}
-                  subtitle={`${entry.region} · ${entry.time}`}
-                  meta={
-                    <StatusPill
-                      tone={
-                        entry.severity === "critical"
-                          ? "rose"
-                          : entry.severity === "high"
-                            ? "amber"
-                            : "sky"
-                      }
-                    >
-                      {entry.severity}
-                    </StatusPill>
-                  }
-                />
-              ))
-            )}
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Policy simulation queue"
-          description="Latest scenario outputs with modeled GBV reduction impact."
-        >
-          <div className="space-y-3">
-            {scenarioPreview.length === 0 ? (
-              <EmptyState
-                title="No simulations queued"
-                description="Run a policy scenario to populate this feed with live projections."
-                guidance={[
-                  "Completed scenario runs and freshly published projections appear here automatically.",
-                  "If a simulation finished moments ago, allow the analytics sync to publish the latest result set.",
-                ]}
-              />
-            ) : (
-              scenarioPreview.map((entry) => (
-                <ListItemCard
-                  key={entry.id}
-                  title={entry.name}
-                  subtitle={`${entry.timeframe} · confidence ${entry.confidence}%`}
-                  meta={
-                    <StatusPill tone="indigo">
-                      -{entry.gbvReduction}%
-                    </StatusPill>
-                  }
-                />
-              ))
-            )}
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Signal alerts"
-          description="Critical analyst-facing system alerts."
-        >
-          <div className="space-y-3">
-            {alertsPreview.length === 0 ? (
-              <EmptyState
-                title="No analyst alerts"
-                description="Critical platform and intelligence alerts will appear here in real time."
-                guidance={[
-                  "Governance, intelligence, and pipeline notices will surface here when they need analyst review.",
-                  "If another team reported an issue recently, refresh after the alert stream catches up.",
-                ]}
-              />
-            ) : (
-              alertsPreview.map((entry) => (
-                <ListItemCard
-                  key={entry.id}
-                  title={entry.message}
-                  subtitle={`${entry.module || "core"} · ${entry.time}`}
-                  meta={
-                    <StatusPill
-                      tone={entry.type === "critical" ? "rose" : "amber"}
-                    >
-                      {entry.type || "notice"}
-                    </StatusPill>
-                  }
-                />
-              ))
-            )}
-          </div>
-        </SectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <SectionCard
-          title="Session & compliance"
-          description="Analyst access context and active governance state."
-        >
-          <div className="space-y-3">
-            <ListItemCard
-              title="Session expiry"
-              subtitle="Current secure analyst session window"
-              meta={sessionExpiry}
-            />
-            <ListItemCard
-              title="Governance posture"
-              subtitle="Live active governance models"
-              meta={
-                <StatusPill tone="emerald">
-                  {activeModels.length} active
-                </StatusPill>
-              }
-            />
-            <ListItemCard
-              title="Encrypted telemetry"
-              subtitle="Secure monitoring and evidence chain"
-              meta={<StatusPill tone="sky">enabled</StatusPill>}
-            />
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setActiveModule("governance")}
-                disabled={!permissions.canAccessAnalytics}
-              >
-                Open governance hub
-              </Button>
+                      >
+                        {entry.severity}
+                      </StatusPill>
+                    }
+                  />
+                ))
+              )}
             </div>
-          </div>
-        </SectionCard>
+          </SectionCard>
 
-        <SectionCard
-          title="GBV hotspot heatmap"
-          description="Realtime hotspot analysis across monitored regions."
-        >
-          <HotspotHeatmap />
-        </SectionCard>
-      </section>
+          <SectionCard
+            title="Policy simulation queue"
+            description="Latest scenario outputs with modeled GBV reduction impact."
+          >
+            <div className="space-y-3">
+              {scenarioPreview.length === 0 ? (
+                <EmptyState
+                  title="No simulations queued"
+                  description="Run a policy scenario to populate this feed with live projections."
+                  guidance={[
+                    "Completed scenario runs and freshly published projections appear here automatically.",
+                    "If a simulation finished moments ago, allow the analytics sync to publish the latest result set.",
+                  ]}
+                />
+              ) : (
+                scenarioPreview.map((entry) => (
+                  <ListItemCard
+                    key={entry.id}
+                    title={entry.name}
+                    subtitle={`${entry.timeframe} · confidence ${entry.confidence}%`}
+                    meta={
+                      <StatusPill tone="indigo">
+                        -{entry.gbvReduction}%
+                      </StatusPill>
+                    }
+                  />
+                ))
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Signal alerts"
+            description="Critical analyst-facing system alerts."
+          >
+            <div className="space-y-3">
+              {alertsPreview.length === 0 ? (
+                <EmptyState
+                  title="No analyst alerts"
+                  description="Critical platform and intelligence alerts will appear here in real time."
+                  guidance={[
+                    "Governance, intelligence, and pipeline notices will surface here when they need analyst review.",
+                    "If another team reported an issue recently, refresh after the alert stream catches up.",
+                  ]}
+                />
+              ) : (
+                alertsPreview.map((entry) => (
+                  <ListItemCard
+                    key={entry.id}
+                    title={entry.message}
+                    subtitle={`${entry.module || "core"} · ${entry.time}`}
+                    meta={
+                      <StatusPill
+                        tone={entry.type === "critical" ? "rose" : "amber"}
+                      >
+                        {entry.type || "notice"}
+                      </StatusPill>
+                    }
+                  />
+                ))
+              )}
+            </div>
+          </SectionCard>
+        </section>
+      )}
+
+      {activeTab === "intel" && (
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <SectionCard
+            title="Session & compliance"
+            description="Analyst access context and active governance state."
+          >
+            <div className="space-y-3">
+              <ListItemCard
+                title="Session expiry"
+                subtitle="Current secure analyst session window"
+                meta={sessionExpiry}
+              />
+              <ListItemCard
+                title="Governance posture"
+                subtitle="Live active governance models"
+                meta={
+                  <StatusPill tone="emerald">
+                    {activeModels.length} active
+                  </StatusPill>
+                }
+              />
+              <ListItemCard
+                title="Encrypted telemetry"
+                subtitle="Secure monitoring and evidence chain"
+                meta={<StatusPill tone="sky">enabled</StatusPill>}
+              />
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setActiveModule("governance")}
+                  disabled={!permissions.canAccessAnalytics}
+                >
+                  Open governance hub
+                </Button>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="GBV hotspot heatmap"
+            description="Realtime hotspot analysis across monitored regions."
+          >
+            <HotspotHeatmap />
+          </SectionCard>
+        </section>
+      )}
     </DashboardPage>
   );
 };
