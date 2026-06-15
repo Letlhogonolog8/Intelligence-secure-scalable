@@ -24,6 +24,7 @@ import { validationMiddleware } from "./middleware/validation";
 import { idempotency } from "./middleware/idempotency";
 import whatsappRoutes from "./routes/whatsappRoutes";
 import { createCommunityRoutes } from "./routes/communityRoutes";
+import { synthesizeSpeech, isTtsConfigured } from "./ai/azureTts";
 import { createLogger } from "./utils/logger";
 import {
   metricsHandler,
@@ -1546,20 +1547,6 @@ app.post(
 // the transcripts; translation failure still returns the original text.
 // ----------------------------------------------------------------------------
 
-// Meta MMS-TTS model per supported responder language (HF serverless).
-const MMS_TTS_MODELS: Record<string, string> = {
-  en: "facebook/mms-tts-eng",
-  af: "facebook/mms-tts-afr",
-  zu: "facebook/mms-tts-zul",
-  xh: "facebook/mms-tts-xho",
-  tn: "facebook/mms-tts-tsn",
-  st: "facebook/mms-tts-sot",
-  ts: "facebook/mms-tts-tso",
-  ve: "facebook/mms-tts-ven",
-  ss: "facebook/mms-tts-ssw",
-  nso: "facebook/mms-tts-nso",
-};
-
 app.post(
   "/api/ai/voice-translate",
   express.raw({ type: () => true, limit: "12mb" }),
@@ -1667,29 +1654,15 @@ app.post(
         // Translation failure is non-fatal — responder still gets the original.
       }
 
-      // 3. Synthesize the translation in the responder's language (best-effort).
+      // 3. Synthesize the translation via Azure neural TTS (best-effort).
+      // Null audio (no key / unsupported language) → client uses device voice.
       let audioBase64: string | null = null;
-      const ttsModel = MMS_TTS_MODELS[target];
-      if (ttsModel && translatedText) {
-        try {
-          const tts = await fetch(
-            `https://router.huggingface.co/hf-inference/models/${ttsModel}`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${hfToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ inputs: translatedText.slice(0, 800) }),
-            },
-          );
-          if (tts.ok) {
-            audioBase64 = Buffer.from(await tts.arrayBuffer()).toString(
-              "base64",
-            );
-          }
-        } catch {
-          // TTS failure is non-fatal — transcripts alone are still useful.
+      let audioMimeType: string | null = null;
+      if (translatedText) {
+        const synth = await synthesizeSpeech(translatedText, target);
+        if (synth) {
+          audioBase64 = synth.audioBase64;
+          audioMimeType = synth.mimeType;
         }
       }
 
@@ -1699,6 +1672,7 @@ app.post(
         translatedText,
         targetLanguage: target,
         audioBase64,
+        audioMimeType,
       });
     } catch (error) {
       logger.error("Voice translation failed", error, {}, requestId);
@@ -1802,6 +1776,47 @@ app.post(
     } catch (error) {
       logger.error("Text translation failed", error, {}, requestId);
       res.status(500).json({ error: "translate_failed" });
+    }
+  },
+);
+
+// ----------------------------------------------------------------------------
+// TEXT-TO-SPEECH (Azure neural voices)
+// Synthesizes spoken audio for a transcript/translation in a stakeholder's
+// language — used by the voice evidence archive's "listen" action. Returns
+// 503 when no provider key is set so the client falls back to the device voice.
+// ----------------------------------------------------------------------------
+app.post(
+  "/api/ai/tts",
+  aiLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const requestId = (req as AppRequest).id;
+    try {
+      const text = String(req.body?.text ?? "").trim();
+      const language = String(req.body?.language ?? "en")
+        .toLowerCase()
+        .slice(0, 8);
+      if (!text || text.length > 2000) {
+        res.status(400).json({ error: "invalid_request" });
+        return;
+      }
+      if (!isTtsConfigured()) {
+        res.status(503).json({ error: "tts_unavailable" });
+        return;
+      }
+      const synth = await synthesizeSpeech(text, language);
+      if (!synth) {
+        // Configured but unsupported language or provider error.
+        res.status(502).json({ error: "tts_failed" });
+        return;
+      }
+      res.json({
+        audioBase64: synth.audioBase64,
+        audioMimeType: synth.mimeType,
+      });
+    } catch (error) {
+      logger.error("Text-to-speech failed", error, {}, requestId);
+      res.status(500).json({ error: "tts_error" });
     }
   },
 );

@@ -30,7 +30,7 @@ import {
  * gets back: the original transcript, a translation in the responder's
  * preferred language, and synthesized audio of that translation — powered by
  * the backend /api/ai/voice-translate pipeline (Whisper STT → LLM detect +
- * translate → MMS text-to-speech).
+ * translate → Azure neural text-to-speech, with a device-voice fallback).
  *
  * A translated note can then be saved to the voice evidence archive (private
  * storage + transcript table) with an optional case reference, so it becomes
@@ -48,6 +48,7 @@ interface TranslateResult {
   translatedText: string;
   targetLanguage: string;
   audioBase64: string | null;
+  audioMimeType?: string | null;
 }
 
 const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
@@ -141,8 +142,9 @@ const VoiceNoteTranslator: React.FC<{ className?: string }> = ({
   const playTranslation = () => {
     if (!result?.audioBase64) return;
     audioRef.current?.pause();
-    // MMS-TTS returns FLAC; browsers play it natively via the audio element.
-    const audio = new Audio(`data:audio/flac;base64,${result.audioBase64}`);
+    // Azure neural TTS returns MP3; honour whatever mime the server reports.
+    const mime = result.audioMimeType || "audio/mpeg";
+    const audio = new Audio(`data:${mime};base64,${result.audioBase64}`);
     audioRef.current = audio;
     void audio.play();
   };

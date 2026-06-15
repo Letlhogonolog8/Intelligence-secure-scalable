@@ -17,7 +17,12 @@ import { GlassPanel } from "@/components/dashboard/DashboardPrimitives";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
-import { canSpeak, speakText, stopSpeaking } from "@/lib/speech";
+import {
+  canSpeak,
+  fetchServerTts,
+  speakText,
+  stopSpeaking,
+} from "@/lib/speech";
 import {
   createVoiceEvidenceAudioUrl,
   deleteVoiceEvidence,
@@ -61,6 +66,13 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
   >({});
   const [actionError, setActionError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopSpoken = () => {
+    stopSpeaking();
+    ttsAudioRef.current?.pause();
+    ttsAudioRef.current = null;
+  };
 
   // The viewer's UI language is their synced preferred language (item 4),
   // so "my language" is whatever the portal is currently displayed in.
@@ -88,7 +100,7 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
     };
   }, [queryClient]);
 
-  useEffect(() => () => stopSpeaking(), []);
+  useEffect(() => () => stopSpoken(), []);
 
   const translateForViewer = async (entry: VoiceEvidenceEntry) => {
     if (!user?.id || translatingId) return;
@@ -109,9 +121,9 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
     }
   };
 
-  const speakEntry = (entry: VoiceEvidenceEntry) => {
+  const speakEntry = async (entry: VoiceEvidenceEntry) => {
     if (speakingId === entry.id) {
-      stopSpeaking();
+      stopSpoken();
       setSpeakingId(null);
       return;
     }
@@ -126,8 +138,23 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
       : entry.targetLanguage === viewerLanguage && entry.translatedText
         ? viewerLanguage
         : (entry.detectedLanguage ?? viewerLanguage);
-    if (speakText(text, language, () => setSpeakingId(null))) {
-      setSpeakingId(entry.id);
+
+    stopSpoken();
+    setSpeakingId(entry.id);
+
+    // Prefer server-side Azure neural audio; fall back to the device voice.
+    const dataUrl = await fetchServerTts(text, language);
+    if (dataUrl) {
+      const audio = new Audio(dataUrl);
+      ttsAudioRef.current = audio;
+      audio.onended = () => setSpeakingId(null);
+      audio.onerror = () => setSpeakingId(null);
+      void audio.play();
+      return;
+    }
+
+    if (!speakText(text, language, () => setSpeakingId(null))) {
+      setSpeakingId(null);
     }
   };
 
@@ -259,7 +286,7 @@ const VoiceEvidenceArchive: React.FC<{ className?: string }> = ({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => speakEntry(entry)}
+                      onClick={() => void speakEntry(entry)}
                       aria-label={
                         speakingId === entry.id
                           ? "Stop spoken playback"
