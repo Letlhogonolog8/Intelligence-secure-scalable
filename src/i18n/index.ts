@@ -30,6 +30,10 @@ export const SUPPORTED_LANGUAGES = [
   { code: "nso", label: "Sepedi", nativeLabel: "Sepedi" },
   { code: "nr", label: "isiNdebele", nativeLabel: "isiNdebele" },
   { code: "ss", label: "SiSwati", nativeLabel: "SiSwati" },
+  { code: "es", label: "Spanish", nativeLabel: "Español" },
+  { code: "pt", label: "Portuguese", nativeLabel: "Português" },
+  { code: "zh", label: "Chinese", nativeLabel: "中文" },
+  { code: "hi", label: "Hindi", nativeLabel: "हिन्दी" },
   // --- Additional African languages (engine) ---
   { code: "ig", label: "Igbo", nativeLabel: "Igbo" },
   { code: "so", label: "Somali", nativeLabel: "Soomaali" },
@@ -37,8 +41,6 @@ export const SUPPORTED_LANGUAGES = [
   { code: "lg", label: "Luganda", nativeLabel: "Luganda" },
   { code: "wo", label: "Wolof", nativeLabel: "Wolof" },
   // --- European (engine) ---
-  { code: "es", label: "Spanish", nativeLabel: "Español" },
-  { code: "pt", label: "Portuguese", nativeLabel: "Português" },
   { code: "de", label: "German", nativeLabel: "Deutsch" },
   { code: "it", label: "Italian", nativeLabel: "Italiano" },
   { code: "nl", label: "Dutch", nativeLabel: "Nederlands" },
@@ -57,11 +59,9 @@ export const SUPPORTED_LANGUAGES = [
   { code: "tr", label: "Turkish", nativeLabel: "Türkçe" },
   { code: "ku", label: "Kurdish", nativeLabel: "Kurdî" },
   // --- Asian (engine) ---
-  { code: "zh", label: "Chinese", nativeLabel: "中文" },
   { code: "yue", label: "Cantonese", nativeLabel: "粵語" },
   { code: "ja", label: "Japanese", nativeLabel: "日本語" },
   { code: "ko", label: "Korean", nativeLabel: "한국어" },
-  { code: "hi", label: "Hindi", nativeLabel: "हिन्दी" },
   { code: "bn", label: "Bengali", nativeLabel: "বাংলা" },
   { code: "ur", label: "Urdu", nativeLabel: "اردو" },
   { code: "pa", label: "Punjabi", nativeLabel: "ਪੰਜਾਬੀ" },
@@ -120,6 +120,14 @@ const loadLanguageResource = async (
       return (await import("./locales/nr")).default as TranslationResource;
     case "ss":
       return (await import("./locales/ss")).default as TranslationResource;
+    case "es":
+      return (await import("./locales/es")).default as TranslationResource;
+    case "pt":
+      return (await import("./locales/pt")).default as TranslationResource;
+    case "zh":
+      return (await import("./locales/zh")).default as TranslationResource;
+    case "hi":
+      return (await import("./locales/hi")).default as TranslationResource;
     default:
       return en;
   }

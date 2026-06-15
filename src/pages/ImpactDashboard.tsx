@@ -131,10 +131,10 @@ const ImpactDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#04060c] text-slate-50">
+    <div className="min-h-screen bg-[#0B0614] text-slate-50">
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[40%] h-[30%] bg-blue-600/8 blur-[160px] rounded-full" />
-        <div className="absolute bottom-0 right-1/4 w-[40%] h-[30%] bg-rose-600/8 blur-[160px] rounded-full" />
+        <div className="absolute top-0 left-1/4 w-[40%] h-[30%] bg-purple-600/10 blur-[160px] rounded-full" />
+        <div className="absolute bottom-0 right-1/4 w-[40%] h-[30%] bg-pink-600/10 blur-[160px] rounded-full" />
       </div>
 
       <main className="relative z-10 max-w-6xl mx-auto px-6 py-10 space-y-10">
@@ -154,11 +154,11 @@ const ImpactDashboard: React.FC = () => {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-blue-500/15 border border-blue-500/25 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-blue-400" />
+                <div className="h-10 w-10 rounded-xl bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
+                  <p className="text-[10px] text-purple-300 font-bold uppercase tracking-widest">
                     AEGIS-AI · Public Impact Report
                   </p>
                   <p className="text-[10px] text-slate-500">
@@ -256,7 +256,7 @@ const ImpactDashboard: React.FC = () => {
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-bold capitalize rounded-t transition-all ${
                 activeTab === tab
-                  ? "text-white border-b-2 border-blue-500"
+                  ? "text-white border-b-2 border-purple-500"
                   : "text-slate-400 hover:text-white"
               }`}
             >

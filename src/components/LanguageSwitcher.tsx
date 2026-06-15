@@ -34,7 +34,7 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
             onClick={() => void handleChange(lang.code)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-all whitespace-nowrap flex-shrink-0 ${
               current === lang.code
-                ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                ? "bg-purple-600/20 text-purple-300 border border-purple-500/30"
                 : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border border-transparent"
             }`}
           >
@@ -51,7 +51,7 @@ const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
         value={current}
         onChange={(e) => void handleChange(e.target.value as SupportedLanguage)}
         aria-label={t("common.selectLanguage", "Select language")}
-        className="appearance-none bg-slate-900/60 border border-white/10 text-slate-300 text-xs rounded px-7 py-1.5 focus:outline-none focus:border-blue-500/40 cursor-pointer"
+        className="appearance-none bg-slate-900/60 border border-white/10 text-slate-300 text-xs rounded px-7 py-1.5 focus:outline-none focus:border-purple-500/40 cursor-pointer"
       >
         {SUPPORTED_LANGUAGES.map((lang) => (
           <option key={lang.code} value={lang.code}>
