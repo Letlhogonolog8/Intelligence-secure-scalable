@@ -131,7 +131,7 @@ export const MetricCard = ({
   } as const;
 
   return (
-    <Card className="group relative overflow-hidden rounded-3xl border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.015] p-5 shadow-[0_20px_60px_-24px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_28px_70px_-22px_rgba(124,58,237,0.45)]">
+    <Card className="group relative overflow-hidden rounded-3xl border-white/10 bg-slate-950/70 p-5 shadow-[0_20px_60px_-24px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_28px_70px_-22px_rgba(124,58,237,0.4)]">
       <div
         className={cn(
           "absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-80",
