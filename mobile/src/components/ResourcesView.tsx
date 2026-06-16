@@ -1,33 +1,228 @@
 import React, { useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 
-import { Card, H2, Muted, Body } from "@/components/ui";
-import { GUIDES } from "@/shared/constants";
+import { Muted } from "@/components/ui";
+import { Icon, type IconName } from "@/components/Icon";
+import { supabase } from "@/lib/supabase";
 import { useRegion } from "@/shared/region";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
+
+interface ResourceRow {
+  id: string;
+  resource_type: string | null;
+  name: string | null;
+  description: string | null;
+  contact_info: string | null;
+  available_24_7: boolean | null;
+  languages_spoken: string[] | null;
+}
+
+type Category = {
+  key: string;
+  label: string;
+  icon: IconName;
+  match: (type: string) => boolean;
+};
+
+const CATEGORIES: Category[] = [
+  { key: "all", label: "All", icon: "location", match: () => true },
+  {
+    key: "shelter",
+    label: "Shelters",
+    icon: "home",
+    match: (ty) => /shelter|safe ?house|housing|refuge/.test(ty),
+  },
+  {
+    key: "medical",
+    label: "Medical",
+    icon: "heart",
+    match: (ty) => /medic|health|clinic|hospital/.test(ty),
+  },
+  {
+    key: "legal",
+    label: "Legal",
+    icon: "report",
+    match: (ty) => /legal|law|justice|paralegal/.test(ty),
+  },
+  {
+    key: "counsel",
+    label: "Counseling",
+    icon: "chat",
+    match: (ty) => /counsel|therap|psych|support|mental/.test(ty),
+  },
+  {
+    key: "police",
+    label: "Police",
+    icon: "shield",
+    match: (ty) => /police|safety|saps|security/.test(ty),
+  },
+];
+
+function iconForType(type: string): IconName {
+  const ty = type.toLowerCase();
+  const cat = CATEGORIES.slice(1).find((c) => c.match(ty));
+  return cat?.icon ?? "location";
+}
+
+function phoneFrom(contact?: string | null): string | null {
+  if (!contact) return null;
+  const match = contact.match(/[+]?\d[\d\s().-]{4,}/);
+  if (!match) return null;
+  const dial = match[0].replace(/[^\d+]/g, "");
+  return dial.length >= 5 ? dial : null;
+}
+
+function openDirections(name: string, region?: string) {
+  const q = encodeURIComponent(region ? `${name}, ${region}` : name);
+  const url = Platform.select({
+    ios: `http://maps.apple.com/?q=${q}`,
+    default: `https://www.google.com/maps/search/?api=1&query=${q}`,
+  });
+  if (url) Linking.openURL(url).catch(() => {});
+}
+
+function ResourceCard({ r, region }: { r: ResourceRow; region: string }) {
+  const { t } = useTranslation();
+  const name = r.name ?? t("resources.unnamed", "Support service");
+  const phone = phoneFrom(r.contact_info);
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <View style={styles.cardIcon}>
+          <Icon
+            name={iconForType(r.resource_type ?? "")}
+            size={18}
+            color={colors.primary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardName}>{name}</Text>
+          {r.resource_type ? (
+            <Text style={styles.cardType}>
+              {r.resource_type.replace(/_/g, " ")}
+            </Text>
+          ) : null}
+        </View>
+        {r.available_24_7 ? (
+          <View style={styles.badge247}>
+            <Text style={styles.badge247Text}>
+              {t("resources.open247", "Open 24/7")}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {r.description ? (
+        <Text style={styles.cardDesc}>{r.description}</Text>
+      ) : null}
+
+      {r.languages_spoken && r.languages_spoken.length > 0 ? (
+        <View style={styles.langRow}>
+          {r.languages_spoken.slice(0, 4).map((l) => (
+            <View key={l} style={styles.langChip}>
+              <Text style={styles.langText}>{l}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.actions}>
+        {phone ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${t("resources.call", "Call")} ${name}`}
+            onPress={() => Linking.openURL(`tel:${phone}`).catch(() => {})}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.callBtn,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Icon name="call" size={16} color="#fff" />
+            <Text style={styles.callText}>{t("resources.call", "Call")}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${t("resources.directions", "Directions")} ${name}`}
+          onPress={() => openDirections(name, region)}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            styles.dirBtn,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Icon name="map" size={16} color={colors.primary} />
+          <Text style={styles.dirText}>
+            {t("resources.directions", "Directions")}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export function ResourcesView() {
   const { t } = useTranslation();
   const { country, countries, setCountry } = useRegion();
   const [picking, setPicking] = useState(false);
+  const [active, setActive] = useState("all");
+
+  const { data: resources, isLoading } = useQuery({
+    queryKey: ["resources"],
+    queryFn: async (): Promise<ResourceRow[]> => {
+      const { data } = await supabase
+        .from("resources")
+        .select(
+          "id,resource_type,name,description,contact_info,available_24_7,languages_spoken",
+        )
+        .order("name", { ascending: true })
+        .limit(100);
+      return (data as ResourceRow[] | null) ?? [];
+    },
+  });
+
+  const cat = CATEGORIES.find((c) => c.key === active) ?? CATEGORIES[0];
+  const filtered = (resources ?? []).filter((r) =>
+    cat.match((r.resource_type ?? "").toLowerCase()),
+  );
 
   return (
     <View style={{ gap: spacing.lg }}>
-      <Card>
+      {/* Emergency lines (region) */}
+      <View style={styles.emergencyCard}>
         <View style={styles.regionRow}>
           <View style={{ flex: 1 }}>
-            <H2>{t("resources.emergency")}</H2>
+            <Text style={styles.emergencyTitle}>
+              {t("resources.emergency", "Emergency lines")}
+            </Text>
             <Muted style={{ fontSize: font.small }}>
-              {country.flag} {t("resources.regionFor", { country: country.name })}
+              {country.flag}{" "}
+              {t("resources.regionFor", { country: country.name })}
             </Muted>
           </View>
           <Pressable
             accessibilityRole="button"
             onPress={() => setPicking((p) => !p)}
-            style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              styles.changeBtn,
+              pressed && { opacity: 0.8 },
+            ]}
           >
-            <Text style={styles.changeText}>{t("common.change")}</Text>
+            <Text style={styles.changeText}>
+              {t("common.change", "Change")}
+            </Text>
           </Pressable>
         </View>
 
@@ -42,9 +237,17 @@ export function ResourcesView() {
                   setCountry(c.code);
                   setPicking(false);
                 }}
-                style={[styles.countryChip, c.code === country.code && styles.countryChipActive]}
+                style={[
+                  styles.countryChip,
+                  c.code === country.code && styles.countryChipActive,
+                ]}
               >
-                <Text style={[styles.countryText, c.code === country.code && styles.countryTextActive]}>
+                <Text
+                  style={[
+                    styles.countryText,
+                    c.code === country.code && styles.countryTextActive,
+                  ]}
+                >
                   {c.flag} {c.name}
                 </Text>
               </Pressable>
@@ -52,43 +255,121 @@ export function ResourcesView() {
           </View>
         ) : null}
 
-        <Muted style={{ fontSize: font.small }}>{t("resources.offlineNote")}</Muted>
         <View style={{ gap: spacing.sm }}>
           {country.services.map((svc) => (
-            <View key={svc.id} style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Body style={styles.contactLabel}>{t(`services.${svc.id}`)}</Body>
-              </View>
+            <View key={svc.id} style={styles.svcRow}>
+              <Text style={styles.svcLabel}>{t(`services.${svc.id}`)}</Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${t("resources.call")} ${t(`services.${svc.id}`)} ${svc.number}`}
-                onPress={() => Linking.openURL(`tel:${svc.dial}`).catch(() => {})}
-                style={({ pressed }) => [styles.callBtn, pressed && { opacity: 0.8 }]}
+                accessibilityLabel={`${t("resources.call", "Call")} ${t(`services.${svc.id}`)} ${svc.number}`}
+                onPress={() =>
+                  Linking.openURL(`tel:${svc.dial}`).catch(() => {})
+                }
+                style={({ pressed }) => [
+                  styles.svcCall,
+                  pressed && { opacity: 0.85 },
+                ]}
               >
-                <Text style={styles.callText}>{svc.number}</Text>
+                <Icon name="call" size={14} color="#fff" />
+                <Text style={styles.svcCallText}>{svc.number}</Text>
               </Pressable>
             </View>
           ))}
         </View>
-      </Card>
+      </View>
 
-      <Card>
-        <H2>{t("resources.guides")}</H2>
-        <View style={{ gap: spacing.md }}>
-          {GUIDES.map((g) => (
-            <View key={g.id} style={styles.guide}>
-              <Body style={styles.guideTitle}>{t(`guides.${g.id}.title`)}</Body>
-              <Muted style={styles.guideDesc}>{t(`guides.${g.id}.body`)}</Muted>
+      {/* Nearby services */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={styles.sectionLabel}>
+          {t("resources.nearby", "Support services")}
+        </Text>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+        >
+          {CATEGORIES.map((c) => {
+            const on = c.key === active;
+            return (
+              <Pressable
+                key={c.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                onPress={() => setActive(c.key)}
+                style={[styles.tab, on && styles.tabOn]}
+              >
+                <Icon
+                  name={c.icon}
+                  size={15}
+                  color={on ? "#fff" : colors.textMuted}
+                />
+                <Text style={[styles.tabText, on && styles.tabTextOn]}>
+                  {t(`resources.cat_${c.key}`, c.label)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {isLoading ? (
+          <ActivityIndicator
+            color={colors.primary}
+            style={{ marginTop: spacing.lg }}
+          />
+        ) : filtered.length > 0 ? (
+          filtered.map((r) => (
+            <ResourceCard key={r.id} r={r} region={country.name} />
+          ))
+        ) : (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Icon name="location" size={24} color={colors.textFaint} />
             </View>
-          ))}
-        </View>
-      </Card>
+            <Text style={styles.emptyTitle}>
+              {t("resources.noneTitle", "No services listed yet")}
+            </Text>
+            <Muted style={{ fontSize: font.small, textAlign: "center" }}>
+              {t(
+                "resources.noneSub",
+                "Use the emergency lines above. Local services will appear here as they're added.",
+              )}
+            </Muted>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  regionRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: font.small,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+  },
+
+  emergencyCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  emergencyTitle: {
+    color: colors.text,
+    fontSize: font.h3,
+    fontWeight: "800",
+    fontFamily: "Inter_800ExtraBold",
+  },
+  regionRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
   changeBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -97,10 +378,14 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     backgroundColor: colors.bgElevated,
   },
-  changeText: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
+  changeText: {
+    color: colors.primary,
+    fontSize: font.small,
+    fontWeight: "700",
+  },
   countryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   countryChip: {
-    minHeight: TOUCH_MIN - 12,
+    minHeight: 34,
     paddingHorizontal: spacing.md,
     justifyContent: "center",
     borderRadius: radius.pill,
@@ -108,10 +393,13 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     backgroundColor: colors.bgElevated,
   },
-  countryChipActive: { borderColor: colors.primary, backgroundColor: colors.primary + "1f" },
+  countryChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + "1f",
+  },
   countryText: { color: colors.text, fontSize: font.small, fontWeight: "600" },
   countryTextActive: { color: colors.primary },
-  row: {
+  svcRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
@@ -119,21 +407,123 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.cardBorder,
   },
-  contactLabel: { fontWeight: "700" },
-  callBtn: {
-    minHeight: TOUCH_MIN - 8,
+  svcLabel: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: font.body,
+  },
+  svcCall: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    minHeight: TOUCH_MIN - 10,
     paddingHorizontal: spacing.lg,
     justifyContent: "center",
     borderRadius: radius.pill,
     backgroundColor: colors.danger,
   },
-  callText: { color: "#fff", fontWeight: "800", fontSize: font.body },
-  guide: {
+  svcCallText: { color: "#fff", fontWeight: "800", fontSize: font.small },
+
+  tabsRow: { gap: spacing.sm, paddingVertical: 2, paddingRight: spacing.lg },
+  tab: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.cardBorder,
+    paddingHorizontal: spacing.md,
+    height: 38,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.bgElevated,
   },
-  guideTitle: { fontWeight: "700" },
-  guideDesc: { fontSize: font.small, lineHeight: 19 },
+  tabOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  tabTextOn: { color: "#fff" },
+
+  card: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  cardIcon: {
+    height: 40,
+    width: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary + "1A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardName: { color: colors.text, fontSize: font.body, fontWeight: "800" },
+  cardType: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    textTransform: "capitalize",
+    marginTop: 1,
+  },
+  badge247: {
+    backgroundColor: colors.success + "1F",
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  badge247Text: {
+    color: colors.success,
+    fontSize: font.tiny,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
+  cardDesc: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
+  langRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  langChip: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  langText: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "600" },
+  actions: { flexDirection: "row", gap: spacing.sm },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    flex: 1,
+    minHeight: TOUCH_MIN - 6,
+    borderRadius: radius.md,
+  },
+  callBtn: { backgroundColor: colors.primary },
+  callText: { color: "#fff", fontWeight: "800", fontSize: font.small },
+  dirBtn: {
+    borderWidth: 1,
+    borderColor: colors.primary + "55",
+    backgroundColor: colors.primary + "12",
+  },
+  dirText: { color: colors.primary, fontWeight: "800", fontSize: font.small },
+
+  empty: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyIcon: {
+    height: 52,
+    width: 52,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: { color: colors.text, fontSize: font.body, fontWeight: "700" },
 });
