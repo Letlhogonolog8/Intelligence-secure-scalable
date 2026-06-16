@@ -19,7 +19,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { Button, Muted } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { sendToAI, QUICK_PROMPTS, ChatMessage } from "@/features/chat/survivorChat";
+import {
+  sendToAI,
+  QUICK_PROMPTS,
+  ChatMessage,
+} from "@/features/chat/survivorChat";
 import type { PeerSupportMessageRow } from "@/shared/types";
 import { colors, font, gradients, radius, spacing, TOUCH_MIN } from "@/theme";
 
@@ -31,16 +35,38 @@ export default function Support() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <View style={styles.titleBar}>
+        <Text style={styles.title}>{t("tabs.messages", "Messages")}</Text>
+        <Text style={styles.subtitle}>
+          {t("support.subtitle", "Confidential support, always here for you.")}
+        </Text>
+      </View>
       <View style={styles.segment}>
-        <SegBtn active={tab === "ai"} label={t("support.aiChat")} onPress={() => setTab("ai")} />
-        <SegBtn active={tab === "peer"} label={t("support.peer")} onPress={() => setTab("peer")} />
+        <SegBtn
+          active={tab === "ai"}
+          label={t("support.aiChat", "AI companion")}
+          onPress={() => setTab("ai")}
+        />
+        <SegBtn
+          active={tab === "peer"}
+          label={t("support.peer", "Peer support")}
+          onPress={() => setTab("peer")}
+        />
       </View>
       {tab === "ai" ? <AiChat /> : <PeerSupport />}
     </SafeAreaView>
   );
 }
 
-function SegBtn({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+function SegBtn({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       onPress={onPress}
@@ -49,7 +75,12 @@ function SegBtn({ active, label, onPress }: { active: boolean; label: string; on
       accessibilityState={{ selected: active }}
     >
       {active ? (
-        <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.segInner}>
+        <LinearGradient
+          colors={gradients.primary}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.segInner}
+        >
           <Text style={styles.segTextActive}>{label}</Text>
         </LinearGradient>
       ) : (
@@ -78,27 +109,44 @@ function AiChat() {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
     setInput("");
-    const userMsg: UiMessage = { id: `u-${Date.now()}`, role: "user", content: trimmed };
+    const userMsg: UiMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: trimmed,
+    };
     setMessages((m) => [...m, userMsg]);
     setSending(true);
     const history = messages.map(({ role, content }) => ({ role, content }));
     const { content } = await sendToAI(history, trimmed);
     const crisis = content.includes("CRISIS ALERT");
-    setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content, crisis }]);
+    setMessages((m) => [
+      ...m,
+      { id: `a-${Date.now()}`, role: "assistant", content, crisis },
+    ]);
     setSending(false);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.disclaimer}>
-        <Muted style={{ fontSize: font.small }}>{t("support.disclaimer")}</Muted>
+        <Muted style={{ fontSize: font.small }}>
+          {t("support.disclaimer")}
+        </Muted>
       </View>
 
       {messages.length === 0 ? (
         <View style={styles.quickWrap}>
           {QUICK_PROMPTS.map((q) => (
-            <Pressable key={q} onPress={() => send(q)} style={styles.quickChip} accessibilityRole="button">
+            <Pressable
+              key={q}
+              onPress={() => send(q)}
+              style={styles.quickChip}
+              accessibilityRole="button"
+            >
               <Text style={styles.quickText}>{q}</Text>
             </Pressable>
           ))}
@@ -111,8 +159,24 @@ function AiChat() {
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
           renderItem={({ item }) => (
-            <View style={[styles.bubble, item.role === "user" ? styles.bubbleUser : styles.bubbleAi, item.crisis && styles.bubbleCrisis]}>
-              <Text style={[styles.bubbleText, item.role === "user" && { color: "#FFFFFF", fontWeight: "600" }]}>{item.content}</Text>
+            <View
+              style={[
+                styles.bubble,
+                item.role === "user" ? styles.bubbleUser : styles.bubbleAi,
+                item.crisis && styles.bubbleCrisis,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.bubbleText,
+                  item.role === "user" && {
+                    color: "#FFFFFF",
+                    fontWeight: "600",
+                  },
+                ]}
+              >
+                {item.content}
+              </Text>
             </View>
           )}
         />
@@ -133,7 +197,12 @@ function AiChat() {
           onChangeText={setInput}
           multiline
         />
-        <Pressable onPress={() => send(input)} style={styles.sendBtn} accessibilityRole="button" accessibilityLabel={t("support.send")}>
+        <Pressable
+          onPress={() => send(input)}
+          style={styles.sendBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("support.send")}
+        >
           <Text style={styles.sendText}>↑</Text>
         </Pressable>
       </View>
@@ -146,7 +215,10 @@ const ALIAS_KEY = "aegis.peer.alias";
 const PEER_MAX_CHARS = 280;
 
 function timeAgo(iso: string): string {
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  const mins = Math.max(
+    0,
+    Math.round((Date.now() - new Date(iso).getTime()) / 60000),
+  );
   if (mins < 1) return "now";
   if (mins < 60) return `${mins}m`;
   const hours = Math.round(mins / 60);
@@ -186,7 +258,11 @@ function PeerSupport() {
     void load();
     const channel = supabase
       .channel("peer_support")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "peer_support_messages" }, () => void load())
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "peer_support_messages" },
+        () => void load(),
+      )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
@@ -200,7 +276,9 @@ function PeerSupport() {
     setPosting(true);
     void AsyncStorage.setItem(ALIAS_KEY, alias.trim()).catch(() => {});
     const expires = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-    await supabase.from("peer_support_messages").insert({ alias: who, content, flagged: false, expires_at: expires });
+    await supabase
+      .from("peer_support_messages")
+      .insert({ alias: who, content, flagged: false, expires_at: expires });
     setText("");
     setPosting(false);
     void load();
@@ -208,11 +286,16 @@ function PeerSupport() {
 
   async function flag(id: string) {
     // RLS only allows UPDATE through this narrow RPC — a direct .update() is rejected.
-    const { error } = await supabase.rpc("flag_peer_support_message", { p_message_id: id });
+    const { error } = await supabase.rpc("flag_peer_support_message", {
+      p_message_id: id,
+    });
     if (error) {
       Alert.alert(
         t("support.peerFlagFailedTitle", "Couldn't report message"),
-        t("support.peerFlagFailed", "Please check your connection and try again."),
+        t(
+          "support.peerFlagFailed",
+          "Please check your connection and try again.",
+        ),
       );
       return;
     }
@@ -220,25 +303,39 @@ function PeerSupport() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.disclaimer}>
         <Muted style={{ fontSize: font.small }}>{t("support.peerNote")}</Muted>
       </View>
       {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
+        <ActivityIndicator
+          color={colors.primary}
+          style={{ marginTop: spacing.xl }}
+        />
       ) : (
         <FlatList
           style={styles.flex}
           data={rows}
           keyExtractor={(m) => m.id}
-          contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, flexGrow: 1 }}
+          contentContainerStyle={{
+            padding: spacing.lg,
+            gap: spacing.md,
+            flexGrow: 1,
+          }}
           ListEmptyComponent={
             <View style={styles.peerEmpty}>
               <View style={styles.peerEmptyBadge}>
                 <Ionicons name="heart" size={28} color={colors.accent} />
               </View>
-              <Text style={styles.peerEmptyTitle}>{t("support.peerEmptyTitle", "A space for each other")}</Text>
-              <Muted style={{ textAlign: "center" }}>{t("support.peerEmpty")}</Muted>
+              <Text style={styles.peerEmptyTitle}>
+                {t("support.peerEmptyTitle", "A space for each other")}
+              </Text>
+              <Muted style={{ textAlign: "center" }}>
+                {t("support.peerEmpty")}
+              </Muted>
             </View>
           }
           renderItem={({ item }) => (
@@ -260,7 +357,14 @@ function PeerSupport() {
           )}
         />
       )}
-      <View style={{ padding: spacing.lg, gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+      <View
+        style={{
+          padding: spacing.lg,
+          gap: spacing.sm,
+          borderTopWidth: 1,
+          borderTopColor: colors.cardBorder,
+        }}
+      >
         <TextInput
           style={styles.aliasInput}
           placeholder={t("support.peerAlias")}
@@ -282,7 +386,12 @@ function PeerSupport() {
             {text.length}/{PEER_MAX_CHARS}
           </Text>
           <View style={{ flex: 1 }}>
-            <Button label={t("support.peerPost")} onPress={post} loading={posting} disabled={!text.trim()} />
+            <Button
+              label={t("support.peerPost")}
+              onPress={post}
+              loading={posting}
+              disabled={!text.trim()}
+            />
           </View>
         </View>
       </View>
@@ -293,33 +402,134 @@ function PeerSupport() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.bg },
-  segment: { flexDirection: "row", gap: spacing.sm, padding: spacing.lg },
+  titleBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: 2 },
+  title: {
+    color: colors.text,
+    fontSize: font.h1,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  subtitle: { color: colors.textMuted, fontSize: font.small },
+  segment: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   segBtn: { flex: 1, borderRadius: radius.pill, overflow: "hidden" },
-  segInner: { minHeight: TOUCH_MIN, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
-  segIdle: { borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card },
+  segInner: {
+    minHeight: TOUCH_MIN,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+  },
+  segIdle: {
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.card,
+  },
   segText: { color: colors.textMuted, fontWeight: "700" },
   segTextActive: { color: "#fff", fontWeight: "800" },
   disclaimer: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  quickWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, padding: spacing.lg },
-  quickChip: { borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  quickWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  quickChip: {
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
   quickText: { color: colors.text, fontSize: font.small, fontWeight: "600" },
   bubble: { maxWidth: "85%", borderRadius: radius.md, padding: spacing.md },
   bubbleUser: { alignSelf: "flex-end", backgroundColor: colors.primary },
-  bubbleAi: { alignSelf: "flex-start", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder },
-  bubbleCrisis: { borderColor: colors.danger, backgroundColor: colors.danger + "1f" },
+  bubbleAi: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  bubbleCrisis: {
+    borderColor: colors.danger,
+    backgroundColor: colors.danger + "1f",
+  },
   bubbleText: { color: colors.text, fontSize: font.body, lineHeight: 22 },
-  inputBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.cardBorder },
-  input: { flex: 1, minHeight: TOUCH_MIN, maxHeight: 120, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingTop: spacing.md, color: colors.text, fontSize: font.body },
-  aliasInput: { minHeight: TOUCH_MIN, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing.lg, color: colors.text, fontSize: font.body },
-  sendBtn: { width: TOUCH_MIN, height: TOUCH_MIN, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  input: {
+    flex: 1,
+    minHeight: TOUCH_MIN,
+    maxHeight: 120,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    color: colors.text,
+    fontSize: font.body,
+  },
+  aliasInput: {
+    minHeight: TOUCH_MIN,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    color: colors.text,
+    fontSize: font.body,
+  },
+  sendBtn: {
+    width: TOUCH_MIN,
+    height: TOUCH_MIN,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   sendText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  peerCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing.lg, gap: spacing.xs },
-  peerHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  peerCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  peerHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   peerAlias: { color: colors.accent, fontWeight: "700", fontSize: font.small },
   peerTime: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "600" },
   peerText: { color: colors.text, fontSize: font.body, lineHeight: 22 },
-  flag: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "700", marginTop: spacing.xs },
-  peerEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingHorizontal: spacing.xl },
+  flag: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    fontWeight: "700",
+    marginTop: spacing.xs,
+  },
+  peerEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
   peerEmptyBadge: {
     width: 64,
     height: 64,
@@ -332,5 +542,10 @@ const styles = StyleSheet.create({
   },
   peerEmptyTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   peerActions: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  counter: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "600", minWidth: 52 },
+  counter: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    fontWeight: "600",
+    minWidth: 52,
+  },
 });
