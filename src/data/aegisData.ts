@@ -1515,32 +1515,26 @@ const fetchPoliceAlertsFeed = async (
 };
 
 export const acknowledgePoliceAlert = async (alertId: string) => {
-  // Source of truth: mark the alert acknowledged directly in the DB. This works
-  // without the API server running (e.g. local dev) and shares the same
-  // alerts_feed manage RLS policy as deleteAlert. The server POST is a
-  // best-effort secondary for audit/notification side-effects only.
-  if (hasSupabase) {
-    const { data, error } = await supabase
-      .from("alerts_feed")
-      .update({
-        status: "acknowledged",
-        acknowledged_at: new Date().toISOString(),
-      })
-      .eq("id", alertId)
-      .select("id");
-    if (error && !isMissingTableError(error)) throw error;
-    // An RLS-blocked write returns success with 0 rows and no error — surface
-    // it so the button never fails silently.
-    if (!error && (!data || data.length === 0)) {
-      throw new Error(
-        `Could not acknowledge alert ${alertId}: 0 rows affected (RLS likely blocked it — confirm you are signed in as an active responder).`,
-      );
-    }
-  }
-  try {
-    await apiClient.post(`/police/alerts/${alertId}/acknowledge`);
-  } catch {
-    // Best-effort: the DB update above already updated the queue state.
+  // Acknowledge directly in the DB (source of truth, same alerts_feed manage RLS
+  // as deleteAlert). We intentionally do NOT call the API server here — it adds
+  // no value over this write and an unavailable/erroring backend would only
+  // surface noise; the alerts_feed realtime + audit triggers cover the rest.
+  if (!hasSupabase) return;
+  const { data, error } = await supabase
+    .from("alerts_feed")
+    .update({
+      status: "acknowledged",
+      acknowledged_at: new Date().toISOString(),
+    })
+    .eq("id", alertId)
+    .select("id");
+  if (error && !isMissingTableError(error)) throw error;
+  // An RLS-blocked write returns success with 0 rows and no error — surface it
+  // so the button never fails silently.
+  if (!error && (!data || data.length === 0)) {
+    throw new Error(
+      `Could not acknowledge alert ${alertId}: 0 rows affected (RLS likely blocked it — confirm you are signed in as an active responder).`,
+    );
   }
 };
 
