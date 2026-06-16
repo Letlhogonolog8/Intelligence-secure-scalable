@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Muted } from "@/components/ui";
 import { Icon, type IconName } from "@/components/Icon";
 import { supabase } from "@/lib/supabase";
+import { getLocationSafe, type Coords } from "@/features/sos/escalation";
 import { useRegion } from "@/shared/region";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
 
@@ -24,6 +25,9 @@ interface ResourceRow {
   name: string | null;
   description: string | null;
   contact_info: string | null;
+  address: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
   available_24_7: boolean | null;
   languages_spoken: string[] | null;
 }
@@ -71,8 +75,37 @@ const CATEGORIES: Category[] = [
 
 function iconForType(type: string): IconName {
   const ty = type.toLowerCase();
-  const cat = CATEGORIES.slice(1).find((c) => c.match(ty));
-  return cat?.icon ?? "location";
+  return CATEGORIES.slice(1).find((c) => c.match(ty))?.icon ?? "location";
+}
+
+function toNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Great-circle distance in km between two WGS84 points. */
+function haversineKm(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function formatDistance(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  if (km < 10) return `${km.toFixed(1)} km`;
+  return `${Math.round(km)} km`;
 }
 
 function phoneFrom(contact?: string | null): string | null {
@@ -83,19 +116,43 @@ function phoneFrom(contact?: string | null): string | null {
   return dial.length >= 5 ? dial : null;
 }
 
-function openDirections(name: string, region?: string) {
-  const q = encodeURIComponent(region ? `${name}, ${region}` : name);
-  const url = Platform.select({
-    ios: `http://maps.apple.com/?q=${q}`,
-    default: `https://www.google.com/maps/search/?api=1&query=${q}`,
-  });
+function openDirections(
+  name: string,
+  lat: number | null,
+  lng: number | null,
+  region?: string,
+) {
+  let url: string | undefined;
+  if (lat != null && lng != null) {
+    const ll = `${lat},${lng}`;
+    url = Platform.select({
+      ios: `http://maps.apple.com/?ll=${ll}&q=${encodeURIComponent(name)}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${ll}`,
+    });
+  } else {
+    const q = encodeURIComponent(region ? `${name}, ${region}` : name);
+    url = Platform.select({
+      ios: `http://maps.apple.com/?q=${q}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    });
+  }
   if (url) Linking.openURL(url).catch(() => {});
 }
 
-function ResourceCard({ r, region }: { r: ResourceRow; region: string }) {
+function ResourceCard({
+  r,
+  region,
+  distance,
+}: {
+  r: ResourceRow;
+  region: string;
+  distance: number | null;
+}) {
   const { t } = useTranslation();
   const name = r.name ?? t("resources.unnamed", "Support service");
   const phone = phoneFrom(r.contact_info);
+  const lat = toNum(r.latitude);
+  const lng = toNum(r.longitude);
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
@@ -108,11 +165,19 @@ function ResourceCard({ r, region }: { r: ResourceRow; region: string }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.cardName}>{name}</Text>
-          {r.resource_type ? (
-            <Text style={styles.cardType}>
-              {r.resource_type.replace(/_/g, " ")}
-            </Text>
-          ) : null}
+          <View style={styles.metaRow}>
+            {r.resource_type ? (
+              <Text style={styles.cardType}>
+                {r.resource_type.replace(/_/g, " ")}
+              </Text>
+            ) : null}
+            {distance != null ? (
+              <Text style={styles.distance}>
+                <Text style={styles.dot}>·</Text> {formatDistance(distance)}{" "}
+                {t("resources.away", "away")}
+              </Text>
+            ) : null}
+          </View>
         </View>
         {r.available_24_7 ? (
           <View style={styles.badge247}>
@@ -123,6 +188,7 @@ function ResourceCard({ r, region }: { r: ResourceRow; region: string }) {
         ) : null}
       </View>
 
+      {r.address ? <Text style={styles.address}>{r.address}</Text> : null}
       {r.description ? (
         <Text style={styles.cardDesc}>{r.description}</Text>
       ) : null}
@@ -156,7 +222,7 @@ function ResourceCard({ r, region }: { r: ResourceRow; region: string }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${t("resources.directions", "Directions")} ${name}`}
-          onPress={() => openDirections(name, region)}
+          onPress={() => openDirections(name, lat, lng, region)}
           style={({ pressed }) => [
             styles.actionBtn,
             styles.dirBtn,
@@ -178,6 +244,8 @@ export function ResourcesView() {
   const { country, countries, setCountry } = useRegion();
   const [picking, setPicking] = useState(false);
   const [active, setActive] = useState("all");
+  const [coords, setCoords] = useState<Coords | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const { data: resources, isLoading } = useQuery({
     queryKey: ["resources"],
@@ -185,7 +253,7 @@ export function ResourcesView() {
       const { data } = await supabase
         .from("resources")
         .select(
-          "id,resource_type,name,description,contact_info,available_24_7,languages_spoken",
+          "id,resource_type,name,description,contact_info,address,latitude,longitude,available_24_7,languages_spoken",
         )
         .order("name", { ascending: true })
         .limit(100);
@@ -193,10 +261,33 @@ export function ResourcesView() {
     },
   });
 
+  async function useMyLocation() {
+    setLocating(true);
+    const c = await getLocationSafe();
+    setCoords(c);
+    setLocating(false);
+  }
+
   const cat = CATEGORIES.find((c) => c.key === active) ?? CATEGORIES[0];
-  const filtered = (resources ?? []).filter((r) =>
-    cat.match((r.resource_type ?? "").toLowerCase()),
-  );
+  const items = (resources ?? [])
+    .filter((r) => cat.match((r.resource_type ?? "").toLowerCase()))
+    .map((r) => {
+      const lat = toNum(r.latitude);
+      const lng = toNum(r.longitude);
+      const distance =
+        coords && lat != null && lng != null
+          ? haversineKm(coords.lat, coords.lng, lat, lng)
+          : null;
+      return { r, distance };
+    });
+  if (coords) {
+    items.sort((a, b) => {
+      if (a.distance == null && b.distance == null) return 0;
+      if (a.distance == null) return 1;
+      if (b.distance == null) return -1;
+      return a.distance - b.distance;
+    });
+  }
 
   return (
     <View style={{ gap: spacing.lg }}>
@@ -280,9 +371,36 @@ export function ResourcesView() {
 
       {/* Nearby services */}
       <View style={{ gap: spacing.sm }}>
-        <Text style={styles.sectionLabel}>
-          {t("resources.nearby", "Support services")}
-        </Text>
+        <View style={styles.nearbyHead}>
+          <Text style={styles.sectionLabel}>
+            {t("resources.nearby", "Support services")}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={useMyLocation}
+            disabled={locating}
+            style={({ pressed }) => [
+              styles.locBtn,
+              coords && styles.locBtnOn,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Icon
+                name="location"
+                size={14}
+                color={coords ? colors.success : colors.primary}
+              />
+            )}
+            <Text style={[styles.locText, coords && { color: colors.success }]}>
+              {coords
+                ? t("resources.usingLocation", "Sorted by distance")
+                : t("resources.useLocation", "Use my location")}
+            </Text>
+          </Pressable>
+        </View>
 
         <ScrollView
           horizontal
@@ -317,9 +435,14 @@ export function ResourcesView() {
             color={colors.primary}
             style={{ marginTop: spacing.lg }}
           />
-        ) : filtered.length > 0 ? (
-          filtered.map((r) => (
-            <ResourceCard key={r.id} r={r} region={country.name} />
+        ) : items.length > 0 ? (
+          items.map(({ r, distance }) => (
+            <ResourceCard
+              key={r.id}
+              r={r}
+              region={country.name}
+              distance={distance}
+            />
           ))
         ) : (
           <View style={styles.empty}>
@@ -425,6 +548,29 @@ const styles = StyleSheet.create({
   },
   svcCallText: { color: "#fff", fontWeight: "800", fontSize: font.small },
 
+  nearbyHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  locBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    height: 32,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary + "55",
+    backgroundColor: colors.primary + "12",
+  },
+  locBtnOn: {
+    borderColor: colors.success + "55",
+    backgroundColor: colors.success + "12",
+  },
+  locText: { color: colors.primary, fontSize: font.tiny, fontWeight: "800" },
+
   tabsRow: { gap: spacing.sm, paddingVertical: 2, paddingRight: spacing.lg },
   tab: {
     flexDirection: "row",
@@ -459,12 +605,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardName: { color: colors.text, fontSize: font.body, fontWeight: "800" },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 1,
+  },
   cardType: {
     color: colors.textFaint,
     fontSize: font.tiny,
     textTransform: "capitalize",
-    marginTop: 1,
   },
+  distance: { color: colors.primary, fontSize: font.tiny, fontWeight: "700" },
+  dot: { color: colors.textFaint },
   badge247: {
     backgroundColor: colors.success + "1F",
     borderRadius: radius.pill,
@@ -477,6 +631,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.4,
   },
+  address: { color: colors.textFaint, fontSize: font.small },
   cardDesc: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
   langRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   langChip: {
