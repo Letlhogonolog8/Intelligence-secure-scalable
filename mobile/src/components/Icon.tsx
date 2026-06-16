@@ -16,7 +16,15 @@ export type IconName =
   | "person"
   | "time"
   | "search"
-  | "check";
+  | "check"
+  | "bell"
+  | "location"
+  | "heart"
+  | "chevron"
+  | "people"
+  | "map"
+  | "folder"
+  | "call";
 
 const MAP: Record<IconName, keyof typeof Ionicons.glyphMap> = {
   home: "home",
@@ -28,6 +36,14 @@ const MAP: Record<IconName, keyof typeof Ionicons.glyphMap> = {
   time: "time",
   search: "search",
   check: "checkmark-circle",
+  bell: "notifications-outline",
+  location: "location",
+  heart: "heart",
+  chevron: "chevron-forward",
+  people: "people",
+  map: "map",
+  folder: "folder-open",
+  call: "call",
 };
 
 export function Icon({
@@ -41,5 +57,12 @@ export function Icon({
   color?: ColorValue;
   style?: StyleProp<TextStyle>;
 }) {
-  return <Ionicons name={MAP[name]} size={size} color={color as string} style={style} />;
+  return (
+    <Ionicons
+      name={MAP[name]}
+      size={size}
+      color={color as string}
+      style={style}
+    />
+  );
 }
