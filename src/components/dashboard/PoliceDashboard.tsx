@@ -45,10 +45,41 @@ import {
 
 const POLICE_TABS = [
   { id: "response", label: "Overview" },
+  { id: "queue", label: "Emergency queue" },
   { id: "tools", label: "Evidence & tools" },
   { id: "intel", label: "Intelligence" },
 ] as const;
 type PoliceTab = (typeof POLICE_TABS)[number]["id"];
+
+/** Heuristic triage score (0–99) for the emergency queue: priority drives the
+ * band, with bumps for unassigned/stale work. Deterministic, not a stored AI
+ * score — labelled "risk" for fast visual triage. */
+function caseRiskScore(c: {
+  priority: string;
+  assignedTo?: string | null;
+  daysOpen?: number | null;
+}): number {
+  const base =
+    c.priority === "critical"
+      ? 90
+      : c.priority === "high"
+        ? 76
+        : c.priority === "medium"
+          ? 55
+          : 30;
+  let score = base;
+  if (!c.assignedTo) score += 5;
+  if (c.daysOpen && c.daysOpen > 14) score += 4;
+  else if (c.daysOpen && c.daysOpen > 7) score += 2;
+  return Math.min(99, score);
+}
+
+const PRIORITY_TONE: Record<string, "rose" | "amber" | "sky" | "emerald"> = {
+  critical: "rose",
+  high: "amber",
+  medium: "sky",
+  low: "emerald",
+};
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -401,6 +432,18 @@ const PoliceDashboard: React.FC = () => {
       .slice(0, 5)
       .map(([id, count]) => ({ id, name: nameById.get(id) ?? id, count }));
   }, [openCases, officers]);
+  const officerNameById = useMemo(
+    () => new Map(officers.map((o) => [o.id, o.fullName || o.id])),
+    [officers],
+  );
+  // Emergency triage queue: open cases ranked by heuristic risk (AI-style sort).
+  const emergencyQueue = useMemo(
+    () =>
+      openCases
+        .map((c) => ({ ...c, risk: caseRiskScore(c) }))
+        .sort((a, b) => b.risk - a.risk),
+    [openCases],
+  );
   const responseLoad = Math.min(
     100,
     Math.round(
@@ -1144,6 +1187,102 @@ const PoliceDashboard: React.FC = () => {
             </SectionCard>
           </section>
         </>
+      )}
+
+      {activeTab === "queue" && (
+        <SectionCard
+          title="Emergency queue"
+          description="Open cases ranked by triage risk. Dispatch, view, or escalate directly."
+          action={
+            <StatusPill tone="rose">{emergencyQueue.length} open</StatusPill>
+          }
+        >
+          {emergencyQueue.length === 0 ? (
+            <EmptyState
+              title="Queue is clear"
+              description="No open cases require triage in your jurisdiction right now."
+            />
+          ) : (
+            <div className="-mx-2 overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    <th className="px-2 py-2 font-semibold">Priority</th>
+                    <th className="px-2 py-2 font-semibold">Case</th>
+                    <th className="px-2 py-2 font-semibold">Location</th>
+                    <th className="px-2 py-2 font-semibold">Age</th>
+                    <th className="px-2 py-2 font-semibold">Risk</th>
+                    <th className="px-2 py-2 font-semibold">Status</th>
+                    <th className="px-2 py-2 font-semibold">Officer</th>
+                    <th className="px-2 py-2 text-right font-semibold">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emergencyQueue.map((c) => {
+                    const riskTone =
+                      c.risk >= 90 ? "rose" : c.risk >= 70 ? "amber" : "sky";
+                    return (
+                      <tr
+                        key={c.id}
+                        className="border-t border-white/10 align-middle"
+                      >
+                        <td className="px-2 py-3">
+                          <StatusPill
+                            tone={PRIORITY_TONE[c.priority] ?? "slate"}
+                          >
+                            {c.priority}
+                          </StatusPill>
+                        </td>
+                        <td className="px-2 py-3 font-semibold text-white">
+                          {c.caseNumber}
+                        </td>
+                        <td className="px-2 py-3 text-slate-300">
+                          {c.region || "Region pending"}
+                        </td>
+                        <td className="px-2 py-3 text-slate-300">
+                          {c.daysOpen != null ? `${c.daysOpen}d` : "—"}
+                        </td>
+                        <td className="px-2 py-3">
+                          <StatusPill tone={riskTone}>{c.risk}%</StatusPill>
+                        </td>
+                        <td className="px-2 py-3 capitalize text-slate-300">
+                          {c.status.replace(/_/g, " ")}
+                        </td>
+                        <td className="px-2 py-3 text-slate-300">
+                          {c.assignedTo
+                            ? (officerNameById.get(c.assignedTo) ?? "Assigned")
+                            : "Unassigned"}
+                        </td>
+                        <td className="px-2 py-3">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setDispatchCaseId(c.id);
+                                setIsDispatchDialogOpen(true);
+                              }}
+                            >
+                              Dispatch
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setActiveModule("justice")}
+                            >
+                              View
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
       )}
 
       {activeTab === "tools" && (
