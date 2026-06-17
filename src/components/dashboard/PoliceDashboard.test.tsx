@@ -26,6 +26,14 @@ vi.mock("@tanstack/react-query", async () => {
   return {
     ...actual,
     useQueryClient: () => mockUseQueryClient(),
+    // The dashboard's direct map-points useQuery has no QueryClientProvider in
+    // tests; stub it to an empty result (live data hooks are mocked separately).
+    useQuery: () => ({
+      data: [],
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    }),
   };
 });
 
@@ -76,6 +84,11 @@ vi.mock("@/components/coordination/CoordinationBoard", () => ({
   default: () => <div>mock-coordination-board</div>,
 }));
 
+vi.mock("@/components/police/LiveIncidentMap", () => ({
+  LiveIncidentMap: () => <div>mock-incident-map</div>,
+  default: () => <div>mock-incident-map</div>,
+}));
+
 vi.mock("@/components/justice/CaseDispatchDialog", () => ({
   default: () => null,
 }));
@@ -94,6 +107,9 @@ vi.mock("recharts", () => ({
   Tooltip: () => null,
   XAxis: () => null,
   YAxis: () => null,
+  PieChart: () => <div />,
+  Pie: () => null,
+  Cell: () => null,
 }));
 
 describe("PoliceDashboard", () => {

@@ -1,6 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import {
+  LiveIncidentMap,
+  type MapPoint,
+} from "@/components/police/LiveIncidentMap";
 import {
   acknowledgePoliceAlert,
   deleteAlert,
@@ -39,7 +44,7 @@ import {
 } from "@/components/dashboard/DashboardPrimitives";
 
 const POLICE_TABS = [
-  { id: "response", label: "Cases & response" },
+  { id: "response", label: "Overview" },
   { id: "tools", label: "Evidence & tools" },
   { id: "intel", label: "Intelligence" },
 ] as const;
@@ -84,6 +89,9 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -166,6 +174,67 @@ const PoliceDashboard: React.FC = () => {
       refetchInterval: 30000,
       limit: 30,
     });
+
+  // Live operational map points: SOS/incidents that carry GPS, plus located
+  // facilities (resources). Rows without coordinates are simply skipped.
+  const { data: mapPoints = [] } = useQuery({
+    queryKey: ["police-map-points", isPolice],
+    enabled: isPolice,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    queryFn: async (): Promise<MapPoint[]> => {
+      const [esc, res] = await Promise.all([
+        supabase
+          .from("escalation_events")
+          .select("id,severity,status,location,triggered_at")
+          .order("triggered_at", { ascending: false })
+          .limit(40),
+        supabase
+          .from("resources")
+          .select("id,resource_type,name,latitude,longitude")
+          .limit(60),
+      ]);
+      const points: MapPoint[] = [];
+      for (const row of (esc.data ?? []) as Record<string, unknown>[]) {
+        const loc = row.location as { lat?: unknown; lng?: unknown } | null;
+        const lat = Number(loc?.lat);
+        const lng = Number(loc?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const sev = String(row.severity ?? "").toLowerCase();
+        const kind =
+          sev === "critical"
+            ? "sos"
+            : sev === "high"
+              ? "high"
+              : sev === "low"
+                ? "low"
+                : "medium";
+        points.push({
+          id: `e-${String(row.id)}`,
+          lat,
+          lng,
+          kind,
+          label: `SOS · ${String(row.status ?? "active")}`,
+        });
+      }
+      for (const row of (res.data ?? []) as Record<string, unknown>[]) {
+        const lat = Number(row.latitude);
+        const lng = Number(row.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const ty = String(row.resource_type ?? "").toLowerCase();
+        points.push({
+          id: `r-${String(row.id)}`,
+          lat,
+          lng,
+          kind: /hospital|medic|health|clinic/.test(ty)
+            ? "hospital"
+            : "shelter",
+          label: String(row.name ?? "Facility"),
+        });
+      }
+      return points;
+    },
+  });
 
   // Track real load time: from mount until live data first finishes loading
   // (not until unmount — that previously logged session duration, not load).
@@ -283,6 +352,55 @@ const PoliceDashboard: React.FC = () => {
     openCases.length - unassignedOpenCases.length,
     Math.max(openCases.length, 1),
   );
+  // Case risk (priority) distribution for the command-center donut.
+  const riskDistribution = useMemo(() => {
+    const colorFor: Record<string, string> = {
+      critical: "#f43f5e",
+      high: "#fb923c",
+      medium: "#fbbf24",
+      low: "#34d399",
+    };
+    return (["critical", "high", "medium", "low"] as const)
+      .map((p) => ({
+        name: p,
+        value: jurisdictionCases.filter((c) => c.priority === p).length,
+        color: colorFor[p],
+      }))
+      .filter((d) => d.value > 0);
+  }, [jurisdictionCases]);
+  // Active cases by status for the second donut.
+  const statusDistribution = useMemo(() => {
+    const palette = [
+      "#a855f7",
+      "#38bdf8",
+      "#fbbf24",
+      "#34d399",
+      "#22d3ee",
+      "#94a3b8",
+    ];
+    const counts = new Map<string, number>();
+    jurisdictionCases.forEach((c) =>
+      counts.set(c.status, (counts.get(c.status) ?? 0) + 1),
+    );
+    return Array.from(counts.entries()).map(([name, value], i) => ({
+      name: name.replace(/_/g, " "),
+      value,
+      color: palette[i % palette.length],
+    }));
+  }, [jurisdictionCases]);
+  // Top officers by current open caseload (real assignment data).
+  const topOfficers = useMemo(() => {
+    const counts = new Map<string, number>();
+    openCases.forEach((c) => {
+      if (c.assignedTo)
+        counts.set(c.assignedTo, (counts.get(c.assignedTo) ?? 0) + 1);
+    });
+    const nameById = new Map(officers.map((o) => [o.id, o.fullName || o.id]));
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => ({ id, name: nameById.get(id) ?? id, count }));
+  }, [openCases, officers]);
   const responseLoad = Math.min(
     100,
     Math.round(
@@ -500,11 +618,18 @@ const PoliceDashboard: React.FC = () => {
         }
       />
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard
-          label="Critical queue"
+          label="Active emergencies"
+          value={pendingAlerts.length}
+          helper="Unacknowledged alerts"
+          accent="rose"
+          loading={isLoadingData}
+        />
+        <MetricCard
+          label="Critical cases"
           value={urgentCases.length}
-          helper="Immediate intervention required"
+          helper="Immediate intervention"
           accent="rose"
           loading={isLoadingData}
         />
@@ -516,20 +641,40 @@ const PoliceDashboard: React.FC = () => {
           loading={isLoadingData}
         />
         <MetricCard
-          label="Officer coverage"
+          label="Pending dispatch"
+          value={unassignedOpenCases.length}
+          helper="Unassigned open cases"
+          accent="sky"
+          loading={isLoadingData}
+        />
+        <MetricCard
+          label="Officers available"
           value={activeOfficers.length}
-          helper={`${assignedCaseRatio}% of open cases assigned`}
+          helper={`${assignedCaseRatio}% caseload assigned`}
           accent="emerald"
           loading={isLoadingData}
         />
         <MetricCard
-          label="Partner handoffs"
-          value={pendingReferrals.length}
-          helper={`${pendingAlerts.length} live alerts awaiting acknowledgement`}
+          label="Cases cleared"
+          value={completedCases.length}
+          helper={`${pendingReferrals.length} partner handoffs`}
           accent="indigo"
           loading={isLoadingData}
         />
       </section>
+
+      {/* Live operational map — command-centre centrepiece */}
+      <SectionCard
+        title="Live incident map"
+        description="SOS alerts, incidents with GPS, and located facilities in your jurisdiction."
+        action={
+          <StatusPill tone="emerald">
+            {mapPoints.length} {mapPoints.length === 1 ? "marker" : "markers"}
+          </StatusPill>
+        }
+      >
+        <LiveIncidentMap points={mapPoints} height={420} />
+      </SectionCard>
 
       <section>
         <QueueMetricsDashboard cases={jurisdictionCases} />
@@ -544,6 +689,167 @@ const PoliceDashboard: React.FC = () => {
 
       {activeTab === "response" && (
         <>
+          {/* Quick actions */}
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsFileIncidentDialogOpen(true)}
+            >
+              Create incident
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setActiveModule("command_center")}
+              disabled={!permissions.canViewOrgData}
+            >
+              Open dispatch
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setActiveModule("reporting")}
+              disabled={!permissions.canAccessAnalytics}
+            >
+              Generate report
+            </Button>
+            <Button variant="outline" onClick={() => void refetchAlerts()}>
+              Refresh live data
+            </Button>
+          </section>
+
+          {/* Risk + status donuts and top officers */}
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+            <SectionCard
+              title="Case risk distribution"
+              description="Open caseload by AI priority."
+            >
+              {riskDistribution.length > 0 ? (
+                <div className="flex items-center gap-4">
+                  <div style={{ width: 132, height: 132 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={riskDistribution}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={42}
+                          outerRadius={62}
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {riskDistribution.map((d) => (
+                            <Cell key={d.name} fill={d.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {riskDistribution.map((d) => (
+                      <div
+                        key={d.name}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="flex items-center gap-2 capitalize text-slate-200">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: d.color }}
+                          />
+                          {d.name}
+                        </span>
+                        <span className="font-semibold text-white">
+                          {d.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <EmptyState
+                  title="No active cases"
+                  description="Risk breakdown appears once cases enter your jurisdiction queue."
+                />
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Active cases by status"
+              description="Where open work sits in the pipeline."
+            >
+              {statusDistribution.length > 0 ? (
+                <div className="flex items-center gap-4">
+                  <div style={{ width: 132, height: 132 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusDistribution}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={42}
+                          outerRadius={62}
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {statusDistribution.map((d) => (
+                            <Cell key={d.name} fill={d.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {statusDistribution.map((d) => (
+                      <div
+                        key={d.name}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="flex items-center gap-2 capitalize text-slate-200">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: d.color }}
+                          />
+                          {d.name}
+                        </span>
+                        <span className="font-semibold text-white">
+                          {d.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <EmptyState
+                  title="No active cases"
+                  description="Status breakdown appears once cases enter your queue."
+                />
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Top officers"
+              description="By current open caseload."
+            >
+              {topOfficers.length > 0 ? (
+                <div className="space-y-3">
+                  {topOfficers.map((o, i) => (
+                    <ListItemCard
+                      key={o.id}
+                      title={`${i + 1}. ${o.name}`}
+                      subtitle="Open cases assigned"
+                      meta={<StatusPill tone="sky">{o.count}</StatusPill>}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No assignments yet"
+                  description="Officer ranking appears once cases are assigned."
+                />
+              )}
+            </SectionCard>
+          </section>
+
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
             <SectionCard
               title="Case status lookup"
