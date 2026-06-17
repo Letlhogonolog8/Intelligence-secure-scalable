@@ -56,6 +56,11 @@ const moduleIcons: Record<ModuleType, IconComponent> = {
   justice: ScaleIcon,
   policy: BrainIcon,
   governance: LockIcon,
+  police_queue: ActivityIcon,
+  police_incidents: MapPinIcon,
+  police_evidence: ShieldIcon,
+  police_analytics: BarChartIcon,
+  police_officers: ShieldIcon,
 };
 
 const modules: {

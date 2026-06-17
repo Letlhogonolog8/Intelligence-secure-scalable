@@ -1,7 +1,7 @@
 /**
  * Role Configuration and Type Definitions
  * src/lib/roleConfig.ts
- * 
+ *
  * This file centralizes all role definitions, permissions, and module access.
  * Serves as the single source of truth for role-based access control (RBAC).
  */
@@ -12,11 +12,18 @@ import { ModuleType } from "@/data/aegisData";
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type UserRole = "admin" | "counselor" | "survivor" | "ngo" | "police" | "analyst" | "chw";
+export type UserRole =
+  | "admin"
+  | "counselor"
+  | "survivor"
+  | "ngo"
+  | "police"
+  | "analyst"
+  | "chw";
 
-export type DashboardType = 
+export type DashboardType =
   | "survivor_dashboard"
-  | "counselor_dashboard" 
+  | "counselor_dashboard"
   | "admin_dashboard"
   | "ngo_dashboard"
   | "police_dashboard"
@@ -58,7 +65,17 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     label: "Administrator",
     description: "System administrator with full platform access",
     icon: "ShieldIcon",
-    modules: ["dashboard", "admin_console", "reporting", "command_center", "survivor_support", "prediction", "justice", "policy", "governance"],
+    modules: [
+      "dashboard",
+      "admin_console",
+      "reporting",
+      "command_center",
+      "survivor_support",
+      "prediction",
+      "justice",
+      "policy",
+      "governance",
+    ],
     defaultModule: "dashboard",
     dashboardType: "admin_dashboard",
     color: "text-red-500",
@@ -82,7 +99,17 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     label: "Survivor",
     description: "Support seeker accessing personal support resources",
     icon: "UserIcon",
-    modules: ["dashboard", "personal_dashboard", "safety_plan", "appointments", "trusted_contacts", "document_vault", "support_requests", "secure_messages", "survivor_support"],
+    modules: [
+      "dashboard",
+      "personal_dashboard",
+      "safety_plan",
+      "appointments",
+      "trusted_contacts",
+      "document_vault",
+      "support_requests",
+      "secure_messages",
+      "survivor_support",
+    ],
     defaultModule: "personal_dashboard",
     dashboardType: "survivor_dashboard",
     color: "text-purple-500",
@@ -94,7 +121,14 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     label: "NGO Staff",
     description: "Non-governmental organization program coordinator",
     icon: "GlobeIcon",
-    modules: ["dashboard", "reporting", "survivor_support", "justice", "governance", "policy"],
+    modules: [
+      "dashboard",
+      "reporting",
+      "survivor_support",
+      "justice",
+      "governance",
+      "policy",
+    ],
     defaultModule: "dashboard",
     dashboardType: "ngo_dashboard",
     color: "text-blue-500",
@@ -106,7 +140,19 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     label: "Law Enforcement",
     description: "Police officer involved in case investigation",
     icon: "ShieldIcon",
-    modules: ["dashboard", "justice", "command_center", "prediction", "policy", "governance", "reporting"],
+    modules: [
+      "dashboard",
+      "police_queue",
+      "police_incidents",
+      "justice",
+      "command_center",
+      "police_evidence",
+      "secure_messages",
+      "police_analytics",
+      "reporting",
+      "police_officers",
+      "governance",
+    ],
     defaultModule: "dashboard",
     dashboardType: "police_dashboard",
     color: "text-amber-500",
@@ -116,9 +162,18 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   analyst: {
     id: "analyst",
     label: "Institutional Analyst",
-    description: "Analyst with access to aggregated data and institutional insights",
+    description:
+      "Analyst with access to aggregated data and institutional insights",
     icon: "BarChartIcon",
-    modules: ["dashboard", "reporting", "command_center", "prediction", "justice", "policy", "governance"],
+    modules: [
+      "dashboard",
+      "reporting",
+      "command_center",
+      "prediction",
+      "justice",
+      "policy",
+      "governance",
+    ],
     defaultModule: "dashboard",
     dashboardType: "analyst_dashboard",
     color: "text-indigo-500",
@@ -128,7 +183,8 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   chw: {
     id: "chw",
     label: "Community Health Worker",
-    description: "Field worker conducting rural outreach, referrals, and survivor follow-up",
+    description:
+      "Field worker conducting rural outreach, referrals, and survivor follow-up",
     icon: "HeartIcon",
     modules: ["dashboard", "survivor_support", "reporting"],
     defaultModule: "dashboard",
@@ -239,7 +295,10 @@ export const PERMISSIONS: Record<UserRole, PermissionSet> = {
 // MODULE ACCESS MATRIX
 // ============================================================================
 
-export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limited" | "readonly" | "none">> = {
+export const MODULE_ACCESS: Record<
+  UserRole,
+  Record<ModuleType, "full" | "limited" | "readonly" | "none">
+> = {
   admin: {
     dashboard: "full",
     personal_dashboard: "none",
@@ -257,6 +316,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "full",
     policy: "full",
     governance: "full",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 
   counselor: {
@@ -276,6 +340,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "limited", // assigned cases only
     policy: "none",
     governance: "readonly",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 
   survivor: {
@@ -295,6 +364,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "none",
     policy: "none",
     governance: "none",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 
   ngo: {
@@ -314,6 +388,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "limited", // organization's cases
     policy: "readonly",
     governance: "readonly",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 
   police: {
@@ -324,8 +403,8 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     trusted_contacts: "none",
     document_vault: "none",
     support_requests: "none",
-    secure_messages: "none",
-    reporting: "none",
+    secure_messages: "full",
+    reporting: "full",
     admin_console: "none",
     command_center: "limited", // jurisdiction only
     survivor_support: "none",
@@ -333,6 +412,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "limited", // jurisdiction only
     policy: "readonly",
     governance: "readonly",
+    police_queue: "full",
+    police_incidents: "full",
+    police_evidence: "full",
+    police_analytics: "full",
+    police_officers: "full",
   },
 
   analyst: {
@@ -352,6 +436,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "readonly",
     policy: "readonly",
     governance: "readonly",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 
   chw: {
@@ -371,6 +460,11 @@ export const MODULE_ACCESS: Record<UserRole, Record<ModuleType, "full" | "limite
     justice: "none",
     policy: "none",
     governance: "none",
+    police_queue: "none",
+    police_incidents: "none",
+    police_evidence: "none",
+    police_analytics: "none",
+    police_officers: "none",
   },
 };
 
@@ -511,7 +605,7 @@ export function getRoleDefinition(role: UserRole): RoleDefinition {
 export function hasModuleAccess(
   role: UserRole,
   module: ModuleType,
-  accessLevel: "full" | "limited" | "readonly" = "full"
+  accessLevel: "full" | "limited" | "readonly" = "full",
 ): boolean {
   const moduleAccess = MODULE_ACCESS[role]?.[module];
   if (!moduleAccess || moduleAccess === "none") return false;
@@ -521,7 +615,11 @@ export function hasModuleAccess(
   } else if (accessLevel === "limited") {
     return moduleAccess === "full" || moduleAccess === "limited";
   } else if (accessLevel === "readonly") {
-    return moduleAccess === "full" || moduleAccess === "limited" || moduleAccess === "readonly";
+    return (
+      moduleAccess === "full" ||
+      moduleAccess === "limited" ||
+      moduleAccess === "readonly"
+    );
   }
   return false;
 }

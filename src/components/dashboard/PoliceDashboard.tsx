@@ -14,6 +14,7 @@ import {
   useOrganizationCoordination,
   usePoliceAlertsFeed,
   useUserProfile,
+  type ModuleType,
 } from "@/data/aegisData";
 import { renderMessageWithLinks } from "@/components/dashboard/renderAlertLinks";
 import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
@@ -40,18 +41,27 @@ import {
   MetricCard,
   SectionCard,
   StatusPill,
-  TabBar,
 } from "@/components/dashboard/DashboardPrimitives";
 
-const POLICE_TABS = [
-  { id: "response", label: "Overview" },
-  { id: "queue", label: "Emergency queue" },
-  { id: "incidents", label: "Incidents" },
-  { id: "tools", label: "Evidence & tools" },
-  { id: "intel", label: "Intelligence" },
-  { id: "directory", label: "Officers" },
-] as const;
-type PoliceTab = (typeof POLICE_TABS)[number]["id"];
+type PoliceTab =
+  | "response"
+  | "queue"
+  | "incidents"
+  | "tools"
+  | "intel"
+  | "directory";
+
+// The police role uses the global left-nav shell: each sidebar module maps to a
+// command-center section. The dashboard renders the section for the active
+// module (the Overview command center is the default "dashboard" module).
+const MODULE_SECTION: Partial<Record<ModuleType, PoliceTab>> = {
+  dashboard: "response",
+  police_queue: "queue",
+  police_incidents: "incidents",
+  police_evidence: "tools",
+  police_analytics: "intel",
+  police_officers: "directory",
+};
 
 interface IncidentRow {
   id: string;
@@ -189,7 +199,7 @@ import {
 const PoliceDashboard: React.FC = () => {
   const { user, session } = useAuth();
   const queryClient = useQueryClient();
-  const { setActiveModule } = useAppStore();
+  const { setActiveModule, activeModule } = useAppStore();
   const { data: profile } = useUserProfile(user?.id);
   const isPolice = profile?.role === "police";
   const resolvedRole = (profile?.role ?? "police") as UserRole;
@@ -200,7 +210,7 @@ const PoliceDashboard: React.FC = () => {
   const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
   const [isFileIncidentDialogOpen, setIsFileIncidentDialogOpen] =
     useState(false);
-  const [activeTab, setActiveTab] = useState<PoliceTab>("response");
+  const activeTab: PoliceTab = MODULE_SECTION[activeModule] ?? "response";
   const [queueSearch, setQueueSearch] = useState("");
   const [queuePriorityFilter, setQueuePriorityFilter] = useState("all");
   const [deletingAlertId, setDeletingAlertId] = useState<string | null>(null);
@@ -762,74 +772,75 @@ const PoliceDashboard: React.FC = () => {
         }
       />
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard
-          label="Active emergencies"
-          value={pendingAlerts.length}
-          helper="Unacknowledged alerts"
-          accent="rose"
-          loading={isLoadingData}
-        />
-        <MetricCard
-          label="Critical cases"
-          value={urgentCases.length}
-          helper="Immediate intervention"
-          accent="rose"
-          loading={isLoadingData}
-        />
-        <MetricCard
-          label="Open investigations"
-          value={openCases.length}
-          helper={`${highPriorityCases.length} high priority`}
-          accent="amber"
-          loading={isLoadingData}
-        />
-        <MetricCard
-          label="Pending dispatch"
-          value={unassignedOpenCases.length}
-          helper="Unassigned open cases"
-          accent="sky"
-          loading={isLoadingData}
-        />
-        <MetricCard
-          label="Officers available"
-          value={activeOfficers.length}
-          helper={`${assignedCaseRatio}% caseload assigned`}
-          accent="emerald"
-          loading={isLoadingData}
-        />
-        <MetricCard
-          label="Cases cleared"
-          value={completedCases.length}
-          helper={`${pendingReferrals.length} partner handoffs`}
-          accent="indigo"
-          loading={isLoadingData}
-        />
-      </section>
+      {/* KPI strip, live map and queue metrics form the Overview command
+          centre; focused sections (queue, incidents, evidence, intel,
+          directory) render on their own without this heavy header. */}
+      {activeTab === "response" && (
+        <>
+          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <MetricCard
+              label="Active emergencies"
+              value={pendingAlerts.length}
+              helper="Unacknowledged alerts"
+              accent="rose"
+              loading={isLoadingData}
+            />
+            <MetricCard
+              label="Critical cases"
+              value={urgentCases.length}
+              helper="Immediate intervention"
+              accent="rose"
+              loading={isLoadingData}
+            />
+            <MetricCard
+              label="Open investigations"
+              value={openCases.length}
+              helper={`${highPriorityCases.length} high priority`}
+              accent="amber"
+              loading={isLoadingData}
+            />
+            <MetricCard
+              label="Pending dispatch"
+              value={unassignedOpenCases.length}
+              helper="Unassigned open cases"
+              accent="sky"
+              loading={isLoadingData}
+            />
+            <MetricCard
+              label="Officers available"
+              value={activeOfficers.length}
+              helper={`${assignedCaseRatio}% caseload assigned`}
+              accent="emerald"
+              loading={isLoadingData}
+            />
+            <MetricCard
+              label="Cases cleared"
+              value={completedCases.length}
+              helper={`${pendingReferrals.length} partner handoffs`}
+              accent="indigo"
+              loading={isLoadingData}
+            />
+          </section>
 
-      {/* Live operational map — command-centre centrepiece */}
-      <SectionCard
-        title="Live incident map"
-        description="SOS alerts, incidents with GPS, and located facilities in your jurisdiction."
-        action={
-          <StatusPill tone="emerald">
-            {mapPoints.length} {mapPoints.length === 1 ? "marker" : "markers"}
-          </StatusPill>
-        }
-      >
-        <LiveIncidentMap points={mapPoints} height={420} />
-      </SectionCard>
+          {/* Live operational map — command-centre centrepiece */}
+          <SectionCard
+            title="Live incident map"
+            description="SOS alerts, incidents with GPS, and located facilities in your jurisdiction."
+            action={
+              <StatusPill tone="emerald">
+                {mapPoints.length}{" "}
+                {mapPoints.length === 1 ? "marker" : "markers"}
+              </StatusPill>
+            }
+          >
+            <LiveIncidentMap points={mapPoints} height={420} />
+          </SectionCard>
 
-      <section>
-        <QueueMetricsDashboard cases={jurisdictionCases} />
-      </section>
-
-      <TabBar
-        accent="rose"
-        active={activeTab}
-        onChange={setActiveTab}
-        tabs={POLICE_TABS.map((t) => ({ id: t.id, label: t.label }))}
-      />
+          <section>
+            <QueueMetricsDashboard cases={jurisdictionCases} />
+          </section>
+        </>
+      )}
 
       {activeTab === "response" && (
         <>

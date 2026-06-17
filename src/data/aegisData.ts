@@ -30,7 +30,12 @@ export type ModuleType =
   | "prediction"
   | "justice"
   | "policy"
-  | "governance";
+  | "governance"
+  | "police_queue"
+  | "police_incidents"
+  | "police_evidence"
+  | "police_analytics"
+  | "police_officers";
 export type TrendDirection = "up" | "down" | "stable";
 
 export type ModuleMetadata = {
@@ -450,6 +455,46 @@ export const MODULE_METADATA: Record<ModuleType, ModuleMetadata> = {
     shortLabel: "EGC",
     description: "Fairness & Compliance Core - Ethical governance",
     colorClass: "text-emerald-400",
+  },
+  police_queue: {
+    title: "Emergency Queue",
+    subtitle: "Live SOS & priority dispatch",
+    label: "Emergency Queue",
+    shortLabel: "EQ",
+    description: "Live emergency queue triaged by risk for rapid dispatch",
+    colorClass: "text-rose-400",
+  },
+  police_incidents: {
+    title: "Incidents",
+    subtitle: "Incoming reports & intake",
+    label: "Incidents",
+    shortLabel: "IN",
+    description: "Incoming incident reports filtered by category and risk",
+    colorClass: "text-orange-400",
+  },
+  police_evidence: {
+    title: "Evidence Center",
+    subtitle: "Evidence, voice notes & tools",
+    label: "Evidence Center",
+    shortLabel: "EV",
+    description: "Shared evidence, voice archives, and AI case tools",
+    colorClass: "text-cyan-400",
+  },
+  police_analytics: {
+    title: "Analytics",
+    subtitle: "Predictive triage & workload",
+    label: "Analytics",
+    shortLabel: "AN",
+    description: "Predictive triage, officer workload, and response trends",
+    colorClass: "text-indigo-400",
+  },
+  police_officers: {
+    title: "Officer Directory",
+    subtitle: "Unit roster & duty status",
+    label: "Officer Directory",
+    shortLabel: "OD",
+    description: "Unit roster with on/off-duty status and caseloads",
+    colorClass: "text-sky-400",
   },
 };
 

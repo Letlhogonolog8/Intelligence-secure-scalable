@@ -1,12 +1,12 @@
-import React from "react"
-import { ModuleType } from "@/data/aegisData"
-import { ChevronRightIcon, HomeIcon } from "@/components/ui/AegisIcons"
+import React from "react";
+import { ModuleType } from "@/data/aegisData";
+import { ChevronRightIcon, HomeIcon } from "@/components/ui/AegisIcons";
 
 interface BreadcrumbProps {
-  currentModule: ModuleType
-  currentPage?: string
-  roleLabel?: string
-  organizationLabel?: string
+  currentModule: ModuleType;
+  currentPage?: string;
+  roleLabel?: string;
+  organizationLabel?: string;
 }
 
 const moduleNames: Record<ModuleType, string> = {
@@ -26,12 +26,28 @@ const moduleNames: Record<ModuleType, string> = {
   justice: "Justice Analytics",
   policy: "Policy Simulation",
   governance: "AI Governance",
-}
+  police_queue: "Emergency Queue",
+  police_incidents: "Incidents",
+  police_evidence: "Evidence Center",
+  police_analytics: "Analytics",
+  police_officers: "Officer Directory",
+};
 
-export const Breadcrumb: React.FC<BreadcrumbProps> = ({ currentModule, currentPage, roleLabel, organizationLabel }) => {
+export const Breadcrumb: React.FC<BreadcrumbProps> = ({
+  currentModule,
+  currentPage,
+  roleLabel,
+  organizationLabel,
+}) => {
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-slate-400">
-      <a href="/" className="flex items-center gap-1 hover:text-white transition-colors">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex items-center gap-2 text-xs text-slate-400"
+    >
+      <a
+        href="/"
+        className="flex items-center gap-1 hover:text-white transition-colors"
+      >
         <HomeIcon size={14} />
         <span className="hidden sm:inline">AEGIS</span>
       </a>
@@ -63,5 +79,5 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ currentModule, currentPa
         </>
       )}
     </nav>
-  )
-}
+  );
+};

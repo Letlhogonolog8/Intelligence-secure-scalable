@@ -12,23 +12,51 @@ import { ROLE_DEFINITIONS, UserRole } from "@/lib/roleConfig";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import SurvivorAppRedirect from "@/components/auth/SurvivorAppRedirect";
 
-const CommandCenter = lazy(() => import('@/components/dashboard/CommandCenter'));
-const SurvivorSupport = lazy(() => import('@/components/survivor/SurvivorSupport'));
-const RiskPrediction = lazy(() => import('@/components/prediction/RiskPrediction'));
-const JusticeAnalytics = lazy(() => import('@/components/justice/JusticeAnalytics'));
-const PolicySimulation = lazy(() => import('@/components/policy/PolicySimulation'));
-const EthicalGovernance = lazy(() => import('@/components/governance/EthicalGovernance'));
-const SurvivorDashboard = lazy(() => import('@/components/dashboard/SurvivorDashboard'));
-const CounselorDashboard = lazy(() => import('@/components/dashboard/CounselorDashboard'));
-const AdminDashboard = lazy(() => import('@/components/dashboard/AdminDashboard'));
-const NgoDashboard = lazy(() => import('@/components/dashboard/NgoDashboard'));
-const PoliceDashboard = lazy(() => import('@/components/dashboard/PoliceDashboard'));
-const AnalystDashboard = lazy(() => import('@/components/dashboard/AnalystDashboard'));
-const CHWDashboard = lazy(() => import('@/components/dashboard/CHWDashboard'));
-const PersonalDashboard = lazy(() => import('@/components/survivor/PersonalDashboard'));
-const SurvivorFeatureWorkspace = lazy(() => import('@/components/survivor/SurvivorFeatureWorkspace'));
-const ReportingCenter = lazy(() => import('@/components/reporting/ReportingCenter'));
-const AdminConsole = lazy(() => import('@/components/admin/AdminConsole'));
+const CommandCenter = lazy(
+  () => import("@/components/dashboard/CommandCenter"),
+);
+const SurvivorSupport = lazy(
+  () => import("@/components/survivor/SurvivorSupport"),
+);
+const RiskPrediction = lazy(
+  () => import("@/components/prediction/RiskPrediction"),
+);
+const JusticeAnalytics = lazy(
+  () => import("@/components/justice/JusticeAnalytics"),
+);
+const PolicySimulation = lazy(
+  () => import("@/components/policy/PolicySimulation"),
+);
+const EthicalGovernance = lazy(
+  () => import("@/components/governance/EthicalGovernance"),
+);
+const SurvivorDashboard = lazy(
+  () => import("@/components/dashboard/SurvivorDashboard"),
+);
+const CounselorDashboard = lazy(
+  () => import("@/components/dashboard/CounselorDashboard"),
+);
+const AdminDashboard = lazy(
+  () => import("@/components/dashboard/AdminDashboard"),
+);
+const NgoDashboard = lazy(() => import("@/components/dashboard/NgoDashboard"));
+const PoliceDashboard = lazy(
+  () => import("@/components/dashboard/PoliceDashboard"),
+);
+const AnalystDashboard = lazy(
+  () => import("@/components/dashboard/AnalystDashboard"),
+);
+const CHWDashboard = lazy(() => import("@/components/dashboard/CHWDashboard"));
+const PersonalDashboard = lazy(
+  () => import("@/components/survivor/PersonalDashboard"),
+);
+const SurvivorFeatureWorkspace = lazy(
+  () => import("@/components/survivor/SurvivorFeatureWorkspace"),
+);
+const ReportingCenter = lazy(
+  () => import("@/components/reporting/ReportingCenter"),
+);
+const AdminConsole = lazy(() => import("@/components/admin/AdminConsole"));
 
 const AppLayout: React.FC = () => {
   const moduleIds = useMemo<ModuleType[]>(() => MODULE_LIST, []);
@@ -65,7 +93,14 @@ const AppLayout: React.FC = () => {
     }
     addRecentModule(activeModule);
     setModuleStatus(activeModule, "online", 0);
-  }, [activeModule, allowedModules, defaultModule, setActiveModule, addRecentModule, setModuleStatus]);
+  }, [
+    activeModule,
+    allowedModules,
+    defaultModule,
+    setActiveModule,
+    addRecentModule,
+    setModuleStatus,
+  ]);
 
   useEffect(() => {
     setOrganizationContext(organizationId ?? null, organizationName);
@@ -78,14 +113,17 @@ const AppLayout: React.FC = () => {
       }
     };
     handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [setMobileSidebarOpen]);
 
-  const handleModuleChange = useCallback((mod: ModuleType) => {
-    setActiveModule(mod);
-    setMobileSidebarOpen(false);
-  }, [setActiveModule, setMobileSidebarOpen]);
+  const handleModuleChange = useCallback(
+    (mod: ModuleType) => {
+      setActiveModule(mod);
+      setMobileSidebarOpen(false);
+    },
+    [setActiveModule, setMobileSidebarOpen],
+  );
 
   const handleToggleSidebar = useCallback(() => {
     toggleSidebar();
@@ -116,30 +154,36 @@ const AppLayout: React.FC = () => {
       }
     }
     switch (activeModule) {
-      case 'personal_dashboard':
+      case "police_queue":
+      case "police_incidents":
+      case "police_evidence":
+      case "police_analytics":
+      case "police_officers":
+        return <PoliceDashboard />;
+      case "personal_dashboard":
         return <PersonalDashboard />;
-      case 'safety_plan':
-      case 'appointments':
-      case 'trusted_contacts':
-      case 'document_vault':
-      case 'support_requests':
-      case 'secure_messages':
+      case "safety_plan":
+      case "appointments":
+      case "trusted_contacts":
+      case "document_vault":
+      case "support_requests":
+      case "secure_messages":
         return <SurvivorFeatureWorkspace module={activeModule} />;
-      case 'reporting':
+      case "reporting":
         return <ReportingCenter />;
-      case 'admin_console':
+      case "admin_console":
         return <AdminConsole />;
-      case 'command_center':
+      case "command_center":
         return <CommandCenter />;
-      case 'survivor_support':
+      case "survivor_support":
         return <SurvivorSupport />;
-      case 'prediction':
+      case "prediction":
         return <RiskPrediction />;
-      case 'justice':
+      case "justice":
         return <JusticeAnalytics />;
-      case 'policy':
+      case "policy":
         return <PolicySimulation />;
-      case 'governance':
+      case "governance":
         return <EthicalGovernance />;
       default:
         return <CommandCenter />;
@@ -149,9 +193,15 @@ const AppLayout: React.FC = () => {
   if (profileLoading) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-slate-400" role="status" aria-live="polite">
+        <div
+          className="flex flex-col items-center gap-3 text-slate-400"
+          role="status"
+          aria-live="polite"
+        >
           <div className="h-10 w-10 rounded-full border-2 border-slate-700 border-t-cyan-400 animate-spin" />
-          <span className="text-xs tracking-widest uppercase">Loading profile</span>
+          <span className="text-xs tracking-widest uppercase">
+            Loading profile
+          </span>
         </div>
       </div>
     );
@@ -167,7 +217,9 @@ const AppLayout: React.FC = () => {
             message="Your account does not have a role assigned yet. Please contact an administrator."
           />
           <div className="mt-4 flex justify-center">
-            <Button variant="outline" onClick={() => signOut()}>Sign out</Button>
+            <Button variant="outline" onClick={() => signOut()}>
+              Sign out
+            </Button>
           </div>
         </div>
       </div>
@@ -205,9 +257,11 @@ const AppLayout: React.FC = () => {
         />
       </div>
 
-      <div className={`fixed inset-y-0 left-0 z-40 lg:hidden transform transition-transform duration-300 ${
-        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
+      <div
+        className={`fixed inset-y-0 left-0 z-40 lg:hidden transform transition-transform duration-300 ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <Sidebar
           activeModule={activeModule}
           onModuleChange={handleModuleChange}
@@ -228,11 +282,15 @@ const AppLayout: React.FC = () => {
         />
         {/* Breadcrumb */}
         <div className="px-4 lg:px-6 py-3 border-b border-slate-800/50 bg-slate-950/50 flex-shrink-0">
-          <Breadcrumb currentModule={activeModule} roleLabel={roleDefinition.label} organizationLabel={organizationName} />
+          <Breadcrumb
+            currentModule={activeModule}
+            roleLabel={roleDefinition.label}
+            organizationLabel={organizationName}
+          />
         </div>
         <main className="flex-1 overflow-auto">
           <Suspense
-            fallback={(
+            fallback={
               <div className="h-full w-full p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-4">
@@ -249,7 +307,7 @@ const AppLayout: React.FC = () => {
                   </div>
                 </div>
               </div>
-            )}
+            }
           >
             {renderModule}
           </Suspense>

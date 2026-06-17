@@ -1,7 +1,7 @@
 /**
  * Role-Specific Sidebar Builder
  * src/components/sidebar/RoleSpecificSidebarBuilder.ts
- * 
+ *
  * Generates dynamic, role-specific navigation structures for each user role.
  * Ensures enterprise-grade separation of concerns and scalability.
  */
@@ -49,7 +49,12 @@ const SURVIVOR_SIDEBAR: RoleSpecificSidebarConfig = {
     {
       id: "resources",
       title: "Resources",
-      modules: ["trusted_contacts", "document_vault", "dashboard", "survivor_support"],
+      modules: [
+        "trusted_contacts",
+        "document_vault",
+        "dashboard",
+        "survivor_support",
+      ],
       collapsible: true,
       defaultExpanded: true,
     },
@@ -130,26 +135,31 @@ const POLICE_SIDEBAR: RoleSpecificSidebarConfig = {
   sections: [
     {
       id: "operations",
-      title: "Law Enforcement Operations",
-      modules: ["dashboard", "justice"],
+      title: "Operations",
+      modules: ["dashboard", "police_queue", "police_incidents", "justice"],
       collapsible: false,
     },
     {
       id: "command",
-      title: "Incident Command",
-      modules: ["command_center", "prediction"],
+      title: "Command & Coordination",
+      modules: ["command_center", "police_evidence", "secure_messages"],
       collapsible: true,
       defaultExpanded: true,
     },
     {
-      id: "coordination",
-      title: "Inter-agency Coordination",
-      modules: ["reporting"],
+      id: "intelligence",
+      title: "Intelligence & Records",
+      modules: [
+        "police_analytics",
+        "reporting",
+        "police_officers",
+        "governance",
+      ],
       collapsible: true,
-      defaultExpanded: false,
+      defaultExpanded: true,
     },
   ],
-  quickActions: ["justice", "command_center"],
+  quickActions: ["police_queue", "command_center"],
   allowSearch: true,
   allowFavorites: true,
   allowRecents: true,
@@ -276,7 +286,9 @@ const ROLE_SIDEBAR_MAP: Record<UserRole, RoleSpecificSidebarConfig> = {
  * @param role - User role
  * @returns Role-specific sidebar configuration
  */
-export function getRoleSpecificSidebarConfig(role: UserRole): RoleSpecificSidebarConfig {
+export function getRoleSpecificSidebarConfig(
+  role: UserRole,
+): RoleSpecificSidebarConfig {
   return ROLE_SIDEBAR_MAP[role];
 }
 
@@ -288,11 +300,11 @@ export function getRoleSpecificSidebarConfig(role: UserRole): RoleSpecificSideba
 export function getAllowedModulesForRole(role: UserRole): ModuleType[] {
   const config = getRoleSpecificSidebarConfig(role);
   const modules = new Set<ModuleType>();
-  
-  config.sections.forEach(section => {
-    section.modules.forEach(mod => modules.add(mod));
+
+  config.sections.forEach((section) => {
+    section.modules.forEach((mod) => modules.add(mod));
   });
-  
+
   return Array.from(modules);
 }
 
@@ -306,12 +318,12 @@ export function getAllowedModulesForRole(role: UserRole): ModuleType[] {
 export function filterModulesByQuery(
   role: UserRole,
   query: string,
-  moduleMetadata: Record<ModuleType, { label: string; description: string }>
+  moduleMetadata: Record<ModuleType, { label: string; description: string }>,
 ): ModuleType[] {
   const allowedModules = getAllowedModulesForRole(role);
   const lowerQuery = query.toLowerCase();
-  
-  return allowedModules.filter(mod => {
+
+  return allowedModules.filter((mod) => {
     const meta = moduleMetadata[mod];
     return (
       meta.label.toLowerCase().includes(lowerQuery) ||

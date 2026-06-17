@@ -1,39 +1,49 @@
-import { create } from "zustand"
-import { createJSONStorage, persist } from "zustand/middleware"
-import { ModuleType } from "@/data/aegisData"
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { ModuleType } from "@/data/aegisData";
 
-export type ModuleStatus = "online" | "loading" | "error" | "updating"
+export type ModuleStatus = "online" | "loading" | "error" | "updating";
 
 type ModuleActivity = {
-  moduleId: ModuleType
-  status: ModuleStatus
-  lastUpdated: number
-  notificationCount: number
-  description: string
-}
+  moduleId: ModuleType;
+  status: ModuleStatus;
+  lastUpdated: number;
+  notificationCount: number;
+  description: string;
+};
 
 type AppState = {
-  activeModule: ModuleType
-  sidebarCollapsed: boolean
-  mobileSidebarOpen: boolean
-  sidebarSearchQuery: string
-  recentModules: ModuleType[]
-  favoriteModules: ModuleType[]
-  moduleActivities: Record<ModuleType, ModuleActivity>
-  organizationId: string | null
-  organizationName: string
-  sessionUserId: string | null
-  setActiveModule: (module: ModuleType) => void
-  toggleSidebar: () => void
-  setMobileSidebarOpen: (open: boolean) => void
-  setSidebarSearchQuery: (query: string) => void
-  addRecentModule: (module: ModuleType) => void
-  toggleFavoriteModule: (module: ModuleType) => void
-  setModuleStatus: (module: ModuleType, status: ModuleStatus, notificationCount?: number) => void
-  setOrganizationContext: (organizationId: string | null, organizationName: string) => void
-  syncSessionContext: (userId: string | null, defaultModule?: ModuleType) => void
-  resetSessionContext: () => void
-}
+  activeModule: ModuleType;
+  sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
+  sidebarSearchQuery: string;
+  recentModules: ModuleType[];
+  favoriteModules: ModuleType[];
+  moduleActivities: Record<ModuleType, ModuleActivity>;
+  organizationId: string | null;
+  organizationName: string;
+  sessionUserId: string | null;
+  setActiveModule: (module: ModuleType) => void;
+  toggleSidebar: () => void;
+  setMobileSidebarOpen: (open: boolean) => void;
+  setSidebarSearchQuery: (query: string) => void;
+  addRecentModule: (module: ModuleType) => void;
+  toggleFavoriteModule: (module: ModuleType) => void;
+  setModuleStatus: (
+    module: ModuleType,
+    status: ModuleStatus,
+    notificationCount?: number,
+  ) => void;
+  setOrganizationContext: (
+    organizationId: string | null,
+    organizationName: string,
+  ) => void;
+  syncSessionContext: (
+    userId: string | null,
+    defaultModule?: ModuleType,
+  ) => void;
+  resetSessionContext: () => void;
+};
 
 const createInitialSessionState = (activeModule: ModuleType = "dashboard") => ({
   activeModule,
@@ -45,7 +55,7 @@ const createInitialSessionState = (activeModule: ModuleType = "dashboard") => ({
   organizationId: null as string | null,
   organizationName: "Independent",
   sessionUserId: null as string | null,
-})
+});
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -71,7 +81,8 @@ export const useAppStore = create<AppState>()(
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Personal safety planning, trusted contacts, and safe actions",
+          description:
+            "Personal safety planning, trusted contacts, and safe actions",
         },
         appointments: {
           moduleId: "appointments",
@@ -135,35 +146,78 @@ export const useAppStore = create<AppState>()(
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Trauma-Informed AI Assistant - Confidential support and safety planning",
+          description:
+            "Trauma-Informed AI Assistant - Confidential support and safety planning",
         },
         prediction: {
           moduleId: "prediction",
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Spatio-Temporal Intelligence - Predictive risk analytics and forecasting",
+          description:
+            "Spatio-Temporal Intelligence - Predictive risk analytics and forecasting",
         },
         justice: {
           moduleId: "justice",
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Institutional Optimization - Case tracking and justice system analytics",
+          description:
+            "Institutional Optimization - Case tracking and justice system analytics",
         },
         policy: {
           moduleId: "policy",
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Multi-Agent Foresight Engine - Policy simulation and impact analysis",
+          description:
+            "Multi-Agent Foresight Engine - Policy simulation and impact analysis",
         },
         governance: {
           moduleId: "governance",
           status: "online",
           lastUpdated: Date.now(),
           notificationCount: 0,
-          description: "Fairness & Compliance Core - Ethical AI governance and auditing",
+          description:
+            "Fairness & Compliance Core - Ethical AI governance and auditing",
+        },
+        police_queue: {
+          moduleId: "police_queue",
+          status: "online",
+          lastUpdated: Date.now(),
+          notificationCount: 0,
+          description:
+            "Live emergency queue triaged by risk for rapid dispatch",
+        },
+        police_incidents: {
+          moduleId: "police_incidents",
+          status: "online",
+          lastUpdated: Date.now(),
+          notificationCount: 0,
+          description:
+            "Incoming incident reports filtered by category and risk",
+        },
+        police_evidence: {
+          moduleId: "police_evidence",
+          status: "online",
+          lastUpdated: Date.now(),
+          notificationCount: 0,
+          description: "Shared evidence, voice archives, and AI case tools",
+        },
+        police_analytics: {
+          moduleId: "police_analytics",
+          status: "online",
+          lastUpdated: Date.now(),
+          notificationCount: 0,
+          description:
+            "Predictive triage, officer workload, and response trends",
+        },
+        police_officers: {
+          moduleId: "police_officers",
+          status: "online",
+          lastUpdated: Date.now(),
+          notificationCount: 0,
+          description: "Unit roster with on/off-duty status and caseloads",
         },
       },
       setActiveModule: (module) =>
@@ -174,7 +228,8 @@ export const useAppStore = create<AppState>()(
             ...state.recentModules.filter((m) => m !== module),
           ].slice(0, 5),
         })),
-      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
       setSidebarSearchQuery: (query) => set({ sidebarSearchQuery: query }),
       addRecentModule: (module) =>
@@ -210,18 +265,18 @@ export const useAppStore = create<AppState>()(
             return {
               ...createInitialSessionState(),
               moduleActivities: state.moduleActivities,
-            }
+            };
           }
 
           if (state.sessionUserId === userId) {
-            return { sessionUserId: userId }
+            return { sessionUserId: userId };
           }
 
           return {
             ...createInitialSessionState(defaultModule),
             sessionUserId: userId,
             moduleActivities: state.moduleActivities,
-          }
+          };
         }),
       resetSessionContext: () =>
         set((state) => ({
@@ -242,10 +297,10 @@ export const useAppStore = create<AppState>()(
         organizationName: state.organizationName,
         sessionUserId: state.sessionUserId,
       }),
-    }
-  )
-)
+    },
+  ),
+);
 
 export const resetAppSessionState = () => {
-  useAppStore.getState().resetSessionContext()
-}
+  useAppStore.getState().resetSessionContext();
+};
