@@ -29,6 +29,12 @@ export interface RoleSpecificSidebarConfig {
   maxFavoriteItems: number;
   collapsedByDefault: boolean;
   mobileCollapsedByDefault: boolean;
+  /** Per-role display names that override the global module label (e.g. the
+   * police role shows the shared `justice` module as "Cases"). */
+  labelOverrides?: Partial<Record<ModuleType, string>>;
+  /** When false, the per-module status dot (online/updating indicator) is
+   * hidden for this role — useful for a clean operational nav. */
+  showModuleStatus?: boolean;
 }
 
 const SURVIVOR_SIDEBAR: RoleSpecificSidebarConfig = {
@@ -132,39 +138,43 @@ const NGO_SIDEBAR: RoleSpecificSidebarConfig = {
 
 const POLICE_SIDEBAR: RoleSpecificSidebarConfig = {
   role: "police",
+  // A single clean command-centre nav: a flat 11-item list in operational
+  // order, no group headers, no search/recents/favourites chrome.
   sections: [
     {
-      id: "operations",
-      title: "Operations",
-      modules: ["dashboard", "police_queue", "police_incidents", "justice"],
-      collapsible: false,
-    },
-    {
       id: "command",
-      title: "Command & Coordination",
-      modules: ["command_center", "police_evidence", "secure_messages"],
-      collapsible: true,
-      defaultExpanded: true,
-    },
-    {
-      id: "intelligence",
-      title: "Intelligence & Records",
+      title: "",
       modules: [
+        "dashboard",
+        "police_queue",
+        "police_incidents",
+        "justice",
+        "command_center",
+        "police_evidence",
+        "secure_messages",
         "police_analytics",
         "reporting",
         "police_officers",
         "governance",
       ],
-      collapsible: true,
-      defaultExpanded: true,
+      collapsible: false,
     },
   ],
-  quickActions: ["police_queue", "command_center"],
-  allowSearch: true,
-  allowFavorites: true,
-  allowRecents: true,
-  maxRecentItems: 5,
-  maxFavoriteItems: 3,
+  // Police-context names for the shared modules reused by this nav.
+  labelOverrides: {
+    dashboard: "Overview",
+    justice: "Cases",
+    command_center: "Dispatch Center",
+    secure_messages: "Messages",
+    reporting: "Reports",
+    governance: "Settings",
+  },
+  showModuleStatus: false,
+  allowSearch: false,
+  allowFavorites: false,
+  allowRecents: false,
+  maxRecentItems: 0,
+  maxFavoriteItems: 0,
   collapsedByDefault: false,
   mobileCollapsedByDefault: true,
 };

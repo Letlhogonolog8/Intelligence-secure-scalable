@@ -117,7 +117,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [userRole]);
 
   const allowed = allowedModules ?? modules.map((m) => m.id);
-  const visibleModules = modules.filter((mod) => allowed.includes(mod.id));
+  const labelOverrides = roleConfig?.labelOverrides;
+  const visibleModules = modules
+    .filter((mod) => allowed.includes(mod.id))
+    .map((mod) =>
+      labelOverrides?.[mod.id]
+        ? { ...mod, label: labelOverrides[mod.id] as string }
+        : mod,
+    );
   const filteredModules = useMemo(() => {
     if (!sidebarSearchQuery) return visibleModules;
     return visibleModules.filter(
@@ -136,16 +143,19 @@ const Sidebar: React.FC<SidebarProps> = ({
     (m) => recentModules.includes(m.id) && m.id !== activeModule,
   );
 
+  const showFavorites = roleConfig?.allowFavorites !== false;
+  const showRecents = roleConfig?.allowRecents !== false;
+
   const highlightedModuleIds = useMemo(() => {
     if (collapsed) {
       return new Set<ModuleType>();
     }
 
     return new Set<ModuleType>([
-      ...favoriteModsData.map((mod) => mod.id),
-      ...recentModsData.map((mod) => mod.id),
+      ...(showFavorites ? favoriteModsData.map((mod) => mod.id) : []),
+      ...(showRecents ? recentModsData.map((mod) => mod.id) : []),
     ]);
-  }, [collapsed, favoriteModsData, recentModsData]);
+  }, [collapsed, favoriteModsData, recentModsData, showFavorites, showRecents]);
 
   const renderRoleSpecificSections = useMemo(() => {
     if (!roleConfig) return null;
@@ -237,9 +247,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               className={`flex-shrink-0 ${isActive ? mod.color : ""}`}
               size={20}
             />
-            <div className="absolute -top-1.5 -right-1.5 flex items-center justify-center">
-              {getStatusIcon(activity.status)}
-            </div>
+            {roleConfig?.showModuleStatus !== false && (
+              <div className="absolute -top-1.5 -right-1.5 flex items-center justify-center">
+                {getStatusIcon(activity.status)}
+              </div>
+            )}
           </div>
           {!collapsed && (
             <>
@@ -314,7 +326,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Search Bar */}
-      {!collapsed && (
+      {!collapsed && roleConfig?.allowSearch !== false && (
         <div className="px-3 py-3 border-b border-slate-800/50">
           <div className="relative">
             <SearchIcon
@@ -341,7 +353,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="flex-1 overflow-y-auto overflow-x-visible px-2 py-4 space-y-1">
           {/* Favorites Section */}
-          {!collapsed && favoriteModsData.length > 0 && (
+          {!collapsed && showFavorites && favoriteModsData.length > 0 && (
             <>
               <div className="px-3 mb-3">
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1">
@@ -364,7 +376,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Recent Modules Section */}
-          {!collapsed && recentModsData.length > 0 && (
+          {!collapsed && showRecents && recentModsData.length > 0 && (
             <>
               <div className="px-3 mb-3">
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1">
@@ -390,7 +402,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           renderRoleSpecificSections.length > 0 ? (
             renderRoleSpecificSections.map((section) => (
               <div key={section.id}>
-                {!collapsed && (
+                {!collapsed && section.title && (
                   <div className="px-3 mb-3 mt-4 first:mt-0">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
                       {section.title}
@@ -410,7 +422,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             moduleActivities[mod.id].notificationCount
                           }
                         />
-                        {!collapsed && (
+                        {!collapsed && showFavorites && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
