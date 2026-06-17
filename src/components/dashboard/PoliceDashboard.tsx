@@ -46,10 +46,67 @@ import {
 const POLICE_TABS = [
   { id: "response", label: "Overview" },
   { id: "queue", label: "Emergency queue" },
+  { id: "incidents", label: "Incidents" },
   { id: "tools", label: "Evidence & tools" },
   { id: "intel", label: "Intelligence" },
+  { id: "directory", label: "Officers" },
 ] as const;
 type PoliceTab = (typeof POLICE_TABS)[number]["id"];
+
+interface IncidentRow {
+  id: string;
+  category: string | null;
+  status: string | null;
+  risk_level: string | null;
+  priority: string | null;
+  description: string | null;
+  report_method: string | null;
+  is_anonymous: boolean | null;
+  created_at: string | null;
+}
+
+const INCIDENT_FILTERS: {
+  key: string;
+  label: string;
+  match: (r: IncidentRow) => boolean;
+}[] = [
+  { key: "all", label: "All", match: () => true },
+  {
+    key: "sos",
+    label: "SOS",
+    match: (r) => /sos|panic|escal/i.test(`${r.report_method} ${r.category}`),
+  },
+  {
+    key: "dv",
+    label: "Domestic",
+    match: (r) => /domestic|partner|family/i.test(`${r.category}`),
+  },
+  {
+    key: "sexual",
+    label: "Sexual",
+    match: (r) => /sexual|rape|assault/i.test(`${r.category}`),
+  },
+  {
+    key: "child",
+    label: "Child",
+    match: (r) => /child|minor/i.test(`${r.category}`),
+  },
+  {
+    key: "trafficking",
+    label: "Trafficking",
+    match: (r) => /traffick/i.test(`${r.category}`),
+  },
+  {
+    key: "community",
+    label: "Community",
+    match: (r) => /community/i.test(`${r.report_method}`),
+  },
+  {
+    key: "anonymous",
+    label: "Anonymous",
+    match: (r) => Boolean(r.is_anonymous),
+  },
+];
 
 /** Heuristic triage score (0–99) for the emergency queue: priority drives the
  * band, with bumps for unassigned/stale work. Deterministic, not a stored AI
@@ -148,6 +205,7 @@ const PoliceDashboard: React.FC = () => {
   const [queuePriorityFilter, setQueuePriorityFilter] = useState("all");
   const [deletingAlertId, setDeletingAlertId] = useState<string | null>(null);
   const [clearingAlerts, setClearingAlerts] = useState(false);
+  const [incidentFilter, setIncidentFilter] = useState("all");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const deferredQueueSearch = useDeferredValue(queueSearch);
 
@@ -264,6 +322,24 @@ const PoliceDashboard: React.FC = () => {
         });
       }
       return points;
+    },
+  });
+
+  // Incoming incident reports (case_reports) for the Incidents section.
+  const { data: incidentsFeed = [] } = useQuery({
+    queryKey: ["police-incidents", isPolice],
+    enabled: isPolice,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    queryFn: async (): Promise<IncidentRow[]> => {
+      const { data } = await supabase
+        .from("case_reports")
+        .select(
+          "id,category,status,risk_level,priority,description,report_method,is_anonymous,created_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(40);
+      return (data as IncidentRow[] | null) ?? [];
     },
   });
 
@@ -444,6 +520,31 @@ const PoliceDashboard: React.FC = () => {
         .sort((a, b) => b.risk - a.risk),
     [openCases],
   );
+  const filteredIncidents = useMemo(() => {
+    const f =
+      INCIDENT_FILTERS.find((x) => x.key === incidentFilter) ??
+      INCIDENT_FILTERS[0];
+    return incidentsFeed.filter((r) => f.match(r));
+  }, [incidentsFeed, incidentFilter]);
+  // Officer roster with live caseload for the directory section.
+  const officerRoster = useMemo(() => {
+    const caseload = new Map<string, number>();
+    openCases.forEach((c) => {
+      if (c.assignedTo)
+        caseload.set(c.assignedTo, (caseload.get(c.assignedTo) ?? 0) + 1);
+    });
+    return officers
+      .map((o) => ({
+        id: o.id,
+        name: o.fullName || o.id,
+        isActive: o.isActive,
+        caseload: caseload.get(o.id) ?? 0,
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.isActive) - Number(a.isActive) || b.caseload - a.caseload,
+      );
+  }, [officers, openCases]);
   const responseLoad = Math.min(
     100,
     Math.round(
@@ -1285,6 +1386,88 @@ const PoliceDashboard: React.FC = () => {
         </SectionCard>
       )}
 
+      {activeTab === "incidents" && (
+        <SectionCard
+          title="Incoming incidents"
+          description="Reports arriving from survivors and community members, newest first."
+          action={
+            <StatusPill tone="sky">{filteredIncidents.length}</StatusPill>
+          }
+        >
+          <div className="mb-4 flex flex-wrap gap-2">
+            {INCIDENT_FILTERS.map((f) => {
+              const on = f.key === incidentFilter;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setIncidentFilter(f.key)}
+                  className={
+                    on
+                      ? "rounded-full border border-sky-400/40 bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-100"
+                      : "rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-300 hover:text-white"
+                  }
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {filteredIncidents.length === 0 ? (
+            <EmptyState
+              title="No incidents in this view"
+              description="Incoming reports appear here in real time as survivors and community members submit them."
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredIncidents.map((r) => (
+                <ListItemCard
+                  key={r.id}
+                  title={
+                    <span className="capitalize">
+                      {(r.category || "Incident report").replace(/_/g, " ")}
+                      {r.is_anonymous ? (
+                        <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-400">
+                          · anonymous
+                        </span>
+                      ) : null}
+                    </span>
+                  }
+                  subtitle={`${(r.report_method || "in-app").replace(/_/g, " ")} · ${
+                    r.created_at
+                      ? formatRelativeDateTime(r.created_at)
+                      : "just now"
+                  }${r.description ? ` · ${r.description.slice(0, 80)}` : ""}`}
+                  meta={
+                    <StatusPill
+                      tone={
+                        r.priority === "critical" || r.risk_level === "critical"
+                          ? "rose"
+                          : r.priority === "high" || r.risk_level === "high"
+                            ? "amber"
+                            : "sky"
+                      }
+                    >
+                      {r.status ? r.status.replace(/_/g, " ") : "new"}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("justice")}
+                    >
+                      Open
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       {activeTab === "tools" && (
         <>
           <section className="space-y-6">
@@ -1574,6 +1757,49 @@ const PoliceDashboard: React.FC = () => {
             </SectionCard>
           </section>
         </>
+      )}
+
+      {activeTab === "directory" && (
+        <SectionCard
+          title="Officer directory"
+          description="Your unit roster with live status and current caseload."
+          action={
+            <StatusPill tone="emerald">
+              {officerRoster.filter((o) => o.isActive).length} on duty
+            </StatusPill>
+          }
+        >
+          {officerRoster.length === 0 ? (
+            <EmptyState
+              title="No officers in this unit yet"
+              description="Officers appear here once they are added to your organisation."
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {officerRoster.map((o) => (
+                <ListItemCard
+                  key={o.id}
+                  title={o.name}
+                  subtitle={`${o.caseload} open case${o.caseload === 1 ? "" : "s"} assigned`}
+                  meta={
+                    <StatusPill tone={o.isActive ? "emerald" : "slate"}>
+                      {o.isActive ? "on duty" : "off duty"}
+                    </StatusPill>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveModule("secure_messages")}
+                    >
+                      Message
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </SectionCard>
       )}
 
       <CaseDispatchDialog
