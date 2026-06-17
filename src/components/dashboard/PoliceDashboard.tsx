@@ -30,7 +30,6 @@ import {
   useLiveUserProfiles,
 } from "@/data/liveDashboardData";
 import { Button } from "@/components/ui/button";
-import { CaseStatusLookup } from "@/components/dashboard/CaseStatusLookup";
 import {
   ChartFrame,
   DashboardHero,
@@ -147,6 +146,25 @@ const PRIORITY_TONE: Record<string, "rose" | "amber" | "sky" | "emerald"> = {
   medium: "sky",
   low: "emerald",
 };
+
+/** Heuristic 0–99 risk for an incoming incident report, banded from its stored
+ * risk level / priority (deterministic, for fast visual triage). */
+function incidentRisk(r: IncidentRow): number {
+  const lvl = `${r.risk_level ?? ""} ${r.priority ?? ""}`.toLowerCase();
+  if (/crit/.test(lvl)) return 95;
+  if (/high/.test(lvl)) return 82;
+  if (/med/.test(lvl)) return 58;
+  if (/low/.test(lvl)) return 32;
+  return 50;
+}
+function incidentTone(r: IncidentRow): "rose" | "amber" | "sky" {
+  const risk = incidentRisk(r);
+  return risk >= 90 ? "rose" : risk >= 70 ? "amber" : "sky";
+}
+function incidentLabel(r: IncidentRow): string {
+  const cat = (r.category ?? "").trim();
+  return cat ? cat.replace(/_/g, " ") : "Incident report";
+}
 import { useAppStore } from "@/store/appStore";
 import { useAuth } from "@/hooks/use-auth";
 import { PERMISSIONS, UserRole } from "@/lib/roleConfig";
@@ -177,7 +195,6 @@ import {
   prioritizeAlerts,
   downloadQueueReport,
 } from "@/lib/policeDashboardEnhanced";
-import { QueueMetricsDashboard } from "@/components/police/QueueMetricsDashboard";
 import { CasePredictions } from "@/components/police/CasePredictions";
 import { OfficerWorkloadGrid } from "@/components/police/OfficerWorkloadGrid";
 import { CoordinationInsights } from "@/components/police/CoordinationInsights";
@@ -187,9 +204,6 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -197,7 +211,7 @@ import {
 } from "recharts";
 
 const PoliceDashboard: React.FC = () => {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { setActiveModule, activeModule } = useAppStore();
   const { data: profile } = useUserProfile(user?.id);
@@ -469,55 +483,6 @@ const PoliceDashboard: React.FC = () => {
     openCases.length - unassignedOpenCases.length,
     Math.max(openCases.length, 1),
   );
-  // Case risk (priority) distribution for the command-center donut.
-  const riskDistribution = useMemo(() => {
-    const colorFor: Record<string, string> = {
-      critical: "#f43f5e",
-      high: "#fb923c",
-      medium: "#fbbf24",
-      low: "#34d399",
-    };
-    return (["critical", "high", "medium", "low"] as const)
-      .map((p) => ({
-        name: p,
-        value: jurisdictionCases.filter((c) => c.priority === p).length,
-        color: colorFor[p],
-      }))
-      .filter((d) => d.value > 0);
-  }, [jurisdictionCases]);
-  // Active cases by status for the second donut.
-  const statusDistribution = useMemo(() => {
-    const palette = [
-      "#a855f7",
-      "#38bdf8",
-      "#fbbf24",
-      "#34d399",
-      "#22d3ee",
-      "#94a3b8",
-    ];
-    const counts = new Map<string, number>();
-    jurisdictionCases.forEach((c) =>
-      counts.set(c.status, (counts.get(c.status) ?? 0) + 1),
-    );
-    return Array.from(counts.entries()).map(([name, value], i) => ({
-      name: name.replace(/_/g, " "),
-      value,
-      color: palette[i % palette.length],
-    }));
-  }, [jurisdictionCases]);
-  // Top officers by current open caseload (real assignment data).
-  const topOfficers = useMemo(() => {
-    const counts = new Map<string, number>();
-    openCases.forEach((c) => {
-      if (c.assignedTo)
-        counts.set(c.assignedTo, (counts.get(c.assignedTo) ?? 0) + 1);
-    });
-    const nameById = new Map(officers.map((o) => [o.id, o.fullName || o.id]));
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id, count]) => ({ id, name: nameById.get(id) ?? id, count }));
-  }, [openCases, officers]);
   const officerNameById = useMemo(
     () => new Map(officers.map((o) => [o.id, o.fullName || o.id])),
     [officers],
@@ -530,6 +495,56 @@ const PoliceDashboard: React.FC = () => {
         .sort((a, b) => b.risk - a.risk),
     [openCases],
   );
+  // Average response time (minutes) across active alerts — the live estimate
+  // carried on each prioritised alert; null when the alert queue is clear.
+  const avgResponseTime = useMemo(() => {
+    const vals = prioritizedAlerts
+      .map((a) => Number(a.estimatedResponseTime))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (vals.length === 0) return null;
+    return Math.round(vals.reduce((sum, n) => sum + n, 0) / vals.length);
+  }, [prioritizedAlerts]);
+  // Recent activity — merged from real signals (officer assignments, partner
+  // referrals, escalated alerts), newest first. No synthetic events.
+  const recentActivity = useMemo(() => {
+    type Activity = {
+      id: string;
+      title: string;
+      subtitle: string;
+      tone: "sky" | "emerald" | "rose";
+      ts: number;
+    };
+    const items: Activity[] = [];
+    openCases.forEach((c) => {
+      if (!c.assignedTo) return;
+      items.push({
+        id: `asg-${c.id}`,
+        title: `Officer assigned · Case ${c.caseNumber}`,
+        subtitle: `${officerNameById.get(c.assignedTo) ?? "Officer"} · ${c.region || "region pending"}`,
+        tone: "sky",
+        ts: Date.parse(c.updatedAt ?? "") || 0,
+      });
+    });
+    sanitizedReferrals.forEach((r) => {
+      items.push({
+        id: `ref-${r.id}`,
+        title: `Partner referral · ${r.referralType || "agency"}`,
+        subtitle: `Status ${r.status}`,
+        tone: "emerald",
+        ts: Date.parse(r.createdAt) || 0,
+      });
+    });
+    pendingAlerts.forEach((a) => {
+      items.push({
+        id: `alt-${a.id}`,
+        title: "Emergency escalated",
+        subtitle: a.message,
+        tone: "rose",
+        ts: Date.parse(String(a.time)) || Date.now(),
+      });
+    });
+    return items.sort((a, b) => b.ts - a.ts).slice(0, 8);
+  }, [openCases, sanitizedReferrals, pendingAlerts, officerNameById]);
   const filteredIncidents = useMemo(() => {
     const f =
       INCIDENT_FILTERS.find((x) => x.key === incidentFilter) ??
@@ -563,14 +578,6 @@ const PoliceDashboard: React.FC = () => {
         20,
     ),
   );
-  const coordinationPressure = Math.min(
-    100,
-    Math.round(
-      ((pendingReferrals.length + pendingAlerts.length) /
-        Math.max(activeOfficers.length, 1)) *
-        25,
-    ),
-  );
   const officerAvailability = useMemo(
     () =>
       buildPoliceAvailabilitySummary({
@@ -602,26 +609,6 @@ const PoliceDashboard: React.FC = () => {
     () => buildPoliceStageAging(jurisdictionCases),
     [jurisdictionCases],
   );
-  const medianDaysOpen = useMemo(() => {
-    if (openCases.length === 0) return null;
-    const sortedDays = openCases
-      .map((entry) => entry.daysOpen ?? 0)
-      .sort((left, right) => left - right);
-    const middle = Math.floor(sortedDays.length / 2);
-    return sortedDays.length % 2 === 0
-      ? Math.round((sortedDays[middle - 1] + sortedDays[middle]) / 2)
-      : sortedDays[middle];
-  }, [openCases]);
-  const sessionExpiry = session?.expires_at
-    ? new Date(session.expires_at * 1000).toLocaleTimeString()
-    : "Session inactive";
-  const lastCaseUpdate =
-    jurisdictionCases
-      .map((entry) => entry.updatedAt)
-      .filter((value): value is string => Boolean(value))
-      .sort(
-        (left, right) => new Date(right).getTime() - new Date(left).getTime(),
-      )[0] ?? null;
   const selectedDispatchCase =
     liveQueue.find((entry) => entry.id === dispatchCaseId) ?? null;
   const topPredictedCase = liveQueue[0] ?? null;
@@ -814,9 +801,13 @@ const PoliceDashboard: React.FC = () => {
               loading={isLoadingData}
             />
             <MetricCard
-              label="Cases cleared"
-              value={completedCases.length}
-              helper={`${pendingReferrals.length} partner handoffs`}
+              label="Avg response time"
+              value={avgResponseTime === null ? "—" : `${avgResponseTime}m`}
+              helper={
+                avgResponseTime === null
+                  ? "No active alerts"
+                  : "Across active alerts"
+              }
               accent="indigo"
               loading={isLoadingData}
             />
@@ -835,10 +826,6 @@ const PoliceDashboard: React.FC = () => {
           >
             <LiveIncidentMap points={mapPoints} height={420} />
           </SectionCard>
-
-          <section>
-            <QueueMetricsDashboard cases={jurisdictionCases} />
-          </section>
         </>
       )}
 
@@ -871,237 +858,113 @@ const PoliceDashboard: React.FC = () => {
             </Button>
           </section>
 
-          {/* Risk + status donuts and top officers */}
-          <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-            <SectionCard
-              title="Case risk distribution"
-              description="Open caseload by AI priority."
-            >
-              {riskDistribution.length > 0 ? (
-                <div className="flex items-center gap-4">
-                  <div style={{ width: 132, height: 132 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={riskDistribution}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={42}
-                          outerRadius={62}
-                          paddingAngle={2}
-                          stroke="none"
-                        >
-                          {riskDistribution.map((d) => (
-                            <Cell key={d.name} fill={d.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {riskDistribution.map((d) => (
-                      <div
-                        key={d.name}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="flex items-center gap-2 capitalize text-slate-200">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: d.color }}
-                          />
-                          {d.name}
-                        </span>
-                        <span className="font-semibold text-white">
-                          {d.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No active cases"
-                  description="Risk breakdown appears once cases enter your jurisdiction queue."
-                />
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Active cases by status"
-              description="Where open work sits in the pipeline."
-            >
-              {statusDistribution.length > 0 ? (
-                <div className="flex items-center gap-4">
-                  <div style={{ width: 132, height: 132 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={statusDistribution}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={42}
-                          outerRadius={62}
-                          paddingAngle={2}
-                          stroke="none"
-                        >
-                          {statusDistribution.map((d) => (
-                            <Cell key={d.name} fill={d.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {statusDistribution.map((d) => (
-                      <div
-                        key={d.name}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="flex items-center gap-2 capitalize text-slate-200">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: d.color }}
-                          />
-                          {d.name}
-                        </span>
-                        <span className="font-semibold text-white">
-                          {d.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No active cases"
-                  description="Status breakdown appears once cases enter your queue."
-                />
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Top officers"
-              description="By current open caseload."
-            >
-              {topOfficers.length > 0 ? (
-                <div className="space-y-3">
-                  {topOfficers.map((o, i) => (
-                    <ListItemCard
-                      key={o.id}
-                      title={`${i + 1}. ${o.name}`}
-                      subtitle="Open cases assigned"
-                      meta={<StatusPill tone="sky">{o.count}</StatusPill>}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  title="No assignments yet"
-                  description="Officer ranking appears once cases are assigned."
-                />
-              )}
-            </SectionCard>
-          </section>
-
+          {/* Live incident feed + AI risk assessment */}
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
             <SectionCard
-              title="Case status lookup"
-              description="Verify live case state without switching out of dispatch mode."
+              title="Live incident feed"
+              description="Incoming SOS, domestic violence, child, trafficking, and community reports — newest first."
+              action={
+                <StatusPill tone="sky">{incidentsFeed.length}</StatusPill>
+              }
             >
-              <CaseStatusLookup description="Use a case reference to verify the live report state before dispatch or escalation." />
+              <div className="space-y-3">
+                {incidentsFeed.length === 0 ? (
+                  <EmptyState
+                    title="No incidents yet"
+                    description="New reports from survivors and community members appear here in real time."
+                  />
+                ) : (
+                  incidentsFeed.slice(0, 6).map((r) => (
+                    <ListItemCard
+                      key={r.id}
+                      title={incidentLabel(r)}
+                      subtitle={`${r.is_anonymous ? "Anonymous" : r.report_method || "report"} · ${formatRelativeDateTime(r.created_at)}`}
+                      meta={
+                        <div className="flex items-center gap-2">
+                          <StatusPill tone={incidentTone(r)}>
+                            {(
+                              r.priority ||
+                              r.risk_level ||
+                              "review"
+                            ).toLowerCase()}
+                          </StatusPill>
+                          <span className="text-xs text-slate-400">
+                            {incidentRisk(r)}%
+                          </span>
+                        </div>
+                      }
+                    />
+                  ))
+                )}
+              </div>
             </SectionCard>
 
             <SectionCard
-              title="Operational posture"
-              description="Live jurisdiction, workload, and sync summary."
+              title="AI risk assessment"
+              description="Open cases ranked by triage risk score."
             >
-              <div className="grid gap-3 md:grid-cols-2">
-                <ListItemCard
-                  title="Jurisdiction"
-                  subtitle={
-                    activeDepartment?.departmentName ??
-                    organization?.name ??
-                    "Regional response desk"
-                  }
-                  meta={
-                    <StatusPill tone="sky">
-                      {activeDepartment?.jurisdictionLevel ??
-                        (organization?.region ? "regional" : "syncing")}
-                    </StatusPill>
-                  }
-                />
-                <ListItemCard
-                  title="Response load"
-                  subtitle="Priority pressure versus available officers"
-                  meta={
-                    <StatusPill
-                      tone={
-                        responseLoad > 70
-                          ? "rose"
-                          : responseLoad > 40
-                            ? "amber"
-                            : "emerald"
-                      }
-                    >
-                      {responseLoad}%
-                    </StatusPill>
-                  }
-                />
-                <ListItemCard
-                  title="Coordination pressure"
-                  subtitle="Combined referral and alert backlog"
-                  meta={
-                    <StatusPill
-                      tone={
-                        coordinationPressure > 65
-                          ? "rose"
-                          : coordinationPressure > 35
-                            ? "amber"
-                            : "sky"
-                      }
-                    >
-                      {coordinationPressure}%
-                    </StatusPill>
-                  }
-                />
-                <ListItemCard
-                  title="Median case age"
-                  subtitle="Typical age of active police work in the queue"
-                  meta={medianDaysOpen === null ? "--" : `${medianDaysOpen}d`}
-                />
-                <ListItemCard
-                  title="Session expiry"
-                  subtitle="Current secure access window"
-                  meta={sessionExpiry}
-                />
-                <ListItemCard
-                  title="Last case sync"
-                  subtitle="Most recent jurisdiction case refresh"
-                  meta={
-                    lastCaseUpdate
-                      ? formatRelativeDateTime(lastCaseUpdate)
-                      : "Awaiting first update"
-                  }
-                />
-                <ListItemCard
-                  title="Unassigned cases"
-                  subtitle="Open work still waiting for an officer"
-                  meta={
-                    <StatusPill
-                      tone={
-                        unassignedOpenCases.length > 0 ? "amber" : "emerald"
-                      }
-                    >
-                      {unassignedOpenCases.length}
-                    </StatusPill>
-                  }
-                />
+              <div className="space-y-3">
+                {emergencyQueue.length === 0 ? (
+                  <EmptyState
+                    title="No active cases"
+                    description="High-risk cases appear here once cases enter your jurisdiction queue."
+                  />
+                ) : (
+                  emergencyQueue
+                    .slice(0, 6)
+                    .map((c) => (
+                      <ListItemCard
+                        key={c.id}
+                        title={`Case ${c.caseNumber}`}
+                        subtitle={`${c.status.replace(/_/g, " ")} · ${c.region || "region pending"}`}
+                        meta={
+                          <StatusPill
+                            tone={
+                              c.risk >= 90
+                                ? "rose"
+                                : c.risk >= 70
+                                  ? "amber"
+                                  : "sky"
+                            }
+                          >
+                            {c.risk}% risk
+                          </StatusPill>
+                        }
+                      />
+                    ))
+                )}
               </div>
             </SectionCard>
           </section>
 
+          {/* Recent activity */}
+          <SectionCard
+            title="Recent activity"
+            description="Latest assignments, partner referrals, and escalations across your jurisdiction."
+          >
+            <div className="space-y-3">
+              {recentActivity.length === 0 ? (
+                <EmptyState
+                  title="No recent activity"
+                  description="Officer assignments, partner referrals, and escalations appear here as they happen."
+                />
+              ) : (
+                recentActivity.map((a) => (
+                  <ListItemCard
+                    key={a.id}
+                    title={a.title}
+                    subtitle={a.subtitle}
+                    meta={<StatusPill tone={a.tone}>live</StatusPill>}
+                  />
+                ))
+              )}
+            </div>
+          </SectionCard>
+        </>
+      )}
+
+      {activeTab === "queue" && (
+        <>
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <SectionCard
               title="Priority dispatch queue"

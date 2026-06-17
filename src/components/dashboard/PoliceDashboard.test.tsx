@@ -172,12 +172,21 @@ describe("PoliceDashboard", () => {
   it("shows empty-state guidance when no live police data is available", () => {
     const { rerender } = render(<PoliceDashboard />);
 
-    // Hero + the default Overview section are visible immediately.
+    // Hero + the default Overview section are visible immediately. The Overview
+    // shows the spec blocks: live incident feed, AI risk, and recent activity.
     expect(screen.getByText("Police emergency response")).toBeInTheDocument();
-    expect(screen.getByText("Queue is clear")).toBeInTheDocument();
-    expect(screen.getByText("No unacknowledged alerts")).toBeInTheDocument();
+    expect(screen.getByText("No incidents yet")).toBeInTheDocument();
+    expect(screen.getByText("No recent activity")).toBeInTheDocument();
 
     // Sections are now driven by the global left-nav (activeModule), not tabs.
+    // The realtime alert queue moved into the Emergency Queue section.
+    mockUseAppStore.mockReturnValue({
+      setActiveModule: vi.fn(),
+      activeModule: "police_queue",
+    });
+    rerender(<PoliceDashboard />);
+    expect(screen.getByText("No unacknowledged alerts")).toBeInTheDocument();
+
     // Coordination empty-state lives in the Evidence Center section.
     mockUseAppStore.mockReturnValue({
       setActiveModule: vi.fn(),
@@ -241,8 +250,15 @@ describe("PoliceDashboard", () => {
 
     const { rerender } = render(<PoliceDashboard />);
 
-    // Overview section (default): queue + alert normalization.
+    // Overview (default): the AI risk assessment surfaces the normalized case.
     expect(screen.getAllByText("Case A-102")[0]).toBeInTheDocument();
+
+    // Emergency Queue section: dispatch queue + alert normalization.
+    mockUseAppStore.mockReturnValue({
+      setActiveModule: vi.fn(),
+      activeModule: "police_queue",
+    });
+    rerender(<PoliceDashboard />);
     expect(
       screen.getByText(/intake.*Region pending.*updated/i),
     ).toBeInTheDocument();
