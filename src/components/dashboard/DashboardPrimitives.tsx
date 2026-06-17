@@ -54,24 +54,24 @@ export const DashboardHero = ({
   actions?: ReactNode;
 }) => (
   <div className="rounded-[30px] bg-gradient-to-br from-violet-500/40 via-fuchsia-500/15 to-cyan-400/40 p-px shadow-[0_30px_90px_-30px_rgba(124,58,237,0.55)]">
-    <section className="relative overflow-hidden rounded-[29px] bg-[#0B0A1A]/92 p-6 backdrop-blur-2xl sm:p-9">
+    <section className="relative overflow-hidden rounded-[29px] bg-[#0B0A1A]/92 p-4 backdrop-blur-2xl sm:p-6">
       {/* aurora glow accent */}
       <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-gradient-to-br from-violet-500/30 via-fuchsia-500/20 to-cyan-400/20 blur-3xl" />
-      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-4">
+      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
           <div className="inline-flex items-center rounded-full border border-violet-400/30 bg-violet-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.28em] text-violet-100">
             {eyebrow}
           </div>
           <div className="space-y-3">
-            <h1 className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-4xl font-light leading-[1.1] tracking-tight text-transparent sm:text-5xl">
+            <h1 className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-3xl font-light leading-[1.08] tracking-tight text-transparent sm:text-4xl">
               {title}
             </h1>
-            <p className="max-w-3xl text-sm leading-relaxed text-slate-300 sm:text-base">
+            <p className="max-w-3xl text-sm leading-relaxed text-slate-200 sm:text-[15px]">
               {description}
             </p>
           </div>
           {badges.length > 0 && (
-            <div className="flex flex-wrap gap-2">{badges}</div>
+            <div className="hidden flex-wrap gap-2 sm:flex">{badges}</div>
           )}
         </div>
         {actions ? (
@@ -157,7 +157,9 @@ export const MetricCard = ({
             {value}
           </div>
           {helper ? (
-            <div className="mt-2 text-sm text-slate-300">{helper}</div>
+            <div className="mt-2 text-sm font-medium text-slate-200">
+              {helper}
+            </div>
           ) : null}
         </>
       )}
@@ -190,7 +192,7 @@ export const SectionCard = ({
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 text-sm text-slate-400">{description}</p>
+          <p className="mt-1 text-sm text-slate-300">{description}</p>
         ) : null}
       </div>
       {action}
@@ -215,7 +217,7 @@ export const ListItemCard = ({
       <div className="space-y-1">
         <div className="text-sm font-medium text-white">{title}</div>
         {subtitle ? (
-          <div className="text-xs text-slate-400">{subtitle}</div>
+          <div className="text-xs font-medium text-slate-300">{subtitle}</div>
         ) : null}
       </div>
       {meta ? <div className="text-xs text-slate-200">{meta}</div> : null}

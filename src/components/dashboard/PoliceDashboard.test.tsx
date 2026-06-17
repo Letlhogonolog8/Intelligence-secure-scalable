@@ -174,7 +174,9 @@ describe("PoliceDashboard", () => {
 
     // Hero + the default Overview section are visible immediately. The Overview
     // shows the spec blocks: live incident feed, AI risk, and recent activity.
-    expect(screen.getByText("Police emergency response")).toBeInTheDocument();
+    expect(
+      screen.getByText("Emergency Response Command Center"),
+    ).toBeInTheDocument();
     expect(screen.getByText("No incidents yet")).toBeInTheDocument();
     expect(screen.getByText("No recent activity")).toBeInTheDocument();
 

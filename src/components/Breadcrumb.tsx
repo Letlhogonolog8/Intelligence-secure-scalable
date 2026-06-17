@@ -33,12 +33,31 @@ const moduleNames: Record<ModuleType, string> = {
   police_officers: "Officer Directory",
 };
 
+const policeModuleNames: Partial<Record<ModuleType, string>> = {
+  dashboard: "Overview",
+  police_queue: "Emergency Queue",
+  police_incidents: "Incidents",
+  justice: "Cases",
+  command_center: "Dispatch Center",
+  police_evidence: "Evidence Center",
+  secure_messages: "Messages",
+  police_analytics: "Analytics",
+  reporting: "Reports",
+  police_officers: "Officer Directory",
+  governance: "Settings",
+};
+
 export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   currentModule,
   currentPage,
   roleLabel,
   organizationLabel,
 }) => {
+  const isPolicePortal = roleLabel === "Law Enforcement";
+  const currentModuleLabel =
+    (isPolicePortal ? policeModuleNames[currentModule] : undefined) ??
+    moduleNames[currentModule];
+
   return (
     <nav
       aria-label="Breadcrumb"
@@ -54,22 +73,24 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
 
       {organizationLabel && (
         <>
-          <ChevronRightIcon size={14} className="opacity-50" />
-          <span className="text-slate-300">{organizationLabel}</span>
+          <ChevronRightIcon size={14} className="hidden opacity-50 sm:block" />
+          <span className="hidden truncate text-slate-300 sm:inline">
+            {organizationLabel}
+          </span>
         </>
       )}
 
       {roleLabel && (
         <>
-          <ChevronRightIcon size={14} className="opacity-50" />
-          <span className="text-slate-300">{roleLabel}</span>
+          <ChevronRightIcon size={14} className="hidden opacity-50 sm:block" />
+          <span className="hidden text-slate-300 sm:inline">{roleLabel}</span>
         </>
       )}
 
       <ChevronRightIcon size={14} className="opacity-50" />
 
       <a href="#" className="hover:text-white transition-colors">
-        {moduleNames[currentModule]}
+        {currentModuleLabel}
       </a>
 
       {currentPage && (

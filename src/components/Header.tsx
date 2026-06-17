@@ -401,9 +401,9 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
   }, []);
 
   return (
-    <header className="h-16 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50 flex items-center justify-between px-4 lg:px-6 relative z-10">
+    <header className="relative z-10 flex h-14 items-center justify-between border-b border-slate-800/50 bg-slate-950/80 px-3 backdrop-blur-xl sm:h-16 sm:px-4 lg:px-6">
       {/* Left */}
-      <div className="flex items-center gap-4">
+      <div className="min-w-0 flex items-center gap-3 sm:gap-4">
         <button
           type="button"
           aria-label="Toggle sidebar"
@@ -412,11 +412,11 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
         >
           <MenuIcon size={20} />
         </button>
-        <div>
-          <h2 className="text-white font-semibold text-sm lg:text-base">
+        <div className="min-w-0">
+          <h2 className="max-w-[46vw] truncate text-sm font-semibold text-white sm:max-w-none lg:text-base">
             {mod.title}
           </h2>
-          <p className="text-slate-500 text-[10px] lg:text-xs">
+          <p className="hidden text-xs text-slate-400 sm:block">
             {mod.subtitle}
           </p>
         </div>
@@ -505,7 +505,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3">
         {/* Mobile search */}
         <button
           type="button"
@@ -574,7 +574,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
                 aria-modal="false"
                 tabIndex={-1}
                 onKeyDown={handleAlertsKeyDown}
-                className="absolute right-0 top-full mt-2 w-96 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden"
+                className="absolute right-0 top-full z-50 mt-2 max-h-[78vh] w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-2xl sm:w-96"
               >
                 <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                   <h3 className="text-white font-semibold text-sm">
@@ -654,8 +654,8 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
         <PresenceIndicator className="hidden sm:block" />
 
         {/* User */}
-        <div className="flex items-center gap-2 pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center">
+        <div className="flex items-center gap-2 border-l border-slate-800 pl-2 sm:pl-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-pink-500 sm:h-8 sm:w-8">
             <span className="text-white text-xs font-bold">{userInitials}</span>
           </div>
           <div className="hidden lg:block">
@@ -674,7 +674,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
               variant="ghost"
               size="sm"
               onClick={() => signOut()}
-              className="text-slate-400 hover:text-white"
+              className="hidden text-slate-400 hover:text-white md:inline-flex"
             >
               Sign out
             </Button>

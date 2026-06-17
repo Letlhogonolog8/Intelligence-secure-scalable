@@ -58,6 +58,20 @@ const ReportingCenter = lazy(
 );
 const AdminConsole = lazy(() => import("@/components/admin/AdminConsole"));
 
+const POLICE_PORTAL_MODULES: ModuleType[] = [
+  "dashboard",
+  "police_queue",
+  "police_incidents",
+  "justice",
+  "command_center",
+  "police_evidence",
+  "secure_messages",
+  "police_analytics",
+  "reporting",
+  "police_officers",
+  "governance",
+];
+
 const AppLayout: React.FC = () => {
   const moduleIds = useMemo<ModuleType[]>(() => MODULE_LIST, []);
 
@@ -134,6 +148,10 @@ const AppLayout: React.FC = () => {
   }, [mobileSidebarOpen, setMobileSidebarOpen]);
 
   const renderModule = useMemo(() => {
+    if (role === "police" && POLICE_PORTAL_MODULES.includes(activeModule)) {
+      return <PoliceDashboard />;
+    }
+
     if (activeModule === "dashboard") {
       switch (roleDefinition?.dashboardType) {
         case "survivor_dashboard":
@@ -188,7 +206,7 @@ const AppLayout: React.FC = () => {
       default:
         return <CommandCenter />;
     }
-  }, [activeModule, roleDefinition?.dashboardType]);
+  }, [activeModule, role, roleDefinition?.dashboardType]);
 
   if (profileLoading) {
     return (
@@ -281,7 +299,7 @@ const AppLayout: React.FC = () => {
           onToggleSidebar={handleToggleMobile}
         />
         {/* Breadcrumb */}
-        <div className="px-4 lg:px-6 py-3 border-b border-slate-800/50 bg-slate-950/50 flex-shrink-0">
+        <div className="flex-shrink-0 border-b border-slate-800/50 bg-slate-950/50 px-3 py-2 sm:px-4 sm:py-3 lg:px-6">
           <Breadcrumb
             currentModule={activeModule}
             roleLabel={roleDefinition.label}
