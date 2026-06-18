@@ -13,11 +13,16 @@ const WEB_PORTAL_URL = (
   "https://intelligence-secure-scalable-1-fjm8.onrender.com"
 ).replace(/\/+$/, "");
 
+// The live USSD short-code (must match what is provisioned with the
+// aggregator, e.g. Africa's Talking). Used for the on-device dial action.
+const USSD_CODE = (process.env.EXPO_PUBLIC_USSD_CODE ?? "*135*1782#").trim();
+
 export const env = {
   supabaseUrl: SUPABASE_URL,
   supabaseKey: SUPABASE_KEY,
   apiUrl: API_URL,
   webPortalUrl: WEB_PORTAL_URL,
+  ussdCode: USSD_CODE,
 };
 
 export const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_KEY);

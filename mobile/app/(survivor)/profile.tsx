@@ -127,6 +127,12 @@ export default function Profile() {
               "Securely store photos, audio & notes",
             )}
             onPress={() => router.navigate("/(survivor)/evidence")}
+          />
+          <SettingRow
+            icon="call"
+            label={t("ussd.title", "USSD access")}
+            sub={t("profile.ussdSub", "Get help with no internet — any phone")}
+            onPress={() => router.navigate("/(survivor)/ussd")}
             last
           />
         </View>

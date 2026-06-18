@@ -147,6 +147,10 @@ export default function SurvivorLayout() {
         name="evidence"
         options={{ href: null, title: t("evidence.title", "Evidence Vault") }}
       />
+      <Tabs.Screen
+        name="ussd"
+        options={{ href: null, title: t("ussd.title", "USSD access") }}
+      />
     </Tabs>
   );
 }
