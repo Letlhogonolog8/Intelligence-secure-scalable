@@ -1,285 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Activity,
   ArrowRight,
-  Bell,
   Brain,
-  Building2,
   CheckCircle2,
-  Facebook,
-  FileText,
-  Globe,
-  Heart,
-  HeartHandshake,
-  Instagram,
-  Languages,
-  Linkedin,
+  Clock3,
   Lock,
   Menu,
-  MessageCircle,
-  Phone,
   Shield,
-  ShieldCheck,
-  Smartphone,
+  Siren,
   TrendingUp,
   Users,
   X,
-  Youtube,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { AegisLogo } from "@/components/AegisLogo";
-import { CRISIS_LINE_DISPLAY, CRISIS_LINE_TEL } from "@/lib/crisisContacts";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-
-const WHATSAPP_DISPLAY = "0600 150 150";
-const WHATSAPP_LINK = "https://wa.me/27600150150";
-const USSD_CODE = "*135*1782#";
-
-const NAV_LINKS = [
-  { label: "Home", target: "top" },
-  { label: "About", target: "serve" },
-  { label: "Features", target: "ai" },
-  { label: "How It Works", target: "how" },
-  { label: "Resources", target: "ai" },
-  { label: "Partners", target: "impact" },
-  { label: "Contact", target: "footer" },
-];
-
-const HERO_FEATURES = [
-  {
-    icon: FileText,
-    title: "Report Safely",
-    desc: "In any language, any time",
-  },
-  {
-    icon: Bell,
-    title: "Get Immediate Help",
-    desc: "Real-time emergency alerts",
-  },
-  {
-    icon: Lock,
-    title: "Confidential & Secure",
-    desc: "Your data is protected",
-  },
-  {
-    icon: Brain,
-    title: "AI-Powered Support",
-    desc: "Smart, fast and reliable",
-  },
-  {
-    icon: Globe,
-    title: "Global & Inclusive",
-    desc: "Support for all, everywhere",
-  },
-];
-
-const WORK_STEPS = [
-  {
-    icon: FileText,
-    title: "Report",
-    desc: "Report incidents safely and anonymously.",
-  },
-  {
-    icon: Activity,
-    title: "Assess",
-    desc: "AI assesses risk and prioritizes cases.",
-  },
-  {
-    icon: Users,
-    title: "Coordinate",
-    desc: "The right people are notified instantly.",
-  },
-  {
-    icon: HeartHandshake,
-    title: "Support",
-    desc: "Survivors get connected to services.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Protect",
-    desc: "Ongoing support until safety is restored.",
-  },
-];
-
-const AUDIENCES = [
-  {
-    icon: Shield,
-    title: "Survivors",
-    desc: "Report safely and access support.",
-  },
-  {
-    icon: Users,
-    title: "Community Members",
-    desc: "Report incidents on behalf of others.",
-  },
-  {
-    icon: MessageCircle,
-    title: "Counselors",
-    desc: "Provide care and track sessions.",
-  },
-  {
-    icon: Building2,
-    title: "NGOs",
-    desc: "Manage cases and deliver services.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Law Enforcement",
-    desc: "Respond, investigate, and protect.",
-  },
-  {
-    icon: Globe,
-    title: "Governments",
-    desc: "Make data-driven decisions.",
-  },
-];
-
-const IMPACT_STATS = [
-  { icon: Globe, value: "25+", label: "Countries" },
-  { icon: Languages, value: "100+", label: "Languages" },
-  { icon: Heart, value: "1M+", label: "Lives impacted" },
-  { icon: Building2, value: "500+", label: "Partner organizations" },
-];
-
-const AI_FEATURES = [
-  {
-    icon: Brain,
-    title: "AI Risk Assessment",
-    desc: "Identify high-risk cases instantly.",
-  },
-  {
-    icon: Languages,
-    title: "Multilingual Support",
-    desc: "Voice & text translation in 100+ languages.",
-  },
-  {
-    icon: Bell,
-    title: "Real-time Alerts",
-    desc: "Instant notifications to the right responders.",
-  },
-  {
-    icon: TrendingUp,
-    title: "Predictive Insights",
-    desc: "Anticipate risks and prevent harm.",
-  },
-  {
-    icon: Lock,
-    title: "Secure & Private",
-    desc: "End-to-end encryption and consent driven.",
-  },
-];
-
-const FOOTER_COLUMNS = [
-  {
-    title: "Platform",
-    links: [
-      { label: "Features", slug: "features" },
-      { label: "How It Works", slug: "how-it-works" },
-      { label: "Mobile App", slug: "mobile-app" },
-      { label: "Pricing", slug: "pricing" },
-    ],
-  },
-  {
-    title: "Resources",
-    links: [
-      { label: "Safety Tips", slug: "safety-tips" },
-      { label: "Support Services", slug: "support-services" },
-      { label: "Guides", slug: "guides" },
-      { label: "FAQ", slug: "faq" },
-    ],
-  },
-  {
-    title: "Company",
-    links: [
-      { label: "About Us", slug: "about" },
-      { label: "Partners", slug: "partners" },
-      { label: "News", slug: "news" },
-      { label: "Careers", slug: "careers" },
-    ],
-  },
-  {
-    title: "Legal",
-    links: [
-      { label: "Privacy Policy", slug: "privacy" },
-      { label: "Terms of Use", slug: "terms" },
-      { label: "Data Protection", slug: "data-protection" },
-      { label: "Cookie Policy", slug: "cookies" },
-    ],
-  },
-];
-
-// Glow points over the dotted world map (percentages match world-dots.svg).
-const MAP_HOTSPOTS = [
-  { top: "35%", left: "21%" }, // North America
-  { top: "73%", left: "37%" }, // South America
-  { top: "27%", left: "52%" }, // Europe
-  { top: "60%", left: "57%" }, // Africa
-  { top: "44%", left: "72%" }, // South Asia
-  { top: "35%", left: "78%" }, // East Asia
-  { top: "81%", left: "89%" }, // Australia
-];
-
-const SOCIAL_ICONS = [
-  { Icon: Facebook, label: "Facebook" },
-  { Icon: X, label: "X (Twitter)" },
-  { Icon: Instagram, label: "Instagram" },
-  { Icon: Linkedin, label: "LinkedIn" },
-  { Icon: Youtube, label: "YouTube" },
-];
-
-const AppleBadge: React.FC = () => (
-  <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-left transition-colors hover:border-white/30 hover:bg-black/60">
-    <svg viewBox="0 0 24 24" className="h-6 w-6 fill-white" aria-hidden="true">
-      <path d="M16.36 12.78c-.02-2.06 1.68-3.05 1.76-3.1-.96-1.4-2.46-1.6-2.99-1.62-1.27-.13-2.48.75-3.13.75-.64 0-1.64-.73-2.7-.71-1.39.02-2.67.81-3.39 2.05-1.44 2.5-.37 6.2 1.04 8.23.69.99 1.51 2.1 2.59 2.06 1.04-.04 1.43-.67 2.69-.67 1.25 0 1.61.67 2.71.65 1.12-.02 1.83-1.01 2.51-2.01.79-1.15 1.12-2.27 1.13-2.33-.02-.01-2.17-.83-2.19-3.29zM14.3 6.74c.57-.69.96-1.65.85-2.61-.82.03-1.82.55-2.41 1.24-.53.61-1 1.59-.87 2.53.92.07 1.86-.47 2.43-1.16z" />
-    </svg>
-    <span className="leading-tight">
-      <span className="block text-[9px] uppercase tracking-wide text-slate-300">
-        Download on the
-      </span>
-      <span className="block text-sm font-semibold text-white">App Store</span>
-    </span>
-  </span>
-);
-
-const PlayBadge: React.FC = () => (
-  <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-left transition-colors hover:border-white/30 hover:bg-black/60">
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
-      <path
-        d="M3.6 2.3 13.4 12 3.6 21.7c-.3-.2-.5-.6-.5-1.1V3.4c0-.5.2-.9.5-1.1z"
-        fill="#34d399"
-      />
-      <path
-        d="M17 8.3 13.4 12 17 15.7l3.4-2c.7-.4.7-1.4 0-1.8L17 8.3z"
-        fill="#fbbf24"
-      />
-      <path
-        d="m13.4 12-9.8 9.7c.4.3.9.3 1.4 0L17 15.7 13.4 12z"
-        fill="#f43f5e"
-      />
-      <path
-        d="M13.4 12 17 8.3 5 1.6c-.5-.3-1-.3-1.4 0L13.4 12z"
-        fill="#38bdf8"
-      />
-    </svg>
-    <span className="leading-tight">
-      <span className="block text-[9px] uppercase tracking-wide text-slate-300">
-        Get it on
-      </span>
-      <span className="block text-sm font-semibold text-white">
-        Google Play
-      </span>
-    </span>
-  </span>
-);
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [heroImgError, setHeroImgError] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -299,465 +45,661 @@ const LandingPage: React.FC = () => {
     navigate("/auth");
   };
 
-  const scrollTo = (target: string) => {
+  const navItems = useMemo(
+    () => [
+      { id: "hero", label: t("nav.command", "Command") },
+      { id: "capabilities", label: t("nav.assurance", "Assurance") },
+      { id: "workflow", label: t("nav.operations", "Operations") },
+      { id: "about", label: t("nav.about", "About") },
+    ],
+    [t],
+  );
+
+  const handleNavClick = (sectionId: string) => {
+    const section = document.getElementById(sectionId);
     setMobileMenuOpen(false);
-    if (target === "top") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!section) {
       return;
     }
-    document
-      .getElementById(target)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const features = [
+    {
+      icon: Shield,
+      title: t("landing.features.security.title", "Command-Grade Security"),
+      description: t(
+        "landing.features.security.desc",
+        "Zero-trust access, encrypted audit trails, POPIA-aligned governance.",
+      ),
+    },
+    {
+      icon: Brain,
+      title: t("landing.features.ai.title", "AI Risk Orchestration"),
+      description: t(
+        "landing.features.ai.desc",
+        "Real-time prioritization with NLP escalation and adaptive scoring.",
+      ),
+    },
+    {
+      icon: Siren,
+      title: t("landing.features.emergency.title", "Emergency Response"),
+      description: t(
+        "landing.features.emergency.desc",
+        "Critical alerts routed to police, NGOs, and counselors within seconds.",
+      ),
+    },
+    {
+      icon: Lock,
+      title: t("landing.features.survivor.title", "Survivor Safety Layer"),
+      description: t(
+        "landing.features.survivor.desc",
+        "Location encryption, secure profile vaults, trauma-informed access.",
+      ),
+    },
+  ];
+
+  const workflowSteps = [
+    {
+      title: "Verify & Triage",
+      description:
+        "Validate identity, classify risk, and prioritize response with AI-backed scoring.",
+      metric: "SLA < 5 min",
+      icon: Activity,
+    },
+    {
+      title: "Coordinate Services",
+      description:
+        "Orchestrate police, legal, medical, and NGO response with secure handoffs.",
+      metric: "12 ms relay",
+      icon: Users,
+    },
+    {
+      title: "Track Outcomes",
+      description:
+        "Maintain auditable case progress, survivor updates, and compliance checkpoints.",
+      metric: "24/7 monitoring",
+      icon: CheckCircle2,
+    },
+  ];
+
+  const stats = [
+    { value: "24/7", label: "Emergency Operations" },
+    { value: "AES-256", label: "Encryption Standard" },
+    { value: "POPIA", label: "Compliance by Design" },
+  ];
+
+  const trustPoints = [
+    "Role-based access with auditable handoff controls",
+    "Encrypted case routing across response stakeholders",
+    "Trauma-informed survivor support workflows",
+  ];
+
+  const pulseRows = [
+    {
+      label: "Risk Detection Accuracy",
+      value: "98.7%",
+      tone: "text-emerald-200",
+    },
+    { label: "Secure Agency Relay", value: "12 ms", tone: "text-sky-200" },
+    { label: "Active Emergency Queue", value: "41", tone: "text-rose-200" },
+  ];
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.12, delayChildren: 0.15 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 18 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.55 } },
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a18] text-white">
-      {/* ===================== NAV ===================== */}
-      <nav
+    <div className="relative min-h-screen overflow-hidden bg-[#070d17] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_18%,rgba(56,189,248,0.18),transparent_40%),radial-gradient(circle_at_84%_16%,rgba(244,63,94,0.16),transparent_42%),linear-gradient(145deg,#070d17_0%,#0a1323_60%,#060a13_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:128px_128px]" />
+
+      <motion.nav
         className={cn(
-          "fixed inset-x-0 top-0 z-50 transition-all duration-300",
+          "fixed top-0 z-50 w-full border-b transition-all duration-300",
           scrolled
-            ? "border-b border-white/10 bg-[#0a0a18]/85 backdrop-blur-xl"
-            : "border-b border-transparent bg-transparent",
+            ? "border-white/10 bg-[#091223]/90 backdrop-blur-xl"
+            : "border-transparent bg-transparent",
         )}
+        initial={{ y: -80 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.45 }}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
           <button
-            className="flex items-center gap-2.5"
-            onClick={() => scrollTo("top")}
+            className="flex items-center gap-3 text-left"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
           >
-            <AegisLogo size={34} />
-            <span className="text-lg font-bold tracking-tight">AEGIS-AI</span>
+            <AegisLogo size={40} />
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-sky-200/70">
+                AEGIS-AI
+              </p>
+              <p className="text-sm font-semibold leading-tight sm:text-base">
+                {t("landing.tagline", "National Response Grid")}
+              </p>
+            </div>
           </button>
 
-          <div className="hidden items-center gap-7 text-sm font-medium text-slate-300 lg:flex">
-            {NAV_LINKS.map((item) => (
+          <div className="hidden items-center gap-7 text-sm text-slate-300 md:flex">
+            {navItems.map((item) => (
               <button
-                key={item.label}
-                className="transition-colors hover:text-violet-300"
-                onClick={() => scrollTo(item.target)}
+                key={item.id}
+                className="hover:text-white"
+                onClick={() => handleNavClick(item.id)}
               >
                 {item.label}
               </button>
             ))}
           </div>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="hidden items-center gap-3 md:flex">
             <LanguageSwitcher variant="compact" />
             <Button
-              className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 font-semibold text-white shadow-lg shadow-violet-700/30 hover:opacity-95"
+              variant="outline"
+              className="border-rose-400/45 bg-transparent text-rose-200 hover:bg-rose-500/10"
               onClick={openAuth}
             >
-              Get Help Now
+              {t("nav.emergency", "Emergency")}
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-4 font-semibold text-white shadow-lg shadow-blue-600/30 hover:opacity-95"
+              onClick={openAuth}
+            >
+              {t("nav.signIn", "Sign In")}
             </Button>
           </div>
 
           <button
-            className="rounded-lg border border-white/10 p-2 text-slate-200 lg:hidden"
-            onClick={() => setMobileMenuOpen((v) => !v)}
-            aria-label="Toggle menu"
+            type="button"
+            aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileMenuOpen}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-100 md:hidden"
+            onClick={() => setMobileMenuOpen((current) => !current)}
           >
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-white/10 bg-[#0a0a18]/95 px-4 py-4 backdrop-blur-xl lg:hidden">
-            <div className="flex flex-col gap-1">
-              {NAV_LINKS.map((item) => (
-                <button
-                  key={item.label}
-                  className="rounded-lg px-3 py-2.5 text-left text-sm text-slate-200 hover:bg-white/5"
-                  onClick={() => scrollTo(item.target)}
-                >
-                  {item.label}
-                </button>
-              ))}
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <LanguageSwitcher variant="compact" />
+          <div className="border-t border-white/10 bg-[#091223]/95 px-4 py-4 backdrop-blur-xl md:hidden">
+            <div className="mx-auto flex max-w-6xl flex-col gap-4">
+              <LanguageSwitcher variant="compact" />
+              <div className="grid gap-2">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-slate-200"
+                    onClick={() => handleNavClick(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
                 <Button
-                  className="flex-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 font-semibold"
+                  variant="outline"
+                  className="h-11 border-rose-400/45 bg-transparent text-rose-200 hover:bg-rose-500/10"
                   onClick={openAuth}
                 >
-                  Get Help Now
+                  {t("nav.emergency", "Emergency")}
+                </Button>
+                <Button
+                  className="h-11 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 font-semibold text-white"
+                  onClick={openAuth}
+                >
+                  {t("nav.signIn", "Sign In")}
                 </Button>
               </div>
             </div>
           </div>
         )}
-      </nav>
+      </motion.nav>
 
-      {/* ===================== HERO ===================== */}
-      <section
-        id="top"
-        className="relative flex min-h-[600px] items-center overflow-hidden pt-28 pb-16 sm:pt-32 lg:min-h-[680px]"
-      >
-        {/* Hero photograph anchored to the right at natural aspect (full height,
-            no zoom) so the whole composition — face, network, shield — shows;
-            its dark left edge blends into the section background. */}
-        {!heroImgError && (
-          <img
-            src="/hero.png"
-            alt="A survivor looking forward with hope, protected by AEGIS-AI"
-            className="absolute inset-y-0 right-0 h-full w-auto max-w-none object-cover object-right"
-            loading="eager"
-            onError={() => setHeroImgError(true)}
-          />
-        )}
-        {/* Legibility overlays: darken the left where the text sits + base tint */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a18] from-30% via-[#0a0a18]/80 to-transparent lg:via-[#0a0a18]/55" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0a18] via-transparent to-[#0a0a18]/30" />
-        {heroImgError && (
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(168,85,247,0.32),transparent_45%),linear-gradient(160deg,#0a0a18,#140a28_55%,#0a0a18)]" />
-        )}
-
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+      <div className="relative z-10">
+        <main>
+          <section
+            id="hero"
+            className="relative scroll-mt-28 overflow-hidden px-4 pb-14 pt-32 sm:px-6 sm:pt-36 lg:px-8"
           >
-            <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl xl:text-6xl">
-              Protecting Survivors.
-              <br />
-              Connecting Support.
-              <br />
-              <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                Saving Lives.
-              </span>
-            </h1>
+            {/* Hero photograph backdrop — anchored right at natural aspect */}
+            <img
+              src="/hero.png"
+              alt="A survivor looking forward with hope, protected by AEGIS-AI"
+              className="pointer-events-none absolute inset-y-0 right-0 h-full w-auto max-w-none select-none object-cover object-right opacity-70"
+              loading="eager"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#070d17] via-[#070d17]/85 to-[#070d17]/25" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070d17] via-transparent to-transparent" />
 
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-slate-300">
-              AEGIS-AI is an AI-powered platform that ensures survivors of
-              gender-based violence get the help, protection and justice they
-              deserve.
-            </p>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button
-                size="lg"
-                className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-7 font-semibold shadow-lg shadow-violet-700/30 hover:opacity-95"
-                onClick={openAuth}
+            <div className="relative mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="space-y-7"
               >
-                Get Help Now
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="rounded-full border-white/20 bg-white/5 px-7 font-semibold text-white hover:bg-white/10"
-                onClick={() => scrollTo("how")}
-              >
-                Learn More
-              </Button>
-            </div>
-
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Available on
-              </p>
-              <a
-                href="https://play.google.com"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <PlayBadge />
-              </a>
-              <a
-                href="https://www.apple.com/app-store/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <AppleBadge />
-              </a>
-            </div>
-
-            <div className="mt-8 border-t border-white/10 pt-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Need immediate help?
-              </p>
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-                <a
-                  href={CRISIS_LINE_TEL}
-                  className="flex items-center gap-2 font-medium text-slate-200 hover:text-violet-300"
+                <motion.div
+                  variants={itemVariants}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-sky-100"
                 >
-                  <Phone className="h-4 w-4 text-rose-400" />
-                  Call {CRISIS_LINE_DISPLAY}
-                </a>
-                <a
-                  href={WHATSAPP_LINK}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 font-medium text-slate-200 hover:text-emerald-300"
+                  Government Response Platform
+                </motion.div>
+
+                <motion.h1
+                  variants={itemVariants}
+                  className="max-w-2xl text-4xl font-semibold leading-[1.05] text-white sm:text-5xl lg:text-6xl"
                 >
-                  <MessageCircle className="h-4 w-4 text-emerald-400" />
-                  WhatsApp {WHATSAPP_DISPLAY}
-                </a>
-                <span className="flex items-center gap-2 font-medium text-slate-200">
-                  <Smartphone className="h-4 w-4 text-sky-400" />
-                  USSD {USSD_CODE}
-                </span>
-              </div>
-            </div>
-          </motion.div>
+                  <span className="bg-gradient-to-r from-sky-200 via-blue-100 to-rose-200 bg-clip-text text-transparent">
+                    {t(
+                      "landing.hero",
+                      "Secure coordination for GBV emergency response",
+                    )}
+                  </span>
+                </motion.h1>
 
-          {/* Floating feature panel over the photograph (desktop only) */}
-          <motion.div
-            className="hidden lg:flex lg:justify-end"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, delay: 0.15 }}
-          >
-            <div className="w-72 space-y-2 rounded-3xl border border-white/10 bg-[#0c0c1c]/70 p-4 shadow-2xl shadow-violet-900/40 backdrop-blur-xl">
-              {HERO_FEATURES.map((f) => (
-                <div
-                  key={f.title}
-                  className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-violet-400/30 hover:bg-violet-500/10"
+                <motion.p
+                  variants={itemVariants}
+                  className="max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                    <f.icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {f.title}
-                    </p>
-                    <p className="text-xs text-slate-400">{f.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </section>
+                  {t(
+                    "landing.subhero",
+                    "AEGIS-AI unifies survivor services, law enforcement, and policy intelligence with encrypted workflows, real-time escalation, and accountable governance.",
+                  )}
+                </motion.p>
 
-      {/* ===================== HOW IT WORKS ===================== */}
-      <section id="how" className="bg-slate-50 py-20 text-slate-900">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-violet-700">
-              How AEGIS-AI Works
-            </h2>
-            <p className="mt-2 text-slate-500">
-              Simple steps that make a real difference.
-            </p>
-          </div>
-
-          <div className="mt-14 flex flex-col items-stretch gap-4 lg:flex-row lg:items-start">
-            {WORK_STEPS.map((step, i) => (
-              <React.Fragment key={step.title}>
-                <div className="flex-1 text-center">
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-100 bg-violet-50 text-violet-600 shadow-sm">
-                    <step.icon className="h-7 w-7" />
-                  </div>
-                  <h3 className="mt-4 text-base font-semibold text-slate-900">
-                    {step.title}
-                  </h3>
-                  <p className="mx-auto mt-1.5 max-w-[180px] text-sm text-slate-500">
-                    {step.desc}
-                  </p>
-                </div>
-                {i < WORK_STEPS.length - 1 && (
-                  <div className="hidden items-center pt-5 lg:flex">
-                    <ArrowRight className="h-5 w-5 text-violet-300" />
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== WHO WE SERVE + AI-POWERED (left) | GLOBAL IMPACT (right) ===== */}
-      <section className="bg-[#0a0a18] py-16 sm:py-20">
-        <div className="mx-auto grid max-w-7xl items-stretch gap-6 px-4 sm:px-6 lg:grid-cols-[1.5fr_1fr] lg:px-8">
-          {/* Left column: Who We Serve (light) stacked over AI-Powered (dark) */}
-          <div className="flex flex-col gap-6">
-            <div id="serve" className="rounded-3xl bg-white p-7 text-slate-900">
-              <h2 className="text-center text-2xl font-bold tracking-tight text-violet-700">
-                Who We Serve
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-center text-sm text-slate-500">
-                AEGIS-AI connects individuals and organizations working together
-                to end GBV.
-              </p>
-              <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-                {AUDIENCES.map((a) => (
-                  <div
-                    key={a.title}
-                    className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-center transition-shadow hover:shadow-md"
+                <motion.div
+                  variants={itemVariants}
+                  className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+                >
+                  <Button
+                    className="h-12 bg-rose-600 px-6 text-base font-semibold hover:bg-rose-500"
+                    onClick={openAuth}
                   >
-                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
-                      <a.icon className="h-5 w-5" />
-                    </div>
-                    <h3 className="mt-2 text-xs font-semibold text-slate-900">
-                      {a.title}
-                    </h3>
-                    <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                      {a.desc}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+                    {t("landing.reportIncident", "Report Incident")}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
+                    onClick={openAuth}
+                  >
+                    {t("landing.getHelp", "Get Help Now")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-12 border-white/20 bg-white/5 px-6 text-base text-slate-100 hover:bg-white/10"
+                    onClick={() => navigate("/community-report")}
+                  >
+                    {t(
+                      "landing.communityReport",
+                      "Report on behalf of someone",
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-12 justify-start px-0 text-base font-semibold text-sky-200 hover:bg-transparent hover:text-sky-100"
+                    onClick={() => navigate("/impact")}
+                  >
+                    View Impact Data
+                    <TrendingUp className="ml-2 h-4 w-4" />
+                  </Button>
+                </motion.div>
 
-            <div
-              id="ai"
-              className="relative flex-1 overflow-hidden rounded-3xl border border-white/10 bg-[#0c0c1c] p-7"
-            >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,58,237,0.2),transparent_60%)]" />
-              <div className="relative">
-                <h2 className="text-center text-2xl font-bold tracking-tight text-violet-300">
-                  AI-Powered. Human-Centered.
-                </h2>
-                <p className="mt-2 text-center text-sm text-slate-400">
-                  Smarter technology for faster, better outcomes.
-                </p>
-                <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                  {AI_FEATURES.map((f) => (
+                <motion.div
+                  variants={itemVariants}
+                  className="grid gap-3 sm:grid-cols-3"
+                >
+                  {stats.map((stat) => (
                     <div
-                      key={f.title}
-                      className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-center transition-colors hover:border-violet-400/40 hover:bg-violet-500/10"
+                      key={stat.label}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(2,6,23,0.35)]"
                     >
-                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                        <f.icon className="h-5 w-5" />
-                      </div>
-                      <h3 className="mt-3 text-xs font-semibold text-white">
-                        {f.title}
-                      </h3>
-                      <p className="mt-1 text-[11px] leading-snug text-slate-400">
-                        {f.desc}
+                      <p className="text-2xl font-semibold text-sky-200">
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {stat.label}
                       </p>
                     </div>
                   ))}
+                </motion.div>
+
+                <motion.div
+                  variants={itemVariants}
+                  className="grid gap-3 sm:grid-cols-3"
+                >
+                  {trustPoints.map((point) => (
+                    <div
+                      key={point}
+                      className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-4"
+                    >
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                      <p className="text-sm text-slate-300">{point}</p>
+                    </div>
+                  ))}
+                </motion.div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+                className="relative"
+              >
+                <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-br from-sky-500/10 via-transparent to-rose-500/10 blur-2xl" />
+                <div className="relative rounded-[30px] border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.6)] backdrop-blur-xl sm:p-7">
+                  <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                        Operational Pulse
+                      </p>
+                      <h2 className="mt-2 text-2xl font-semibold text-white">
+                        Live coordination status
+                      </h2>
+                    </div>
+                    <span className="inline-flex w-fit items-center rounded-full border border-emerald-300/40 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                      Live
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {pulseRows.map((row) => (
+                      <div
+                        key={row.label}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                          {row.label}
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-2 text-3xl font-semibold",
+                            row.tone,
+                          )}
+                        >
+                          {row.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                        <Clock3 className="h-5 w-5 text-sky-200" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          Response readiness
+                        </p>
+                        <p className="text-sm text-slate-400">
+                          Cross-agency routing remains available with monitored
+                          audit coverage.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 h-2 rounded-full bg-slate-800/80">
+                      <div className="h-full w-[98%] rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-blue-500" />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </motion.div>
             </div>
-          </div>
+          </section>
 
-          {/* Right column: Global Impact — tall panel spanning both left blocks */}
-          <div
-            id="impact"
-            className="relative flex flex-col overflow-hidden rounded-3xl bg-[#0c0c1c] p-8 text-white"
-          >
-            <div className="pointer-events-none absolute -right-12 top-16 h-56 w-56 rounded-full bg-violet-600/20 blur-3xl" />
-            <div className="relative flex h-full flex-col">
-              <h2 className="text-center text-2xl font-bold tracking-tight text-violet-300">
-                Global Impact
-              </h2>
-              <p className="mt-2 text-center text-sm text-slate-400">
-                One platform. Global change.
-              </p>
-
-              <div className="mt-7 grid grid-cols-2 gap-6 sm:grid-cols-4">
-                {IMPACT_STATS.map((s) => (
-                  <div key={s.label} className="text-center">
-                    <p className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-2xl font-extrabold text-transparent sm:text-3xl">
-                      {s.value}
+          <section className="px-4 pb-6 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-6xl">
+              <div className="grid gap-3 rounded-[30px] border border-white/10 bg-slate-950/40 p-4 sm:grid-cols-2 lg:grid-cols-4 lg:p-5">
+                {[
+                  {
+                    title: "Rapid escalation",
+                    detail: "Incident intake to verified triage in minutes",
+                  },
+                  {
+                    title: "Protected data flow",
+                    detail: "Encrypted transfers across every responder role",
+                  },
+                  {
+                    title: "Governance visibility",
+                    detail: "Audit checkpoints embedded in each workflow step",
+                  },
+                  {
+                    title: "Survivor-first design",
+                    detail:
+                      "Access designed to reduce friction and preserve trust",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <p className="text-sm font-semibold text-white">
+                      {item.title}
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-400">{s.label}</p>
+                    <p className="mt-2 text-sm text-slate-400">{item.detail}</p>
                   </div>
                 ))}
               </div>
+            </div>
+          </section>
 
-              {/* Dotted world map with glowing hotspot points */}
-              <div className="relative my-8 flex min-h-[200px] flex-1 items-center">
-                <div className="relative w-full">
-                  <img
-                    src="/world-dots.svg"
-                    alt=""
-                    aria-hidden="true"
-                    className="h-auto w-full select-none"
-                    loading="lazy"
-                  />
-                  {MAP_HOTSPOTS.map((p, i) => (
-                    <span
-                      key={i}
-                      className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-400 shadow-[0_0_8px_2px_rgba(232,121,249,0.7)]"
-                      style={{ top: p.top, left: p.left }}
-                    />
-                  ))}
-                </div>
-              </div>
+          <section
+            id="capabilities"
+            className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
+          >
+            <div className="mx-auto max-w-6xl">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+                className="mb-12 text-center"
+              >
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                  Assurance Layer
+                </p>
+                <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
+                  {t("landing.capabilities", "Critical Capabilities")}
+                </h2>
+                <p className="mx-auto mt-4 max-w-2xl text-slate-400">
+                  {t(
+                    "landing.capabilitiesSubtitle",
+                    "Operational layers built for safety, urgency, and trust.",
+                  )}
+                </p>
+              </motion.div>
 
-              <div className="flex justify-center">
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
+              >
+                {features.map((feature) => (
+                  <motion.div
+                    key={feature.title}
+                    variants={itemVariants}
+                    className="rounded-[28px] border border-white/10 bg-slate-950/70 p-7 shadow-[0_20px_50px_rgba(2,6,23,0.5)] backdrop-blur"
+                  >
+                    <div className="mb-4 inline-flex rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <feature.icon className="h-5 w-5 text-sky-200" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-white">
+                      {feature.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                      {feature.description}
+                    </p>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </section>
+
+          <section
+            id="workflow"
+            className="scroll-mt-28 px-4 py-20 sm:px-6 lg:px-8"
+          >
+            <div className="mx-auto grid max-w-6xl gap-10 rounded-[32px] border border-white/10 bg-slate-950/45 p-6 lg:grid-cols-[0.45fr_0.55fr] lg:items-start lg:p-8">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+                className="space-y-5"
+              >
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                  Workflow Intelligence
+                </p>
+                <h2 className="text-3xl font-semibold sm:text-4xl">
+                  {t(
+                    "landing.cta.title",
+                    "Activate trusted response workflows",
+                  )}
+                </h2>
+                <p className="text-lg text-slate-400">
+                  {t(
+                    "landing.cta.subtitle",
+                    "Purpose-built to coordinate GBV emergency response with accountable, AI-driven intelligence.",
+                  )}
+                </p>
+              </motion.div>
+
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="space-y-4"
+              >
+                {workflowSteps.map((step, index) => (
+                  <motion.div
+                    key={step.title}
+                    variants={itemVariants}
+                    className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:flex-row sm:items-start"
+                  >
+                    <div className="flex items-start gap-4 sm:flex-1">
+                      <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
+                        <step.icon className="h-5 w-5 text-sky-200" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+                          Step {index + 1}
+                        </p>
+                        <h3 className="mt-1 text-lg font-semibold text-white">
+                          {step.title}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {step.description}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="w-fit rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-200">
+                      {step.metric}
+                    </p>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </section>
+
+          <section
+            id="about"
+            className="scroll-mt-28 px-4 pb-20 sm:px-6 lg:px-8"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="mx-auto max-w-5xl rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-950/90 to-slate-900/70 p-8 text-center shadow-[0_30px_80px_rgba(2,8,23,0.65)] sm:p-12"
+            >
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-200/70">
+                About AEGIS-AI
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
+                Response infrastructure you can trust
+              </h2>
+              <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
+                AEGIS-AI is designed for secure, role-based, trauma-informed
+                response operations with measurable accountability.
+              </p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <Button
-                  className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-8 font-semibold shadow-lg shadow-violet-700/30 hover:opacity-95"
+                  className="h-12 bg-gradient-to-r from-sky-500 via-blue-600 to-rose-500 px-7 text-base font-semibold"
                   onClick={openAuth}
                 >
-                  Join the Movement
+                  {t("landing.cta.button", "Access Response Console")}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 border-white/20 bg-white/5 px-7 text-base font-semibold text-slate-100 hover:bg-white/10"
+                  onClick={() => navigate("/impact")}
+                >
+                  View Impact Data
+                  <TrendingUp className="ml-2 h-4 w-4" />
                 </Button>
               </div>
+            </motion.div>
+          </section>
+        </main>
+
+        <footer className="border-t border-white/10 px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
+            <p>
+              &copy; 2026 AEGIS-AI Platform. POPIA-aligned. All rights reserved.
+            </p>
+            <div className="flex flex-wrap items-center gap-6">
+              <a
+                className="hover:text-white"
+                href="/impact"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate("/impact");
+                }}
+              >
+                Impact
+              </a>
+              <a
+                className="hover:text-white"
+                href="https://www.justice.gov.za/inforeg/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Privacy (POPIA)
+              </a>
+              <a className="hover:text-white" href="mailto:dpo@aegis-ai.co.za">
+                Data Protection Officer
+              </a>
+              <a
+                className="hover:text-white"
+                href="mailto:security@aegis-ai.co.za"
+              >
+                Report a Vulnerability
+              </a>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* ===================== FOOTER ===================== */}
-      <footer
-        id="footer"
-        className="border-t border-white/10 bg-[#070710] py-14"
-      >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[1.4fr_repeat(4,1fr)_1.2fr]">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <AegisLogo size={30} />
-                <span className="text-base font-bold">AEGIS-AI</span>
-              </div>
-              <p className="mt-3 max-w-[220px] text-sm text-slate-400">
-                Building a safer world for all survivors of gender-based
-                violence.
-              </p>
-            </div>
-
-            {FOOTER_COLUMNS.map((col) => (
-              <div key={col.title}>
-                <h4 className="text-sm font-semibold text-white">
-                  {col.title}
-                </h4>
-                <ul className="mt-3 space-y-2">
-                  {col.links.map((link) => (
-                    <li key={link.slug}>
-                      <button
-                        onClick={() => navigate(`/info/${link.slug}`)}
-                        className="text-sm text-slate-400 transition-colors hover:text-violet-300"
-                      >
-                        {link.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-
-            <div>
-              <h4 className="text-sm font-semibold text-white">Connect</h4>
-              <div className="mt-3 flex gap-3">
-                {SOCIAL_ICONS.map(({ Icon, label }) => (
-                  <a
-                    key={label}
-                    href="#"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:border-violet-400/40 hover:text-violet-300"
-                    aria-label={label}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </a>
-                ))}
-              </div>
-              <div className="mt-4">
-                <LanguageSwitcher variant="compact" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-slate-500 sm:flex-row">
-            <p>© {new Date().getFullYear()} AEGIS-AI. All rights reserved.</p>
-            <div className="flex items-center gap-2 text-slate-400">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              POPIA-aligned · End-to-end encrypted
-            </div>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   );
 };
