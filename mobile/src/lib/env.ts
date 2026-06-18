@@ -5,7 +5,13 @@
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? "";
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
+// Express API backend (AI chat, transcription, USSD gateway). Defaults to the
+// hosted backend so the app — and the in-app USSD console — work on any real
+// device out of the box; override with EXPO_PUBLIC_API_URL for local/staging.
+const API_URL = (
+  process.env.EXPO_PUBLIC_API_URL ??
+  "https://intelligence-secure-scalable.onrender.com"
+).replace(/\/+$/, "");
 // Professional web portal — where staff (counsellor, NGO, police, analyst, admin)
 // sign in. The mobile app and the portal share the same Supabase + API backend.
 const WEB_PORTAL_URL = (
