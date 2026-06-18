@@ -375,7 +375,7 @@ const ImpactDashboard: React.FC = () => {
                 </span>{" "}
                 · USSD:{" "}
                 <span className="font-mono text-rose-400 font-bold">
-                  *135*1782#
+                  *384*30933#
                 </span>{" "}
                 · Police:{" "}
                 <span className="font-mono text-rose-400 font-bold">10111</span>

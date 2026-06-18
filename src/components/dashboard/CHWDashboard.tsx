@@ -470,7 +470,7 @@ const CHWDashboard: React.FC = () => {
                 },
                 {
                   label: "USSD (no internet)",
-                  value: "*135*1782#",
+                  value: "*384*30933#",
                   note: "Works on any phone",
                 },
                 {

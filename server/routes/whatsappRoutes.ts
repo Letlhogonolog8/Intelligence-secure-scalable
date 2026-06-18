@@ -27,13 +27,13 @@ const MENU_EN = `🛡️ *AEGIS National Response Grid*\n\nYou are in a safe, en
 const MENU_ZU = `🛡️ *AEGIS Inhlangano Yezizwe*\n\nUkusebenza ngendlela ephephile.\n\nPhendula nge:\n*1* - Bika isigameko\n*2* - Usizo lwesimo esiphuthumayo\n*3* - Hlola isimo sokukhipha\n*4* - Khuluma ne-AI\n*0* - Buyela kumenyu`;
 const MENU_AF = `🛡️ *AEGIS Nasionale Responsnetswerk*\n\nJy is in 'n veilige kanaal.\n\nAntwoord met:\n*1* - Rapporteer 'n voorval\n*2* - Noodhulp & hulpbronne\n*3* - Gaan saakstatus na\n*4* - Praat met AI-ondersteuning\n*0* - Herhaal hierdie spyskaart`;
 
-const HELP_MSG = `🆘 *Emergency Resources*\n\n🚨 *Immediate danger:* Call *10111* (Police)\n📞 *Crisis line:* *0800 428 428* (24/7 free)\n📱 *USSD (no internet):* *135*1782#\n🏠 *Shelter referral:* Reply *SHELTER*\n⚖️ *Legal advice:* Reply *LEGAL*\n\nYou are not alone. Reply *0* for main menu.`;
+const HELP_MSG = `🆘 *Emergency Resources*\n\n🚨 *Immediate danger:* Call *10111* (Police)\n📞 *Crisis line:* *0800 428 428* (24/7 free)\n📱 *USSD (no internet):* *384*30933#\n🏠 *Shelter referral:* Reply *SHELTER*\n⚖️ *Legal advice:* Reply *LEGAL*\n\nYou are not alone. Reply *0* for main menu.`;
 
 const SYSTEM_PROMPT = `You are a compassionate, trauma-informed GBV (gender-based violence) support companion responding via WhatsApp for AEGIS — a national emergency response platform in South Africa.
 
 Your rules:
 1. Respond with empathy, brevity (max 3 sentences), and no judgment
-2. If the user describes IMMEDIATE danger, active violence, or suicidal intent: start your reply with "🚨 CRISIS:" and include Police: 10111, Crisis line: 0800 428 428, USSD: *135*1782#
+2. If the user describes IMMEDIATE danger, active violence, or suicidal intent: start your reply with "🚨 CRISIS:" and include Police: 10111, Crisis line: 0800 428 428, USSD: *384*30933#
 3. Detect language from the user's message (English, isiZulu, Afrikaans, Sesotho, isiXhosa) and respond in the SAME language
 4. Never reveal you are Claude or Anthropic — you are the AEGIS Support Companion
 5. Suggest platform features: voice reporting, case filing, shelter referral
@@ -153,7 +153,7 @@ async function processMessage(phone: string, text: string): Promise<string> {
     }
 
     if (normalized === "shelter") {
-      return `🏠 *Shelter Referral*\n\nA shelter coordinator is being notified for your area.\n\n📞 Alternatively call: *0800 428 428*\n💬 USSD: *135*1782#\n\nReply *0* for main menu.`;
+      return `🏠 *Shelter Referral*\n\nA shelter coordinator is being notified for your area.\n\n📞 Alternatively call: *0800 428 428*\n💬 USSD: *384*30933#\n\nReply *0* for main menu.`;
     }
 
     if (normalized === "legal") {
@@ -220,7 +220,7 @@ async function processMessage(phone: string, text: string): Promise<string> {
 
       const lower = trimmed.toLowerCase();
       if (/danger|hurt|kill|die|attack|emergency|help me/i.test(lower)) {
-        return `🚨 CRISIS: Please call Police: *10111* or Crisis Line: *0800 428 428* immediately.\n\nDial *135*1782# from any phone — no internet needed.\n\nYou are not alone. Reply *0* for main menu.`;
+        return `🚨 CRISIS: Please call Police: *10111* or Crisis Line: *0800 428 428* immediately.\n\nDial *384*30933# from any phone — no internet needed.\n\nYou are not alone. Reply *0* for main menu.`;
       }
       return `I hear you and I'm here. Can you tell me a little more about what's happening? I want to make sure you get the right support.\n\nReply *0* for main menu.`;
     }
@@ -280,7 +280,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     if (msg.type !== "text") {
       await sendWhatsAppMessage(
         msg.from as string,
-        `AEGIS supports text messages. Reply *0* to see the menu, or dial *135*1782# from any phone (no internet needed).`,
+        `AEGIS supports text messages. Reply *0* to see the menu, or dial *384*30933# from any phone (no internet needed).`,
       );
       return;
     }

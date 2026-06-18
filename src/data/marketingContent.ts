@@ -160,7 +160,7 @@ export const MARKETING_PAGES: Record<string, InfoContent> = {
           "Identify a safe place you can go to quickly",
           "Keep important documents and some cash accessible",
           "Agree on a code word with someone you trust",
-          "Save emergency numbers and the AEGIS USSD code *135*1782#",
+          "Save emergency numbers and the AEGIS USSD code *384*30933#",
         ],
       },
       {
@@ -228,7 +228,7 @@ export const MARKETING_PAGES: Record<string, InfoContent> = {
       },
       {
         q: "Does it work without internet?",
-        a: "Yes. You can report over USSD by dialing *135*1782# from any phone, and the app supports offline reporting that syncs later.",
+        a: "Yes. You can report over USSD by dialing *384*30933# from any phone, and the app supports offline reporting that syncs later.",
       },
       {
         q: "Is my data secure?",

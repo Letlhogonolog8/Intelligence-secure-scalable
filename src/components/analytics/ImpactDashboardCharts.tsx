@@ -41,7 +41,7 @@ const MONTHLY_CASES = [
 
 const CHANNEL_DATA = [
   { name: "Web Portal", value: 41, color: "#6366f1" },
-  { name: "USSD (*135*1782#)", value: 33, color: "#22c55e" },
+  { name: "USSD (*384*30933#)", value: 33, color: "#22c55e" },
   { name: "WhatsApp Bot", value: 19, color: "#f97316" },
   { name: "Voice Report", value: 7, color: "#ec4899" },
 ];

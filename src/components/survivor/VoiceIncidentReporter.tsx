@@ -152,7 +152,7 @@ const VoiceIncidentReporter: React.FC<VoiceIncidentReporterProps> = ({
             <p className="text-xs text-slate-300 mt-1">
               Your browser doesn't support voice recognition. Use the text form
               or dial{" "}
-              <span className="font-mono text-rose-400">*135*1782#</span> for
+              <span className="font-mono text-rose-400">*384*30933#</span> for
               USSD support.
             </p>
           </div>

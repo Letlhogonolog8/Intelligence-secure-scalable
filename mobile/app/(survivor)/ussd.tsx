@@ -24,7 +24,7 @@ interface UssdReply {
 
 /**
  * USSD access screen.
- *  - "Dial on this phone" launches the real *135*1782# session over the
+ *  - "Dial on this phone" launches the real *384*30933# session over the
  *    cellular network (Android; iOS restricts programmatic USSD).
  *  - "Try the menu in-app" drives the same backend USSD gateway
  *    (/api/ussd/process) so you can use the flow without the aggregator's

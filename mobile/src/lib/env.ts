@@ -15,7 +15,7 @@ const WEB_PORTAL_URL = (
 
 // The live USSD short-code (must match what is provisioned with the
 // aggregator, e.g. Africa's Talking). Used for the on-device dial action.
-const USSD_CODE = (process.env.EXPO_PUBLIC_USSD_CODE ?? "*135*1782#").trim();
+const USSD_CODE = (process.env.EXPO_PUBLIC_USSD_CODE ?? "*384*30933#").trim();
 
 export const env = {
   supabaseUrl: SUPABASE_URL,
