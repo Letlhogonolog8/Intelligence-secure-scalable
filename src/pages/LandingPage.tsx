@@ -211,18 +211,15 @@ const FOOTER_COLUMNS = [
   },
 ];
 
-// Approximate continent positions for the Global Impact map glow points.
+// Glow points over the dotted world map (percentages match world-dots.svg).
 const MAP_HOTSPOTS = [
-  { top: "20%", left: "18%" },
-  { top: "34%", left: "30%" },
-  { top: "52%", left: "27%" },
-  { top: "22%", left: "50%" },
-  { top: "38%", left: "55%" },
-  { top: "55%", left: "58%" },
-  { top: "26%", left: "70%" },
-  { top: "42%", left: "80%" },
-  { top: "60%", left: "84%" },
-  { top: "16%", left: "64%" },
+  { top: "35%", left: "21%" }, // North America
+  { top: "73%", left: "37%" }, // South America
+  { top: "27%", left: "52%" }, // Europe
+  { top: "60%", left: "57%" }, // Africa
+  { top: "44%", left: "72%" }, // South Asia
+  { top: "35%", left: "78%" }, // East Asia
+  { top: "81%", left: "89%" }, // Australia
 ];
 
 const SOCIAL_ICONS = [
@@ -639,7 +636,6 @@ const LandingPage: React.FC = () => {
             id="impact"
             className="relative flex flex-col overflow-hidden rounded-3xl bg-[#0c0c1c] p-8 text-white"
           >
-            <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(168,85,247,0.4)_1.3px,transparent_1.5px)] [background-size:22px_22px]" />
             <div className="pointer-events-none absolute -right-12 top-16 h-56 w-56 rounded-full bg-violet-600/20 blur-3xl" />
             <div className="relative flex h-full flex-col">
               <h2 className="text-center text-2xl font-bold tracking-tight text-violet-300">
@@ -660,15 +656,24 @@ const LandingPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Dotted world-map field with glowing hotspot points */}
-              <div className="relative my-8 min-h-[200px] flex-1">
-                {MAP_HOTSPOTS.map((p, i) => (
-                  <span
-                    key={i}
-                    className="absolute h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_8px_2px_rgba(232,121,249,0.6)]"
-                    style={{ top: p.top, left: p.left }}
+              {/* Dotted world map with glowing hotspot points */}
+              <div className="relative my-8 flex min-h-[200px] flex-1 items-center">
+                <div className="relative w-full">
+                  <img
+                    src="/world-dots.svg"
+                    alt=""
+                    aria-hidden="true"
+                    className="h-auto w-full select-none"
+                    loading="lazy"
                   />
-                ))}
+                  {MAP_HOTSPOTS.map((p, i) => (
+                    <span
+                      key={i}
+                      className="absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-400 shadow-[0_0_8px_2px_rgba(232,121,249,0.7)]"
+                      style={{ top: p.top, left: p.left }}
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="flex justify-center">
