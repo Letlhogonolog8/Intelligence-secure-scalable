@@ -211,6 +211,20 @@ const FOOTER_COLUMNS = [
   },
 ];
 
+// Approximate continent positions for the Global Impact map glow points.
+const MAP_HOTSPOTS = [
+  { top: "20%", left: "18%" },
+  { top: "34%", left: "30%" },
+  { top: "52%", left: "27%" },
+  { top: "22%", left: "50%" },
+  { top: "38%", left: "55%" },
+  { top: "55%", left: "58%" },
+  { top: "26%", left: "70%" },
+  { top: "42%", left: "80%" },
+  { top: "60%", left: "84%" },
+  { top: "16%", left: "64%" },
+];
+
 const SOCIAL_ICONS = [
   { Icon: Facebook, label: "Facebook" },
   { Icon: X, label: "X (Twitter)" },
@@ -467,7 +481,7 @@ const LandingPage: React.FC = () => {
                   href={CRISIS_LINE_TEL}
                   className="flex items-center gap-2 font-medium text-slate-200 hover:text-violet-300"
                 >
-                  <Phone className="h-4 w-4 text-violet-400" />
+                  <Phone className="h-4 w-4 text-rose-400" />
                   Call {CRISIS_LINE_DISPLAY}
                 </a>
                 <a
@@ -553,46 +567,81 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ============ WHO WE SERVE + GLOBAL IMPACT ============ */}
-      <section id="serve" className="bg-white py-20">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
-          {/* Who we serve */}
-          <div className="text-slate-900">
-            <h2 className="text-center text-2xl font-bold tracking-tight text-violet-700 lg:text-left">
-              Who We Serve
-            </h2>
-            <p className="mt-2 text-center text-sm text-slate-500 lg:text-left">
-              AEGIS-AI connects individuals and organizations working together
-              to end GBV.
-            </p>
-            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {AUDIENCES.map((a) => (
-                <div
-                  key={a.title}
-                  className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 text-center transition-shadow hover:shadow-md"
-                >
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
-                    <a.icon className="h-5 w-5" />
+      {/* ===== WHO WE SERVE + AI-POWERED (left) | GLOBAL IMPACT (right) ===== */}
+      <section className="bg-[#0a0a18] py-16 sm:py-20">
+        <div className="mx-auto grid max-w-7xl items-stretch gap-6 px-4 sm:px-6 lg:grid-cols-[1.5fr_1fr] lg:px-8">
+          {/* Left column: Who We Serve (light) stacked over AI-Powered (dark) */}
+          <div className="flex flex-col gap-6">
+            <div id="serve" className="rounded-3xl bg-white p-7 text-slate-900">
+              <h2 className="text-center text-2xl font-bold tracking-tight text-violet-700">
+                Who We Serve
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-center text-sm text-slate-500">
+                AEGIS-AI connects individuals and organizations working together
+                to end GBV.
+              </p>
+              <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                {AUDIENCES.map((a) => (
+                  <div
+                    key={a.title}
+                    className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-center transition-shadow hover:shadow-md"
+                  >
+                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                      <a.icon className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-2 text-xs font-semibold text-slate-900">
+                      {a.title}
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                      {a.desc}
+                    </p>
                   </div>
-                  <h3 className="mt-3 text-sm font-semibold text-slate-900">
-                    {a.title}
-                  </h3>
-                  <p className="mt-1 text-xs leading-snug text-slate-500">
-                    {a.desc}
-                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div
+              id="ai"
+              className="relative flex-1 overflow-hidden rounded-3xl border border-white/10 bg-[#0c0c1c] p-7"
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,58,237,0.2),transparent_60%)]" />
+              <div className="relative">
+                <h2 className="text-center text-2xl font-bold tracking-tight text-violet-300">
+                  AI-Powered. Human-Centered.
+                </h2>
+                <p className="mt-2 text-center text-sm text-slate-400">
+                  Smarter technology for faster, better outcomes.
+                </p>
+                <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                  {AI_FEATURES.map((f) => (
+                    <div
+                      key={f.title}
+                      className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-center transition-colors hover:border-violet-400/40 hover:bg-violet-500/10"
+                    >
+                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                        <f.icon className="h-5 w-5" />
+                      </div>
+                      <h3 className="mt-3 text-xs font-semibold text-white">
+                        {f.title}
+                      </h3>
+                      <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                        {f.desc}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
 
-          {/* Global impact */}
+          {/* Right column: Global Impact — tall panel spanning both left blocks */}
           <div
             id="impact"
-            className="relative overflow-hidden rounded-3xl bg-[#0c0c1c] p-8 text-white"
+            className="relative flex flex-col overflow-hidden rounded-3xl bg-[#0c0c1c] p-8 text-white"
           >
-            <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:radial-gradient(rgba(168,85,247,0.45)_1.4px,transparent_1.6px)] [background-size:26px_26px]" />
-            <div className="pointer-events-none absolute -right-10 top-10 h-48 w-48 rounded-full bg-violet-600/20 blur-3xl" />
-            <div className="relative">
+            <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(168,85,247,0.4)_1.3px,transparent_1.5px)] [background-size:22px_22px]" />
+            <div className="pointer-events-none absolute -right-12 top-16 h-56 w-56 rounded-full bg-violet-600/20 blur-3xl" />
+            <div className="relative flex h-full flex-col">
               <h2 className="text-center text-2xl font-bold tracking-tight text-violet-300">
                 Global Impact
               </h2>
@@ -600,61 +649,37 @@ const LandingPage: React.FC = () => {
                 One platform. Global change.
               </p>
 
-              <div className="mt-8 grid grid-cols-2 gap-6">
+              <div className="mt-7 grid grid-cols-2 gap-6 sm:grid-cols-4">
                 {IMPACT_STATS.map((s) => (
                   <div key={s.label} className="text-center">
-                    <s.icon className="mx-auto mb-2 h-5 w-5 text-violet-400" />
-                    <p className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-3xl font-extrabold text-transparent">
+                    <p className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-2xl font-extrabold text-transparent sm:text-3xl">
                       {s.value}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">{s.label}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">{s.label}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-8 flex justify-center">
+              {/* Dotted world-map field with glowing hotspot points */}
+              <div className="relative my-8 min-h-[200px] flex-1">
+                {MAP_HOTSPOTS.map((p, i) => (
+                  <span
+                    key={i}
+                    className="absolute h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_8px_2px_rgba(232,121,249,0.6)]"
+                    style={{ top: p.top, left: p.left }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex justify-center">
                 <Button
-                  className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-7 font-semibold shadow-lg shadow-violet-700/30 hover:opacity-95"
+                  className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-8 font-semibold shadow-lg shadow-violet-700/30 hover:opacity-95"
                   onClick={openAuth}
                 >
                   Join the Movement
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ============ AI-POWERED. HUMAN-CENTERED. ============ */}
-      <section id="ai" className="relative overflow-hidden bg-[#0a0a18] py-20">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,58,237,0.18),transparent_55%)]" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-violet-300">
-              AI-Powered. Human-Centered.
-            </h2>
-            <p className="mt-2 text-slate-400">
-              Smarter technology for faster, better outcomes.
-            </p>
-          </div>
-
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-            {AI_FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-center transition-colors hover:border-violet-400/40 hover:bg-violet-500/10"
-              >
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                  <f.icon className="h-6 w-6" />
-                </div>
-                <h3 className="mt-4 text-sm font-semibold text-white">
-                  {f.title}
-                </h3>
-                <p className="mt-1.5 text-xs leading-snug text-slate-400">
-                  {f.desc}
-                </p>
-              </div>
-            ))}
           </div>
         </div>
       </section>
