@@ -390,21 +390,23 @@ const LandingPage: React.FC = () => {
       {/* ===================== HERO ===================== */}
       <section
         id="top"
-        className="relative flex min-h-[680px] items-center overflow-hidden pt-28 pb-16 sm:pt-32 lg:min-h-[760px]"
+        className="relative flex min-h-[600px] items-center overflow-hidden pt-28 pb-16 sm:pt-32 lg:min-h-[680px]"
       >
-        {/* Full-bleed hero photograph (subject right, dark space left) */}
+        {/* Hero photograph anchored to the right at natural aspect (full height,
+            no zoom) so the whole composition — face, network, shield — shows;
+            its dark left edge blends into the section background. */}
         {!heroImgError && (
           <img
             src="/hero.png"
             alt="A survivor looking forward with hope, protected by AEGIS-AI"
-            className="absolute inset-0 h-full w-full object-cover object-[78%_center] lg:object-[right_center]"
+            className="absolute inset-y-0 right-0 h-full w-auto max-w-none object-cover object-right"
             loading="eager"
             onError={() => setHeroImgError(true)}
           />
         )}
         {/* Legibility overlays: darken the left where the text sits + base tint */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a18] via-[#0a0a18]/85 to-transparent lg:via-[#0a0a18]/70" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0a18] via-transparent to-[#0a0a18]/40" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a18] from-30% via-[#0a0a18]/80 to-transparent lg:via-[#0a0a18]/55" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0a18] via-transparent to-[#0a0a18]/30" />
         {heroImgError && (
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(168,85,247,0.32),transparent_45%),linear-gradient(160deg,#0a0a18,#140a28_55%,#0a0a18)]" />
         )}
