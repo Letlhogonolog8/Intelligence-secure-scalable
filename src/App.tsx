@@ -26,6 +26,7 @@ const Admin = lazy(() => import("./pages/Admin"));
 const ImpactDashboard = lazy(() => import("./pages/ImpactDashboard"));
 const SilentSosDemo = lazy(() => import("./pages/SilentSosDemo"));
 const CommunityReport = lazy(() => import("./pages/CommunityReport"));
+const InfoPage = lazy(() => import("./pages/InfoPage"));
 
 const App = () => (
   <ErrorBoundary>
@@ -76,6 +77,7 @@ const App = () => (
                     <Route path="/app" element={<Index />} />
                     <Route path="/admin" element={<Admin />} />
                     <Route path="/impact" element={<ImpactDashboard />} />
+                    <Route path="/info/:slug" element={<InfoPage />} />
                     <Route
                       path="/community-report"
                       element={<CommunityReport />}

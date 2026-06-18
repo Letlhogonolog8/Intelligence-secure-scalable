@@ -1,0 +1,78 @@
+<svg width="760" height="920" viewBox="0 0 760 920" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Illustration of a survivor under AEGIS-AI protection">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="760" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b1140"/>
+      <stop offset="0.55" stop-color="#140a28"/>
+      <stop offset="1" stop-color="#0a0a18"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.7" cy="0.28" r="0.6">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#7c3aed" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="figure" x1="240" y1="380" x2="540" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4c2a8f"/>
+      <stop offset="1" stop-color="#241046"/>
+    </linearGradient>
+    <linearGradient id="wrap" x1="250" y1="250" x2="520" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#3b2569"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="760" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0abfc"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="320" y1="600" x2="440" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="760" height="920" rx="36" fill="url(#bg)"/>
+  <rect width="760" height="920" rx="36" fill="url(#glow)"/>
+
+  <!-- stars -->
+  <g fill="#ffffff">
+    <circle cx="120" cy="120" r="2.2" opacity="0.7"/>
+    <circle cx="240" cy="80" r="1.6" opacity="0.5"/>
+    <circle cx="600" cy="120" r="2.6" opacity="0.8"/>
+    <circle cx="680" cy="240" r="1.8" opacity="0.6"/>
+    <circle cx="90" cy="320" r="1.6" opacity="0.5"/>
+    <circle cx="700" cy="430" r="2" opacity="0.6"/>
+    <circle cx="150" cy="520" r="1.5" opacity="0.45"/>
+    <circle cx="640" cy="620" r="1.8" opacity="0.5"/>
+    <circle cx="80" cy="700" r="2" opacity="0.55"/>
+    <circle cx="520" cy="70" r="1.4" opacity="0.45"/>
+    <circle cx="360" cy="120" r="1.6" opacity="0.4"/>
+    <circle cx="690" cy="760" r="1.6" opacity="0.5"/>
+  </g>
+
+  <!-- soft protective arc behind the figure -->
+  <path d="M150 540 A 230 230 0 0 1 610 540" stroke="url(#rim)" stroke-width="2" opacity="0.35" fill="none"/>
+  <path d="M120 560 A 260 260 0 0 1 640 560" stroke="#a855f7" stroke-width="1.5" opacity="0.18" fill="none"/>
+
+  <!-- figure: shoulders / bust -->
+  <path d="M196 920 C 196 738 270 660 380 660 C 490 660 564 738 564 920 Z" fill="url(#figure)"/>
+  <path d="M196 920 C 196 738 270 660 380 660" stroke="url(#rim)" stroke-width="3" opacity="0.55" fill="none"/>
+
+  <!-- neck -->
+  <path d="M340 612 H420 V680 C 420 706 340 706 340 680 Z" fill="url(#figure)"/>
+
+  <!-- head -->
+  <ellipse cx="380" cy="470" rx="112" ry="132" fill="url(#figure)"/>
+  <path d="M380 338 A 112 132 0 0 1 492 470" stroke="url(#rim)" stroke-width="3" opacity="0.5" fill="none"/>
+
+  <!-- head wrap -->
+  <path d="M268 452 C 262 352 318 286 380 286 C 442 286 498 352 492 452 C 470 408 446 388 412 384 C 470 360 452 322 412 318 C 360 312 300 356 290 430 C 286 446 280 452 268 452 Z" fill="url(#wrap)"/>
+  <path d="M286 430 C 300 356 360 312 412 318" stroke="#e9d5ff" stroke-width="2.5" opacity="0.4" fill="none"/>
+  <!-- wrap knot -->
+  <path d="M470 360 C 506 350 520 384 500 410 C 492 384 482 372 470 360 Z" fill="url(#wrap)"/>
+
+  <!-- protective shield emblem over the heart -->
+  <g transform="translate(380 690)">
+    <path d="M0 -52 L46 -34 V6 C46 40 24 60 0 72 C -24 60 -46 40 -46 6 V-34 Z" fill="url(#shield)" opacity="0.95"/>
+    <path d="M0 -52 L46 -34 V6 C46 40 24 60 0 72 C -24 60 -46 40 -46 6 V-34 Z" stroke="#f5f3ff" stroke-width="2" opacity="0.5" fill="none"/>
+    <path d="M-16 6 L-4 20 L20 -12" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

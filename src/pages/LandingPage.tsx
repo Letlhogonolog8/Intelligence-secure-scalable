@@ -175,20 +175,38 @@ const AI_FEATURES = [
 const FOOTER_COLUMNS = [
   {
     title: "Platform",
-    links: ["Features", "How It Works", "Mobile App", "Pricing"],
+    links: [
+      { label: "Features", slug: "features" },
+      { label: "How It Works", slug: "how-it-works" },
+      { label: "Mobile App", slug: "mobile-app" },
+      { label: "Pricing", slug: "pricing" },
+    ],
   },
   {
     title: "Resources",
-    links: ["Safety Tips", "Support Services", "Guides", "FAQ"],
+    links: [
+      { label: "Safety Tips", slug: "safety-tips" },
+      { label: "Support Services", slug: "support-services" },
+      { label: "Guides", slug: "guides" },
+      { label: "FAQ", slug: "faq" },
+    ],
   },
-  { title: "Company", links: ["About Us", "Partners", "News", "Careers"] },
+  {
+    title: "Company",
+    links: [
+      { label: "About Us", slug: "about" },
+      { label: "Partners", slug: "partners" },
+      { label: "News", slug: "news" },
+      { label: "Careers", slug: "careers" },
+    ],
+  },
   {
     title: "Legal",
     links: [
-      "Privacy Policy",
-      "Terms of Use",
-      "Data Protection",
-      "Cookie Policy",
+      { label: "Privacy Policy", slug: "privacy" },
+      { label: "Terms of Use", slug: "terms" },
+      { label: "Data Protection", slug: "data-protection" },
+      { label: "Cookie Policy", slug: "cookies" },
     ],
   },
 ];
@@ -250,6 +268,7 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [heroImgError, setHeroImgError] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -462,19 +481,34 @@ const LandingPage: React.FC = () => {
             transition={{ duration: 0.7, delay: 0.1 }}
           >
             <div className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-gradient-to-br from-violet-600/30 via-fuchsia-600/10 to-transparent blur-2xl" />
-            <div className="mx-auto flex h-full max-w-md flex-col justify-center">
-              <div className="mb-6 flex justify-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-2xl shadow-violet-700/40">
-                  <Shield className="h-12 w-12 text-white" />
-                </div>
+            <div className="relative mx-auto max-w-md lg:mr-20 lg:max-w-none">
+              {/* Hero image (SVG asset; swap /hero-survivor.svg for a photo) */}
+              <div className="overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-violet-900/40">
+                {heroImgError ? (
+                  <div className="flex aspect-[4/5] items-center justify-center bg-gradient-to-br from-violet-600/30 to-fuchsia-600/10">
+                    <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-2xl shadow-violet-700/40">
+                      <Shield className="h-12 w-12 text-white" />
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src="/hero-survivor.svg"
+                    alt="A survivor supported and protected by AEGIS-AI"
+                    className="aspect-[4/5] w-full object-cover"
+                    loading="eager"
+                    onError={() => setHeroImgError(true)}
+                  />
+                )}
               </div>
-              <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-xl">
+
+              {/* Floating feature panel — static below on mobile, overlapping on desktop */}
+              <div className="mt-4 space-y-2 rounded-3xl border border-white/10 bg-[#0c0c1c]/85 p-4 backdrop-blur-xl lg:absolute lg:top-1/2 lg:-right-16 lg:mt-0 lg:w-72 lg:-translate-y-1/2 lg:shadow-2xl lg:shadow-violet-900/40">
                 {HERO_FEATURES.map((f) => (
                   <div
                     key={f.title}
-                    className="flex items-center gap-4 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 transition-colors hover:border-violet-400/30 hover:bg-violet-500/10"
+                    className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2.5 transition-colors hover:border-violet-400/30 hover:bg-violet-500/10"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
                       <f.icon className="h-5 w-5" />
                     </div>
                     <div>
@@ -659,12 +693,12 @@ const LandingPage: React.FC = () => {
                 </h4>
                 <ul className="mt-3 space-y-2">
                   {col.links.map((link) => (
-                    <li key={link}>
+                    <li key={link.slug}>
                       <button
-                        onClick={openAuth}
+                        onClick={() => navigate(`/info/${link.slug}`)}
                         className="text-sm text-slate-400 transition-colors hover:text-violet-300"
                       >
-                        {link}
+                        {link.label}
                       </button>
                     </li>
                   ))}
