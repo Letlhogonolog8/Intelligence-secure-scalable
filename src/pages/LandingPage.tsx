@@ -379,12 +379,26 @@ const LandingPage: React.FC = () => {
       {/* ===================== HERO ===================== */}
       <section
         id="top"
-        className="relative overflow-hidden pt-28 pb-16 sm:pt-32"
+        className="relative flex min-h-[680px] items-center overflow-hidden pt-28 pb-16 sm:pt-32 lg:min-h-[760px]"
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_15%,rgba(168,85,247,0.32),transparent_45%),radial-gradient(circle_at_15%_85%,rgba(124,58,237,0.2),transparent_45%),linear-gradient(160deg,#0a0a18_0%,#140a28_55%,#0a0a18_100%)]" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.5] [background-image:radial-gradient(rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:34px_34px]" />
+        {/* Full-bleed hero photograph (subject right, dark space left) */}
+        {!heroImgError && (
+          <img
+            src="/hero.png"
+            alt="A survivor looking forward with hope, protected by AEGIS-AI"
+            className="absolute inset-0 h-full w-full object-cover object-[78%_center] lg:object-[right_center]"
+            loading="eager"
+            onError={() => setHeroImgError(true)}
+          />
+        )}
+        {/* Legibility overlays: darken the left where the text sits + base tint */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a18] via-[#0a0a18]/85 to-transparent lg:via-[#0a0a18]/70" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0a18] via-transparent to-[#0a0a18]/40" />
+        {heroImgError && (
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(168,85,247,0.32),transparent_45%),linear-gradient(160deg,#0a0a18,#140a28_55%,#0a0a18)]" />
+        )}
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
@@ -473,53 +487,30 @@ const LandingPage: React.FC = () => {
             </div>
           </motion.div>
 
-          {/* Hero visual: feature panel over a glowing shield */}
+          {/* Floating feature panel over the photograph (desktop only) */}
           <motion.div
-            className="relative"
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
+            className="hidden lg:flex lg:justify-end"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
           >
-            <div className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-gradient-to-br from-violet-600/30 via-fuchsia-600/10 to-transparent blur-2xl" />
-            <div className="relative mx-auto max-w-md lg:mr-20 lg:max-w-none">
-              {/* Hero image (SVG asset; swap /hero-survivor.svg for a photo) */}
-              <div className="overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-violet-900/40">
-                {heroImgError ? (
-                  <div className="flex aspect-[4/5] items-center justify-center bg-gradient-to-br from-violet-600/30 to-fuchsia-600/10">
-                    <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-2xl shadow-violet-700/40">
-                      <Shield className="h-12 w-12 text-white" />
-                    </div>
+            <div className="w-72 space-y-2 rounded-3xl border border-white/10 bg-[#0c0c1c]/70 p-4 shadow-2xl shadow-violet-900/40 backdrop-blur-xl">
+              {HERO_FEATURES.map((f) => (
+                <div
+                  key={f.title}
+                  className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-violet-400/30 hover:bg-violet-500/10"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                    <f.icon className="h-5 w-5" />
                   </div>
-                ) : (
-                  <img
-                    src="/hero-survivor.svg"
-                    alt="A survivor supported and protected by AEGIS-AI"
-                    className="aspect-[4/5] w-full object-cover"
-                    loading="eager"
-                    onError={() => setHeroImgError(true)}
-                  />
-                )}
-              </div>
-
-              {/* Floating feature panel — static below on mobile, overlapping on desktop */}
-              <div className="mt-4 space-y-2 rounded-3xl border border-white/10 bg-[#0c0c1c]/85 p-4 backdrop-blur-xl lg:absolute lg:top-1/2 lg:-right-16 lg:mt-0 lg:w-72 lg:-translate-y-1/2 lg:shadow-2xl lg:shadow-violet-900/40">
-                {HERO_FEATURES.map((f) => (
-                  <div
-                    key={f.title}
-                    className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2.5 transition-colors hover:border-violet-400/30 hover:bg-violet-500/10"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                      <f.icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {f.title}
-                      </p>
-                      <p className="text-xs text-slate-400">{f.desc}</p>
-                    </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {f.title}
+                    </p>
+                    <p className="text-xs text-slate-400">{f.desc}</p>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </motion.div>
         </div>
