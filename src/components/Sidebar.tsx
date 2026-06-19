@@ -234,13 +234,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 relative
             ${
               isActive
-                ? "bg-slate-800/80 text-white shadow-lg shadow-slate-900/50"
+                ? "bg-sky-500/15 text-white ring-1 ring-sky-500/25 shadow-lg shadow-sky-900/30"
                 : "text-slate-400 hover:text-white hover:bg-slate-800/40"
             }`}
           title={collapsed ? mod.label : undefined}
         >
           {isActive && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-gradient-to-b from-purple-400 to-pink-400 rounded-r-full" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-gradient-to-b from-sky-400 to-blue-500 rounded-r-full" />
           )}
           <div className="relative">
             <Icon
@@ -295,7 +295,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Logo */}
       <div className="p-4 border-b border-slate-800/50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-sky-900/40">
             <ShieldIcon className="text-white" size={22} />
           </div>
           {!collapsed && (
@@ -340,7 +340,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onChange={(e) => setSidebarSearchQuery(e.target.value)}
               onFocus={() => setShowSearch(true)}
               onBlur={() => setTimeout(() => setShowSearch(false), 100)}
-              className="w-full bg-slate-900/50 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/30 transition-all"
+              className="w-full bg-slate-900/50 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/40 transition-all"
             />
           </div>
         </div>
@@ -559,7 +559,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           type="button"
           onClick={onToggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800/40 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500/50"
+          className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800/40 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500/50"
         >
           <ChevronRightIcon
             className={`transition-transform duration-300 ${collapsed ? "" : "rotate-180"}`}

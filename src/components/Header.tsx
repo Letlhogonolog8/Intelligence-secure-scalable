@@ -655,7 +655,7 @@ const Header: React.FC<HeaderProps> = ({ activeModule, onToggleSidebar }) => {
 
         {/* User */}
         <div className="flex items-center gap-2 border-l border-slate-800 pl-2 sm:pl-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-pink-500 sm:h-8 sm:w-8">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 sm:h-8 sm:w-8">
             <span className="text-white text-xs font-bold">{userInitials}</span>
           </div>
           <div className="hidden lg:block">

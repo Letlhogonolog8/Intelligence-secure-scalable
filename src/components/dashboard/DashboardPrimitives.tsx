@@ -24,17 +24,17 @@ export const DashboardPage = ({
   accent: keyof typeof AURORA_ACCENTS;
   children: ReactNode;
 }) => (
-  <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(165deg,#0A0A1F_0%,#0D0A22_45%,#070510_100%)] px-4 py-6 text-slate-50 sm:px-6 lg:px-8">
-    {/* Aurora glow layer (per role accent) */}
+  <div className="relative min-h-screen overflow-hidden bg-[#050915] px-4 py-6 text-slate-50 sm:px-6 lg:px-8">
+    {/* Aurora glow layer (per role accent), kept subtle over the admin navy base */}
     <div
       className={cn(
-        "pointer-events-none absolute inset-0 opacity-90 blur-[2px]",
+        "pointer-events-none absolute inset-0 opacity-70 blur-[2px]",
         AURORA_ACCENTS[accent],
       )}
     />
-    {/* Fine grid texture, kept faint for breathing room */}
-    <div className="pointer-events-none absolute inset-0 opacity-[0.06] bg-[linear-gradient(90deg,rgba(255,255,255,0.9)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.9)_1px,transparent_1px)] bg-[size:148px_148px]" />
-    <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-7">
+    {/* Fine grid texture matching the admin portal */}
+    <div className="pointer-events-none absolute inset-0 opacity-[0.05] bg-[linear-gradient(rgba(148,163,184,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.5)_1px,transparent_1px)] bg-[size:32px_32px]" />
+    <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-6">
       {children}
     </div>
   </div>
@@ -53,33 +53,28 @@ export const DashboardHero = ({
   badges?: ReactNode[];
   actions?: ReactNode;
 }) => (
-  <div className="rounded-[30px] bg-gradient-to-br from-violet-500/40 via-fuchsia-500/15 to-cyan-400/40 p-px shadow-[0_30px_90px_-30px_rgba(124,58,237,0.55)]">
-    <section className="relative overflow-hidden rounded-[29px] bg-[#0B0A1A]/92 p-4 backdrop-blur-2xl sm:p-6">
-      {/* aurora glow accent */}
-      <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-gradient-to-br from-violet-500/30 via-fuchsia-500/20 to-cyan-400/20 blur-3xl" />
-      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-3">
-          <div className="inline-flex items-center rounded-full border border-violet-400/30 bg-violet-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.28em] text-violet-100">
-            {eyebrow}
-          </div>
-          <div className="space-y-3">
-            <h1 className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-3xl font-light leading-[1.08] tracking-tight text-transparent sm:text-4xl">
-              {title}
-            </h1>
-            <p className="max-w-3xl text-sm leading-relaxed text-slate-200 sm:text-[15px]">
-              {description}
-            </p>
-          </div>
-          {badges.length > 0 && (
-            <div className="hidden flex-wrap gap-2 sm:flex">{badges}</div>
-          )}
+  <header className="relative overflow-hidden rounded-3xl border border-sky-400/20 bg-slate-900/65 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sky-500/10 via-transparent to-emerald-500/10" />
+    <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-sky-200">
+          {eyebrow}
         </div>
-        {actions ? (
-          <div className="flex flex-wrap items-center gap-3">{actions}</div>
-        ) : null}
+        <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+          {title}
+        </h1>
+        <p className="max-w-3xl text-sm text-slate-300 sm:text-base">
+          {description}
+        </p>
+        {badges.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">{badges}</div>
+        )}
       </div>
-    </section>
-  </div>
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-3">{actions}</div>
+      ) : null}
+    </div>
+  </header>
 );
 
 export const HeroBadge = ({
@@ -91,7 +86,7 @@ export const HeroBadge = ({
 }) => (
   <span
     className={cn(
-      "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+      "rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]",
       className,
     )}
   >
@@ -131,7 +126,7 @@ export const MetricCard = ({
   } as const;
 
   return (
-    <Card className="group relative overflow-hidden rounded-3xl border-white/10 bg-slate-950/70 p-5 shadow-[0_20px_60px_-24px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_28px_70px_-22px_rgba(124,58,237,0.4)]">
+    <Card className="group relative overflow-hidden rounded-3xl border-white/10 bg-slate-900/50 p-5 shadow-[0_20px_60px_-24px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_28px_70px_-22px_rgba(56,189,248,0.35)]">
       <div
         className={cn(
           "absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-80",
@@ -140,7 +135,7 @@ export const MetricCard = ({
       />
       <div
         className={cn(
-          "inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+          "inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]",
           accents[accent ?? "slate"],
         )}
       >
@@ -153,11 +148,11 @@ export const MetricCard = ({
         </>
       ) : (
         <>
-          <div className="mt-4 text-4xl font-light tracking-tight text-white">
+          <div className="mt-4 text-4xl font-black tracking-tight text-white">
             {value}
           </div>
           {helper ? (
-            <div className="mt-2 text-sm font-medium text-slate-200">
+            <div className="mt-2 text-sm font-medium text-slate-400">
               {helper}
             </div>
           ) : null}
@@ -182,17 +177,17 @@ export const SectionCard = ({
 }) => (
   <Card
     className={cn(
-      "overflow-hidden rounded-3xl border-white/10 bg-slate-950/55 shadow-[0_24px_70px_-32px_rgba(0,0,0,0.85)] backdrop-blur-xl",
+      "overflow-hidden rounded-3xl border-white/10 bg-slate-900/50 shadow-[0_24px_70px_-32px_rgba(0,0,0,0.85)] backdrop-blur-md",
       className,
     )}
   >
-    <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/[0.02] px-6 py-5">
+    <div className="flex items-start justify-between gap-4 border-b border-white/5 bg-white/[0.02] px-6 py-5">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-white">
+        <h2 className="text-lg font-black tracking-tight text-white">
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 text-sm text-slate-300">{description}</p>
+          <p className="mt-1 text-sm text-slate-400">{description}</p>
         ) : null}
       </div>
       {action}
@@ -291,7 +286,7 @@ export const StatusPill = ({
   return (
     <span
       className={cn(
-        "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+        "rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]",
         tones[tone],
       )}
     >
@@ -336,14 +331,19 @@ export const StatTile = ({
   >
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
           {label}
         </p>
-        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+        <p className="mt-2 text-2xl font-black text-white">{value}</p>
         {sub ? <div className="mt-1 text-xs text-slate-400">{sub}</div> : null}
       </div>
       {icon ? (
-        <div className={cn("rounded-2xl border p-3", TILE_TONES[tone])}>
+        <div
+          className={cn(
+            "grid h-12 w-12 shrink-0 place-items-center rounded-full border-2",
+            TILE_TONES[tone],
+          )}
+        >
           {icon}
         </div>
       ) : null}
@@ -412,7 +412,7 @@ export const GlassPanel = ({
         {icon ? (
           <div
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg border",
+              "flex h-10 w-10 items-center justify-center rounded-full border-2",
               TILE_TONES[iconTone],
             )}
           >
@@ -420,7 +420,7 @@ export const GlassPanel = ({
           </div>
         ) : null}
         <div>
-          <p className="text-sm font-bold text-white">{title}</p>
+          <p className="text-sm font-black text-white">{title}</p>
           {subtitle ? (
             <p className="text-[11px] text-slate-400">{subtitle}</p>
           ) : null}
