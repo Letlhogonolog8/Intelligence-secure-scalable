@@ -147,7 +147,7 @@ export default defineConfig(({ mode }) => {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
           // Large marketing imagery (hero photo, full-res logo) loads over the
           // network rather than bloating the precache / tripping the size cap.
-          globIgnores: ["**/hero.png", "**/AEGIS LOGO.png"],
+          globIgnores: ["**/hero.png"],
           runtimeCaching: [
             {
               urlPattern:
