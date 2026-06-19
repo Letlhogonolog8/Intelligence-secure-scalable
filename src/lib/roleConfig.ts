@@ -76,7 +76,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
       "policy",
       "governance",
     ],
-    defaultModule: "dashboard",
+    defaultModule: "admin_console",
     dashboardType: "admin_dashboard",
     color: "text-red-500",
     backgroundColor: "bg-red-500/10",

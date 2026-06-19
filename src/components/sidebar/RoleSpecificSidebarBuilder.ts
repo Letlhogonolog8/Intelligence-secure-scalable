@@ -215,36 +215,34 @@ const ANALYST_SIDEBAR: RoleSpecificSidebarConfig = {
 
 const ADMIN_SIDEBAR: RoleSpecificSidebarConfig = {
   role: "admin",
+  // The Admin Portal (admin_console) is the hub — it now contains the full
+  // 10-section admin experience. The remaining standalone modules are kept in a
+  // collapsed secondary group so nothing is lost, but the sidebar stays clean.
   sections: [
     {
       id: "administration",
-      title: "System Administration",
-      modules: ["dashboard", "admin_console"],
+      title: "Administration",
+      modules: ["admin_console"],
       collapsible: false,
     },
     {
-      id: "operations",
-      title: "Platform Operations",
-      modules: ["command_center", "reporting"],
-      collapsible: true,
-      defaultExpanded: true,
-    },
-    {
-      id: "analytics",
-      title: "Analytics & Intelligence",
-      modules: ["prediction", "policy", "justice"],
-      collapsible: true,
-      defaultExpanded: false,
-    },
-    {
-      id: "governance",
-      title: "Governance & Compliance",
-      modules: ["governance", "survivor_support"],
+      id: "platform",
+      title: "Platform Modules",
+      modules: [
+        "dashboard",
+        "command_center",
+        "reporting",
+        "prediction",
+        "justice",
+        "policy",
+        "governance",
+        "survivor_support",
+      ],
       collapsible: true,
       defaultExpanded: false,
     },
   ],
-  quickActions: ["admin_console", "reporting", "command_center"],
+  quickActions: ["admin_console"],
   allowSearch: true,
   allowFavorites: true,
   allowRecents: true,
