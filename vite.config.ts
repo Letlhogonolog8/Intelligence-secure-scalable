@@ -2,15 +2,30 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
+import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const isProd = mode === "production";
   // Dev-only API proxy: the browser calls same-origin "/api" (no CORS), and the
   // Vite dev server forwards to the real backend server-side. Set the target
   // with VITE_DEV_API_PROXY in .env (defaults to a local backend on :3001).
   const apiProxyTarget = env.VITE_DEV_API_PROXY || "http://localhost:3001";
 
   return {
+    // Pin the build flavor to Vite's mode, not the ambient NODE_ENV. Without
+    // this, a shell with NODE_ENV=development causes `vite build` to (a) bundle
+    // the *development* build of React (≈3× larger, slower) and (b) keep
+    // `import.meta.env.DEV` truthy — which ships the dev-only axe-core a11y
+    // engine (~1.2 MB) to production. Pinning these makes the production
+    // output deterministic regardless of the builder's environment.
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(
+        isProd ? "production" : "development",
+      ),
+      "import.meta.env.DEV": JSON.stringify(!isProd),
+      "import.meta.env.PROD": JSON.stringify(isProd),
+    },
     server: {
       host: "::",
       port: 8080,
@@ -121,6 +136,14 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      ...(process.env.ANALYZE
+        ? [
+            visualizer({
+              filename: "dist/stats.json",
+              template: "raw-data",
+            }),
+          ]
+        : []),
       VitePWA({
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico"],
