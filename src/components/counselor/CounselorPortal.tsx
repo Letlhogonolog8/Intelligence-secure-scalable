@@ -74,7 +74,7 @@ import { useAuditLogs, useCaseReports, useUserProfile } from "@/data/aegisData";
 import { useCaseCategories } from "@/data/analyticsData";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
-import { ALLOW_MOCK, NO_DATA } from "@/lib/mockData";
+import { ALLOW_MOCK, NO_DATA, gateKpis } from "@/lib/mockData";
 
 const nf = new Intl.NumberFormat("en-US");
 const fmtDateTime = (t: string) => {
@@ -2935,7 +2935,7 @@ const SurvivorsSection = () => {
 const SessionsSection = () => (
   <>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_SESSION_KPIS.map((k) => (
+      {gateKpis(MOCK_SESSION_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -3144,7 +3144,7 @@ const FollowupsSection = () => (
     <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
       <div className="flex flex-col gap-6">
         <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {MOCK_FOLLOWUP_KPIS.map((k) => (
+          {gateKpis(MOCK_FOLLOWUP_KPIS).map((k) => (
             <KpiCard
               key={k.label}
               label={k.label}
@@ -3371,7 +3371,7 @@ const MessagesSection = () => {
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_MSG_KPIS.map((k) => (
+        {gateKpis(MOCK_MSG_KPIS).map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
@@ -3702,7 +3702,7 @@ const ResourcesSection = () => {
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_RES_KPIS.map((k) => (
+        {gateKpis(MOCK_RES_KPIS).map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
@@ -3889,7 +3889,7 @@ const ResourcesSection = () => {
 const ReportsSection = () => (
   <>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_REPORT_KPIS.map((k) => (
+      {gateKpis(MOCK_REPORT_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}

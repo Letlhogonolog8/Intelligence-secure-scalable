@@ -78,7 +78,7 @@ import { useCaseReports, useShelters, useUserProfile } from "@/data/aegisData";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
-import { ALLOW_MOCK, NO_DATA } from "@/lib/mockData";
+import { ALLOW_MOCK, NO_DATA, gateKpis } from "@/lib/mockData";
 
 const nf = new Intl.NumberFormat("en-US");
 const fmtRelative = (t: string) => {
@@ -2556,7 +2556,7 @@ const OverviewSection = ({
       }}
     />
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_CASE_KPIS.map((k) => (
+      {gateKpis(MOCK_CASE_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -2887,7 +2887,7 @@ const SurvivorsSection = () => (
     <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
       <div className="flex flex-col gap-6">
         <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {MOCK_SURVIVOR_KPIS.map((k) => (
+          {gateKpis(MOCK_SURVIVOR_KPIS).map((k) => (
             <KpiCard
               key={k.label}
               label={k.label}
@@ -3086,7 +3086,7 @@ const SurvivorsSection = () => (
 const ReferralsSection = () => (
   <>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_REFERRAL_KPIS.map((k) => (
+      {gateKpis(MOCK_REFERRAL_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -3257,7 +3257,7 @@ const FollowupsSection = () => (
   <>
     <SectionTitle meta={SECTION_META.followups} />
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_FOLLOWUP_KPIS.map((k) => (
+      {gateKpis(MOCK_FOLLOWUP_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -3417,7 +3417,7 @@ const FollowupsSection = () => (
 const CounselingSection = () => (
   <>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_COUNSELING_KPIS.map((k) => (
+      {gateKpis(MOCK_COUNSELING_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -3837,7 +3837,7 @@ const LegalAidSection = () => (
   <>
     <SectionTitle meta={SECTION_META.legalaid} />
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_LEGAL_KPIS.map((k) => (
+      {gateKpis(MOCK_LEGAL_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -3994,7 +3994,7 @@ const LegalAidSection = () => (
 const MedicalSection = () => (
   <>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_MEDICAL_KPIS.map((k) => (
+      {gateKpis(MOCK_MEDICAL_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -4171,7 +4171,7 @@ const AnalyticsSection = () => (
   <>
     <SectionTitle meta={SECTION_META.analytics} />
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_ANALYTICS_KPIS.map((k) => (
+      {gateKpis(MOCK_ANALYTICS_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}
@@ -4386,7 +4386,7 @@ const ReportsSection = () => (
       </button>
     </div>
     <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_REPORT_KPIS.map((k) => (
+      {gateKpis(MOCK_REPORT_KPIS).map((k) => (
         <KpiCard
           key={k.label}
           label={k.label}

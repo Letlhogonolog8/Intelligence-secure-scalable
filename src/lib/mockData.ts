@@ -49,3 +49,20 @@ export function mockValue(
 export function sample<T>(rows: T[]): T[] {
   return ALLOW_MOCK ? rows : [];
 }
+
+/**
+ * Wrap a `MOCK_*` *KPI strip* constant that has no live data source yet so it
+ * keeps its sample values in dev/demo (ALLOW_MOCK) but blanks each value to
+ * `NO_DATA` in production rather than presenting fabricated metrics. The delta
+ * is dropped too so no fake trend arrow appears beside the placeholder. KPI
+ * strips that DO have a live source should map their values individually
+ * instead (see the `OverviewSection` pattern).
+ */
+export function gateKpis<T extends { value: string }>(
+  mock: readonly T[],
+): readonly T[] {
+  if (ALLOW_MOCK) return mock;
+  return mock.map(
+    (k) => ({ ...k, value: NO_DATA, delta: undefined }) as unknown as T,
+  );
+}
