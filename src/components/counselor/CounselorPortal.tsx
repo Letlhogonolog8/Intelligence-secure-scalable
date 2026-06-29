@@ -2631,229 +2631,304 @@ const CasesSection = () => {
 
 /* =============================== Survivors =============================== */
 
-const SurvivorsSection = () => (
-  <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
-    <div className="flex flex-col gap-6">
-      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_SURVIVOR_KPIS.map((k) => (
-          <KpiCard
-            key={k.label}
-            label={k.label}
-            value={k.value}
-            icon={k.icon}
-            tone={k.tone}
-            delta={k.delta}
-          />
-        ))}
-      </section>
-      <Panel
-        title="Survivor Management"
-        bodyClassName="p-0"
-        action={
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-              <Input
-                placeholder="Search survivors…"
-                className="h-8 w-56 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
-              />
+const SurvivorsSection = () => {
+  const { data: cases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+
+  const survivorKpis = MOCK_SURVIVOR_KPIS.map((k) => {
+    if (k.label === "Active Survivors" && cases.length)
+      return {
+        ...k,
+        value: nf.format(
+          cases.filter(
+            (c) =>
+              !["closed", "resolved"].includes((c.status || "").toLowerCase()),
+          ).length,
+        ),
+        delta: undefined,
+      };
+    if (k.label === "High-Risk Survivors" && cases.length)
+      return {
+        ...k,
+        value: nf.format(
+          cases.filter((c) =>
+            ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+          ).length,
+        ),
+        delta: undefined,
+      };
+    if (k.label === "New Intakes" && cases.length)
+      return {
+        ...k,
+        value: nf.format(
+          cases.filter((c) => {
+            const t = new Date(c.createdAt).getTime();
+            return !Number.isNaN(t) && Date.now() - t <= 7 * 864e5;
+          }).length,
+        ),
+        delta: undefined,
+      };
+    return ALLOW_MOCK ? k : { ...k, value: NO_DATA, delta: undefined };
+  });
+
+  const survivorRows = cases.length
+    ? cases.slice(0, 8).map((c) => ({
+        name: "Protected",
+        id: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+        type: c.description
+          ? c.description.length > 28
+            ? `${c.description.slice(0, 28)}…`
+            : c.description
+          : "GBV Case",
+        risk: titleCase(c.riskLevel),
+        counselor: "—",
+        ngo: "—",
+        next: "—",
+      }))
+    : ALLOW_MOCK
+      ? MOCK_SURVIVORS
+      : [];
+  const totalSurvivors = cases.length
+    ? cases.filter(
+        (c) => !["closed", "resolved"].includes((c.status || "").toLowerCase()),
+      ).length
+    : ALLOW_MOCK
+      ? 68
+      : 0;
+
+  return (
+    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="flex flex-col gap-6">
+        <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {survivorKpis.map((k) => (
+            <KpiCard
+              key={k.label}
+              label={k.label}
+              value={k.value}
+              icon={k.icon}
+              tone={k.tone}
+              delta={k.delta}
+            />
+          ))}
+        </section>
+        <Panel
+          title="Survivor Management"
+          bodyClassName="p-0"
+          action={
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+                <Input
+                  placeholder="Search survivors…"
+                  className="h-8 w-56 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
+                />
+              </div>
+              <SelectChip label="Filters" />
             </div>
-            <SelectChip label="Filters" />
-          </div>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-4 py-3">Survivor Alias</th>
-                <th className="px-4 py-3">Case Type</th>
-                <th className="px-4 py-3">Risk</th>
-                <th className="px-4 py-3">Counselor</th>
-                <th className="px-4 py-3">Assigned NGO</th>
-                <th className="px-4 py-3">Next Session</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_SURVIVORS.map((s) => (
-                <tr key={s.id} className="hover:bg-white/[0.02]">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={s.name} />
-                      <div>
-                        <p className="font-bold text-white">{s.name}</p>
-                        <p className="font-mono text-[10px] text-slate-500">
-                          {s.id}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">{s.type}</td>
-                  <td className="px-4 py-3">
-                    <Pill tone={statusTone(s.risk)}>{s.risk}</Pill>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-300">
-                    {s.counselor}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-300">{s.ngo}</td>
-                  <td className="px-4 py-3 text-slate-400">{s.next}</td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Active
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
-                    >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-4 py-3">Survivor Alias</th>
+                  <th className="px-4 py-3">Case Type</th>
+                  <th className="px-4 py-3">Risk</th>
+                  <th className="px-4 py-3">Counselor</th>
+                  <th className="px-4 py-3">Assigned NGO</th>
+                  <th className="px-4 py-3">Next Session</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-          <span className="text-[11px] text-slate-500">
-            Showing 1 to 8 of 68 survivors
-          </span>
-          <Pagination pages={["1", "2", "3", "4", "5", "…", "9"]} />
-        </div>
-      </Panel>
-      <QuickActions
-        items={[
-          { label: "Add Survivor Note", icon: Pencil },
-          { label: "Create Safety Plan", icon: ShieldCheck, tone: "emerald" },
-          { label: "Schedule Session", icon: Calendar, tone: "sky" },
-          { label: "Refer to Shelter", icon: Home },
-          { label: "Message Survivor", icon: MoreHorizontal },
-          { label: "Export List", icon: Download },
-        ]}
-      />
-    </div>
-    <div className="flex flex-col gap-6">
-      <Panel title="Survivor Snapshot" action={<SelectChip label="Aisha K." />}>
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-sm font-black text-white">
-            AK
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {survivorRows.map((s) => (
+                  <tr key={s.id} className="hover:bg-white/[0.02]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={s.name} />
+                        <div>
+                          <p className="font-bold text-white">{s.name}</p>
+                          <p className="font-mono text-[10px] text-slate-500">
+                            {s.id}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-300">{s.type}</td>
+                    <td className="px-4 py-3">
+                      <Pill tone={statusTone(s.risk)}>{s.risk}</Pill>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-300">
+                      {s.counselor}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-300">
+                      {s.ngo}
+                    </td>
+                    <td className="px-4 py-3 text-slate-400">{s.next}</td>
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        Active
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-black text-white">Aisha K.</p>
-            <p className="font-mono text-[10px] text-slate-500">
-              AEG-2026-1187
+          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+            <span className="text-[11px] text-slate-500">
+              Showing {survivorRows.length ? 1 : 0} to {survivorRows.length} of{" "}
+              {nf.format(totalSurvivors)} survivors
+            </span>
+            <Pagination pages={["1", "2", "3", "4", "5", "…", "9"]} />
+          </div>
+        </Panel>
+        <QuickActions
+          items={[
+            { label: "Add Survivor Note", icon: Pencil },
+            { label: "Create Safety Plan", icon: ShieldCheck, tone: "emerald" },
+            { label: "Schedule Session", icon: Calendar, tone: "sky" },
+            { label: "Refer to Shelter", icon: Home },
+            { label: "Message Survivor", icon: MoreHorizontal },
+            { label: "Export List", icon: Download },
+          ]}
+        />
+      </div>
+      <div className="flex flex-col gap-6">
+        <Panel
+          title="Survivor Snapshot"
+          action={<SelectChip label="Aisha K." />}
+        >
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-sm font-black text-white">
+              AK
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-white">Aisha K.</p>
+              <p className="font-mono text-[10px] text-slate-500">
+                AEG-2026-1187
+              </p>
+              <p className="text-[10px] text-slate-500">Female · 29 years</p>
+            </div>
+            <Pill tone="rose">Critical</Pill>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-[11px]">
+            <div>
+              <p className="text-slate-500">Demographics</p>
+              <p className="text-slate-300">Johannesburg, GP</p>
+              <p className="text-slate-300">Born May 12, 1995</p>
+              <p className="text-slate-300">English, Zulu</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Current Safety Level</p>
+              <p className="mt-1 text-2xl font-black text-rose-400">20%</p>
+              <p className="text-rose-400">Unsafe</p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-[11px] text-slate-500">
+              Support Services Connected
             </p>
-            <p className="text-[10px] text-slate-500">Female · 29 years</p>
-          </div>
-          <Pill tone="rose">Critical</Pill>
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-[11px]">
-          <div>
-            <p className="text-slate-500">Demographics</p>
-            <p className="text-slate-300">Johannesburg, GP</p>
-            <p className="text-slate-300">Born May 12, 1995</p>
-            <p className="text-slate-300">English, Zulu</p>
-          </div>
-          <div>
-            <p className="text-slate-500">Current Safety Level</p>
-            <p className="mt-1 text-2xl font-black text-rose-400">20%</p>
-            <p className="text-rose-400">Unsafe</p>
-          </div>
-        </div>
-        <div className="mt-4">
-          <p className="text-[11px] text-slate-500">
-            Support Services Connected
-          </p>
-          <div className="mt-2 space-y-1.5">
-            {[
-              ["Individual Counseling", true],
-              ["Safety Planning", true],
-              ["Legal Support", true],
-              ["Financial Assistance", false],
-            ].map(([l, on]) => (
-              <div
-                key={l as string}
-                className="flex items-center gap-2 text-[11px]"
-              >
-                {on ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                ) : (
-                  <span className="h-3.5 w-3.5 rounded-full border border-slate-600" />
-                )}
-                <span className={on ? "text-slate-300" : "text-slate-500"}>
-                  {l}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
-      <Panel
-        title="Wellness & Safety Trends"
-        action={<SelectChip label="Last 7 Days" />}
-      >
-        <div className="grid grid-cols-2 gap-3">
-          <Donut
-            data={MOCK_WELLNESS_TRENDS}
-            centerValue="68"
-            centerLabel="Total"
-          />
-          <div className="space-y-1.5 self-center">
-            {MOCK_WELLNESS_TRENDS.map((w) => (
-              <div
-                key={w.name}
-                className="flex items-center justify-between text-[11px]"
-              >
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: w.color }}
-                  />
-                  {w.name}
-                </span>
-                <span className="font-bold text-white">
-                  {w.value} ({w.pct})
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
-      <Panel
-        title="Recent Survivor Activity"
-        action={<LinkChip label="View all" />}
-      >
-        <div className="space-y-2.5">
-          {MOCK_SURVIVOR_ACTIVITY.map((a, i) => {
-            const Icon = a.icon;
-            return (
-              <div key={i} className="flex items-start gap-2.5">
-                <span
-                  className={cn(
-                    "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border",
-                    ICON_TONES[a.tone],
-                  )}
+            <div className="mt-2 space-y-1.5">
+              {[
+                ["Individual Counseling", true],
+                ["Safety Planning", true],
+                ["Legal Support", true],
+                ["Financial Assistance", false],
+              ].map(([l, on]) => (
+                <div
+                  key={l as string}
+                  className="flex items-center gap-2 text-[11px]"
                 >
-                  <Icon className="h-3 w-3" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-bold text-white">
-                    {a.title}
-                  </p>
-                  <p className="text-[10px] text-slate-500">{a.time}</p>
+                  {on ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <span className="h-3.5 w-3.5 rounded-full border border-slate-600" />
+                  )}
+                  <span className={on ? "text-slate-300" : "text-slate-500"}>
+                    {l}
+                  </span>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </Panel>
-    </div>
-  </section>
-);
+              ))}
+            </div>
+          </div>
+        </Panel>
+        <Panel
+          title="Wellness & Safety Trends"
+          action={<SelectChip label="Last 7 Days" />}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <Donut
+              data={MOCK_WELLNESS_TRENDS}
+              centerValue="68"
+              centerLabel="Total"
+            />
+            <div className="space-y-1.5 self-center">
+              {MOCK_WELLNESS_TRENDS.map((w) => (
+                <div
+                  key={w.name}
+                  className="flex items-center justify-between text-[11px]"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: w.color }}
+                    />
+                    {w.name}
+                  </span>
+                  <span className="font-bold text-white">
+                    {w.value} ({w.pct})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+        <Panel
+          title="Recent Survivor Activity"
+          action={<LinkChip label="View all" />}
+        >
+          <div className="space-y-2.5">
+            {MOCK_SURVIVOR_ACTIVITY.map((a, i) => {
+              const Icon = a.icon;
+              return (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span
+                    className={cn(
+                      "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border",
+                      ICON_TONES[a.tone],
+                    )}
+                  >
+                    <Icon className="h-3 w-3" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-bold text-white">
+                      {a.title}
+                    </p>
+                    <p className="text-[10px] text-slate-500">{a.time}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      </div>
+    </section>
+  );
+};
 
 /* =============================== Sessions =============================== */
 
