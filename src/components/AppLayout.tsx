@@ -30,22 +30,6 @@ const PolicySimulation = lazy(
 const EthicalGovernance = lazy(
   () => import("@/components/governance/EthicalGovernance"),
 );
-const SurvivorDashboard = lazy(
-  () => import("@/components/dashboard/SurvivorDashboard"),
-);
-const CounselorDashboard = lazy(
-  () => import("@/components/dashboard/CounselorDashboard"),
-);
-const AdminDashboard = lazy(
-  () => import("@/components/dashboard/AdminDashboard"),
-);
-const NgoDashboard = lazy(() => import("@/components/dashboard/NgoDashboard"));
-const PoliceDashboard = lazy(
-  () => import("@/components/dashboard/PoliceDashboard"),
-);
-const AnalystDashboard = lazy(
-  () => import("@/components/dashboard/AnalystDashboard"),
-);
 const CHWDashboard = lazy(() => import("@/components/dashboard/CHWDashboard"));
 const PersonalDashboard = lazy(
   () => import("@/components/survivor/PersonalDashboard"),
@@ -64,20 +48,6 @@ const PolicePortal = lazy(() => import("@/components/police/PolicePortal"));
 const CounselorPortal = lazy(
   () => import("@/components/counselor/CounselorPortal"),
 );
-
-const POLICE_PORTAL_MODULES: ModuleType[] = [
-  "dashboard",
-  "police_queue",
-  "police_incidents",
-  "justice",
-  "command_center",
-  "police_evidence",
-  "secure_messages",
-  "police_analytics",
-  "reporting",
-  "police_officers",
-  "governance",
-];
 
 const AppLayout: React.FC = () => {
   const moduleIds = useMemo<ModuleType[]>(() => MODULE_LIST, []);
@@ -155,36 +125,13 @@ const AppLayout: React.FC = () => {
   }, [mobileSidebarOpen, setMobileSidebarOpen]);
 
   const renderModule = useMemo(() => {
-    if (role === "police" && POLICE_PORTAL_MODULES.includes(activeModule)) {
-      return <PoliceDashboard />;
-    }
-
+    // Only the CHW role still reaches this shared shell; every other
+    // professional role early-returns to its dedicated full-screen Portal
+    // below, and survivors are redirected to the mobile app.
     if (activeModule === "dashboard") {
-      switch (roleDefinition?.dashboardType) {
-        case "survivor_dashboard":
-          return <SurvivorDashboard />;
-        case "counselor_dashboard":
-          return <CounselorDashboard />;
-        case "ngo_dashboard":
-          return <NgoDashboard />;
-        case "police_dashboard":
-          return <PoliceDashboard />;
-        case "analyst_dashboard":
-          return <AnalystDashboard />;
-        case "chw_dashboard":
-          return <CHWDashboard />;
-        case "admin_dashboard":
-        default:
-          return <AdminDashboard />;
-      }
+      return <CHWDashboard />;
     }
     switch (activeModule) {
-      case "police_queue":
-      case "police_incidents":
-      case "police_evidence":
-      case "police_analytics":
-      case "police_officers":
-        return <PoliceDashboard />;
       case "personal_dashboard":
         return <PersonalDashboard />;
       case "safety_plan":
@@ -213,7 +160,7 @@ const AppLayout: React.FC = () => {
       default:
         return <CommandCenter />;
     }
-  }, [activeModule, role, roleDefinition?.dashboardType]);
+  }, [activeModule]);
 
   if (profileLoading) {
     return (
