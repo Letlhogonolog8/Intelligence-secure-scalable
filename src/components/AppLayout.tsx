@@ -57,6 +57,13 @@ const ReportingCenter = lazy(
   () => import("@/components/reporting/ReportingCenter"),
 );
 const AdminConsole = lazy(() => import("@/components/admin/AdminConsole"));
+const AnalystPortal = lazy(() => import("@/components/analyst/AnalystPortal"));
+const AdminPortal = lazy(() => import("@/components/admin/AdminPortal"));
+const NgoPortal = lazy(() => import("@/components/ngo/NgoPortal"));
+const PolicePortal = lazy(() => import("@/components/police/PolicePortal"));
+const CounselorPortal = lazy(
+  () => import("@/components/counselor/CounselorPortal"),
+);
 
 const POLICE_PORTAL_MODULES: ModuleType[] = [
   "dashboard",
@@ -248,6 +255,52 @@ const AppLayout: React.FC = () => {
   // app (more private, with quick-exit and offline SOS), so route them there.
   if (role === "survivor") {
     return <SurvivorAppRedirect />;
+  }
+
+  // Analysts get a dedicated full-screen intelligence portal with its own
+  // sidebar/topbar, so it bypasses the shared shell entirely.
+  if (role === "analyst") {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#070b18]" />}>
+        <AnalystPortal />
+      </Suspense>
+    );
+  }
+
+  // Admins get the dedicated full-screen Admin Portal (own sidebar/topbar).
+  if (role === "admin") {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#070b18]" />}>
+        <AdminPortal />
+      </Suspense>
+    );
+  }
+
+  // NGO partners get the dedicated full-screen NGO Portal.
+  if (role === "ngo") {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#070b18]" />}>
+        <NgoPortal />
+      </Suspense>
+    );
+  }
+
+  // Police get the dedicated full-screen Police Response Portal.
+  if (role === "police") {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#070b18]" />}>
+        <PolicePortal />
+      </Suspense>
+    );
+  }
+
+  // Counselors get the dedicated full-screen Counselor Portal.
+  if (role === "counselor") {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#070b18]" />}>
+        <CounselorPortal />
+      </Suspense>
+    );
   }
 
   return (

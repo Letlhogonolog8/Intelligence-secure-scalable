@@ -7,6 +7,7 @@ import { Screen, Muted, Body } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
+import { useRealtimeSync } from "@/lib/realtime";
 import type { CaseReportRow } from "@/shared/types";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -115,6 +116,12 @@ export default function CaseStatus() {
         .order("created_at", { ascending: false });
       return (data as CaseReportRow[]) ?? [];
     },
+  });
+
+  // Live updates: when a responder changes this survivor's case on the web
+  // portal, the row change streams in and the list refetches automatically.
+  useRealtimeSync("case_reports", ["my-cases", user?.id], {
+    enabled: Boolean(user?.id),
   });
 
   return (

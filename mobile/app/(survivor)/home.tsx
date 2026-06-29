@@ -9,6 +9,7 @@ import { Screen, Muted, Body } from "@/components/ui";
 import { Icon, type IconName } from "@/components/Icon";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
+import { useRealtimeSync } from "@/lib/realtime";
 import { colors, font, gradients, radius, spacing, TOUCH_MIN } from "@/theme";
 
 interface RecentEscalation {
@@ -88,6 +89,15 @@ export default function Home() {
         .limit(1);
       return (data as ActiveCase[] | null)?.[0] ?? null;
     },
+  });
+
+  // Live updates from the shared backend: an SOS escalation status change or a
+  // new/updated case written on the web portal refreshes the home cards at once.
+  useRealtimeSync("escalation_events", ["recent-escalations", user?.id], {
+    enabled: Boolean(user?.id),
+  });
+  useRealtimeSync("case_reports", ["home-active-case", user?.id], {
+    enabled: Boolean(user?.id),
   });
 
   const name = profile?.full_name?.trim();

@@ -196,6 +196,101 @@ export interface DeletionRequest {
   reason: string;
 }
 
+export interface CaseReport {
+  id: string;
+  status: string;
+  priority: string;
+  riskLevel: string;
+  source: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface Shelter {
+  id: string;
+  name: string;
+  phone: string;
+  location: string;
+  region: string;
+  lat: number | null;
+  lng: number | null;
+  available247: boolean;
+  languages: string[];
+}
+
+export interface EscalationEvent {
+  id: string;
+  caseId: string;
+  userId: string;
+  escalationType: string;
+  severity: string;
+  reason: string;
+  status: string;
+  assignedTo: string;
+  lat: number | null;
+  lng: number | null;
+  triggeredAt: string;
+}
+
+export interface PlatformService {
+  name: string;
+  description: string;
+  icon: string;
+  status: string;
+  uptime: number;
+}
+
+export interface CommunicationGateway {
+  name: string;
+  description: string;
+  icon: string;
+  status: string;
+  latencyMs: number;
+  messages24h: number;
+}
+
+export interface PartnerIntegration {
+  name: string;
+  description: string;
+  status: string;
+  lastSyncAt: string;
+  records: number;
+}
+
+export interface ScheduledJob {
+  name: string;
+  jobType: string;
+  frequency: string;
+  nextRunAt: string;
+  lastRunAt: string;
+  status: string;
+}
+
+export interface StorageMetric {
+  label: string;
+  usedBytes: number;
+  totalBytes: number;
+}
+
+export interface ComplianceStandard {
+  name: string;
+  description: string;
+  score: number;
+  status: string;
+  color: string;
+}
+
+export interface ConsentMetric {
+  name: string;
+  value: number;
+  color: string;
+}
+
+export interface ConsentCategory {
+  name: string;
+  value: number;
+}
+
 export interface SurvivorProfile {
   id: string;
   userId: string;
@@ -233,6 +328,12 @@ export interface UserProfile {
   organizationId?: string | null;
   approvalStatus?: string | null;
   mfaEnabled?: boolean;
+  email?: string;
+  username?: string;
+  organizationName?: string;
+  jobTitle?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface JusticeConviction {
@@ -800,6 +901,16 @@ const mapDeletionRequest = (row: Record<string, unknown>): DeletionRequest => ({
   reason: toString(row.reason),
 });
 
+const mapCaseReport = (row: Record<string, unknown>): CaseReport => ({
+  id: toString(row.id),
+  status: toString(row.status),
+  priority: toString(row.priority),
+  riskLevel: toString(row.risk_level ?? row.riskLevel),
+  source: toString(row.source),
+  description: toString(row.description),
+  createdAt: toString(row.created_at ?? row.createdAt),
+});
+
 const mapSurvivorProfile = (row: Record<string, unknown>): SurvivorProfile => ({
   id: toString(row.id),
   userId: toString(row.user_id ?? row.userId),
@@ -859,6 +970,13 @@ const mapUserProfile = (row: Record<string, unknown>): UserProfile => ({
   approvalStatus:
     toString(row.approval_status ?? row.approvalStatus, "") || null,
   mfaEnabled: Boolean(row.mfa_enabled ?? row.mfaEnabled),
+  email: toString(row.email, "") || undefined,
+  username: toString(row.username, "") || undefined,
+  organizationName:
+    toString(row.organization_name ?? row.organizationName, "") || undefined,
+  jobTitle: toString(row.job_title ?? row.jobTitle, "") || undefined,
+  createdAt: toString(row.created_at ?? row.createdAt, "") || undefined,
+  updatedAt: toString(row.updated_at ?? row.updatedAt, "") || undefined,
 });
 
 const mapJusticeConviction = (
@@ -1510,6 +1628,25 @@ const fetchDeletionRequests = async (options?: FetchOptions) => {
   );
 };
 
+const fetchCaseReports = async (options?: FetchOptions) => {
+  if (!hasSupabase) return [] as CaseReport[];
+  const query = applyPagination(
+    supabase
+      .from("case_reports")
+      .select("id,status,priority,risk_level,source,description,created_at")
+      .order("created_at", { ascending: false }),
+    options,
+  );
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error)) return [] as CaseReport[];
+    throw error;
+  }
+  return (data ?? []).map((row) =>
+    mapCaseReport(row as Record<string, unknown>),
+  );
+};
+
 const fetchAdminDashboardConfig =
   async (): Promise<AdminDashboardConfigResponse> => {
     const fallbackConfig: AdminDashboardConfigResponse = {
@@ -1621,7 +1758,7 @@ export const fetchUserProfile = async (userId: string) => {
   const { data, error } = await supabase
     .from("user_profiles")
     .select(
-      "id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled",
+      "id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled,email,created_at,updated_at",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -1639,7 +1776,7 @@ const fetchUserProfiles = async (
   let query = supabase
     .from("user_profiles")
     .select(
-      "id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled,created_at",
+      "id,role,full_name,avatar_url,is_active,organization_id,approval_status,mfa_enabled,email,created_at,updated_at",
     );
 
   if (options?.role) {
@@ -2220,6 +2357,230 @@ export const useDeletionRequests = (options?: ListQueryOptions) =>
     { ...options, queryKey: [options?.limit, options?.offset] },
   );
 
+export const useCaseReports = (options?: ListQueryOptions) =>
+  useRealtimeQuery(
+    "caseReports",
+    "case_reports",
+    () => fetchCaseReports(options),
+    { ...options, queryKey: [options?.limit, options?.offset] },
+  );
+
+const fetchShelters = async (options?: FetchOptions) => {
+  if (!hasSupabase) return [] as Shelter[];
+  const query = applyPagination(
+    supabase
+      .from("shelters")
+      .select(
+        "id,name,phone,location,region,lat,lng,available_24_7,languages_spoken",
+      )
+      .order("name", { ascending: true }),
+    options,
+  );
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error)) return [] as Shelter[];
+    throw error;
+  }
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: toString(r.id),
+      name: toString(r.name),
+      phone: toString(r.phone),
+      location: toString(r.location),
+      region: toString(r.region),
+      lat: typeof r.lat === "number" ? r.lat : null,
+      lng: typeof r.lng === "number" ? r.lng : null,
+      available247: Boolean(r.available_24_7),
+      languages: Array.isArray(r.languages_spoken)
+        ? (r.languages_spoken as string[])
+        : [],
+    } as Shelter;
+  });
+};
+
+export const useShelters = (options?: ListQueryOptions) =>
+  useRealtimeQuery("shelters", "shelters", () => fetchShelters(options), {
+    ...options,
+    queryKey: [options?.limit, options?.offset],
+  });
+
+const fetchEscalationEvents = async (options?: FetchOptions) => {
+  if (!hasSupabase) return [] as EscalationEvent[];
+  const query = applyPagination(
+    supabase
+      .from("escalation_events")
+      .select(
+        "id,case_id,user_id,escalation_type,severity,reason,status,acknowledged_by,location,triggered_at",
+      )
+      .order("triggered_at", { ascending: false }),
+    options,
+  );
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error)) return [] as EscalationEvent[];
+    throw error;
+  }
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    const loc = (r.location ?? {}) as { lat?: number; lng?: number };
+    return {
+      id: toString(r.id),
+      caseId: toString(r.case_id ?? r.caseId),
+      userId: toString(r.user_id ?? r.userId),
+      escalationType: toString(r.escalation_type ?? r.escalationType),
+      severity: toString(r.severity),
+      reason: toString(r.reason),
+      status: toString(r.status),
+      assignedTo: toString(r.assigned_to ?? r.acknowledged_by ?? r.assignedTo),
+      lat: typeof loc.lat === "number" ? loc.lat : null,
+      lng: typeof loc.lng === "number" ? loc.lng : null,
+      triggeredAt: toString(r.triggered_at ?? r.triggeredAt),
+    } as EscalationEvent;
+  });
+};
+
+export const useEscalationEvents = (options?: ListQueryOptions) =>
+  useRealtimeQuery(
+    "escalationEvents",
+    "escalation_events",
+    () => fetchEscalationEvents(options),
+    { ...options, queryKey: [options?.limit, options?.offset] },
+  );
+
+/* ---- Admin operational sources (20260620120000_admin_operational_sources) ---- */
+
+const fetchOrdered = async <T>(
+  table: string,
+  mapper: (row: Record<string, unknown>) => T,
+): Promise<T[]> => {
+  if (!hasSupabase) return [];
+  const { data, error } = await supabase
+    .from(table)
+    .select("*")
+    .order("sort", { ascending: true });
+  if (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map((row) => mapper(row as Record<string, unknown>));
+};
+
+export const usePlatformServices = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "platformServices",
+    "platform_services",
+    () =>
+      fetchOrdered<PlatformService>("platform_services", (r) => ({
+        name: toString(r.name),
+        description: toString(r.description),
+        icon: toString(r.icon),
+        status: toString(r.status),
+        uptime: toNumber(r.uptime),
+      })),
+    options,
+  );
+
+export const useCommunicationGateways = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "communicationGateways",
+    "communication_gateways",
+    () =>
+      fetchOrdered<CommunicationGateway>("communication_gateways", (r) => ({
+        name: toString(r.name),
+        description: toString(r.description),
+        icon: toString(r.icon),
+        status: toString(r.status),
+        latencyMs: toNumber(r.latency_ms ?? r.latencyMs),
+        messages24h: toNumber(r.messages_24h ?? r.messages24h),
+      })),
+    options,
+  );
+
+export const usePartnerIntegrations = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "partnerIntegrations",
+    "partner_integrations",
+    () =>
+      fetchOrdered<PartnerIntegration>("partner_integrations", (r) => ({
+        name: toString(r.name),
+        description: toString(r.description),
+        status: toString(r.status),
+        lastSyncAt: toString(r.last_sync_at ?? r.lastSyncAt),
+        records: toNumber(r.records),
+      })),
+    options,
+  );
+
+export const useScheduledJobs = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "scheduledJobs",
+    "scheduled_jobs",
+    () =>
+      fetchOrdered<ScheduledJob>("scheduled_jobs", (r) => ({
+        name: toString(r.name),
+        jobType: toString(r.job_type ?? r.jobType),
+        frequency: toString(r.frequency),
+        nextRunAt: toString(r.next_run_at ?? r.nextRunAt),
+        lastRunAt: toString(r.last_run_at ?? r.lastRunAt),
+        status: toString(r.status),
+      })),
+    options,
+  );
+
+export const useStorageMetrics = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "storageMetrics",
+    "storage_metrics",
+    () =>
+      fetchOrdered<StorageMetric>("storage_metrics", (r) => ({
+        label: toString(r.label),
+        usedBytes: toNumber(r.used_bytes ?? r.usedBytes),
+        totalBytes: toNumber(r.total_bytes ?? r.totalBytes),
+      })),
+    options,
+  );
+
+export const useComplianceStandards = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "complianceStandards",
+    "compliance_standards",
+    () =>
+      fetchOrdered<ComplianceStandard>("compliance_standards", (r) => ({
+        name: toString(r.name),
+        description: toString(r.description),
+        score: toNumber(r.score),
+        status: toString(r.status),
+        color: toString(r.color),
+      })),
+    options,
+  );
+
+export const useConsentMetrics = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "consentMetrics",
+    "consent_metrics",
+    () =>
+      fetchOrdered<ConsentMetric>("consent_metrics", (r) => ({
+        name: toString(r.name),
+        value: toNumber(r.value),
+        color: toString(r.color),
+      })),
+    options,
+  );
+
+export const useConsentCategories = (options?: RealtimeQueryOptions) =>
+  useRealtimeQuery(
+    "consentCategories",
+    "consent_categories",
+    () =>
+      fetchOrdered<ConsentCategory>("consent_categories", (r) => ({
+        name: toString(r.name),
+        value: toNumber(r.value),
+      })),
+    options,
+  );
+
 export const useAdminDashboardConfig = (options?: RealtimeQueryOptions) => {
   const enabled = options?.enabled ?? true;
   return useQuery({
@@ -2233,30 +2594,30 @@ export const useAdminDashboardConfig = (options?: RealtimeQueryOptions) => {
   });
 };
 
-export const useUserProfile = (userId?: string | null) => {
-  return useQuery({
-    queryKey: ["aegis", "userProfile", userId ?? "none"],
-    queryFn: () => (userId ? fetchUserProfile(userId) : Promise.resolve(null)),
-    enabled: hasSupabase && Boolean(userId),
-  });
-};
+export const useUserProfile = (userId?: string | null) =>
+  useRealtimeQuery(
+    "userProfile",
+    "user_profiles",
+    () => (userId ? fetchUserProfile(userId) : Promise.resolve(null)),
+    { enabled: Boolean(userId), queryKey: [userId ?? "none"] },
+  );
 
 export const useUserProfiles = (
   options?: FetchOptions & { role?: string; enabled?: boolean },
-) => {
-  const enabled = options?.enabled ?? true;
-  return useQuery({
-    queryKey: [
-      "aegis",
-      "userProfiles",
-      options?.role ?? "all",
-      options?.limit ?? "all",
-      options?.offset ?? 0,
-    ],
-    queryFn: () => fetchUserProfiles(options),
-    enabled: hasSupabase && enabled,
-  });
-};
+) =>
+  useRealtimeQuery(
+    "userProfiles",
+    "user_profiles",
+    () => fetchUserProfiles(options),
+    {
+      enabled: options?.enabled,
+      queryKey: [
+        options?.role ?? "all",
+        options?.limit ?? "all",
+        options?.offset ?? 0,
+      ],
+    },
+  );
 
 export const usePoliceOfficers = (
   options?: FetchOptions & { enabled?: boolean },
@@ -2277,19 +2638,16 @@ export const useOrganization = (organizationId?: string | null) => {
 
 export const useOrganizations = (
   options?: FetchOptions & { enabled?: boolean },
-) => {
-  const enabled = options?.enabled ?? true;
-  return useQuery({
-    queryKey: [
-      "aegis",
-      "organizations",
-      options?.limit ?? "all",
-      options?.offset ?? 0,
-    ],
-    queryFn: () => fetchOrganizations(options),
-    enabled: hasSupabase && enabled,
-  });
-};
+) =>
+  useRealtimeQuery(
+    "organizations",
+    "organizations",
+    () => fetchOrganizations(options),
+    {
+      enabled: options?.enabled,
+      queryKey: [options?.limit ?? "all", options?.offset ?? 0],
+    },
+  );
 
 export const useBiasReports = (options?: ListQueryOptions) =>
   useRealtimeQuery(

@@ -27,6 +27,7 @@ import {
 import { VoiceEvidenceRecorder } from "@/features/voice/VoiceEvidenceRecorder";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
+import { useRealtimeCallback } from "@/lib/realtime";
 import { uploadToVault, VaultUploadTimeoutError } from "@/lib/vaultUpload";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -144,6 +145,12 @@ export default function Evidence() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live sync: if a sharing consent is granted/revoked on another device or by
+  // the case team, refresh the vault so the shared badges stay accurate.
+  useRealtimeCallback("evidence_consents", () => void load(), {
+    enabled: Boolean(user?.id),
+  });
 
   async function addPhoto() {
     setNote(null);
