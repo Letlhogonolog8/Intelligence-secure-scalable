@@ -3806,6 +3806,7 @@ const OverviewSection = () => {
 /* =============================== Emergency Queue =============================== */
 
 const QueueSection = () => {
+  const { navigate } = usePolicePortal();
   const { data: escalations = [] } = useEscalationEvents({
     limit: 200,
     staleTime: 10000,
@@ -3815,6 +3816,8 @@ const QueueSection = () => {
   const [localNotes, setLocalNotes] = useState<
     { time: string; by: string; note: string }[]
   >([]);
+  const [dispatched, setDispatched] = useState<Record<string, boolean>>({});
+  const [escalated, setEscalated] = useState<Record<string, boolean>>({});
 
   const sevRank = (s: string) => (s === "critical" ? 0 : s === "high" ? 1 : 2);
   const queueRows = escalations.length
@@ -3974,36 +3977,59 @@ const QueueSection = () => {
                       <RiskRing score={q.score} />
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-300">
-                      {q.officer}
+                      {dispatched[q.id] ? "Unit en route" : q.officer}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-end gap-1">
                         <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={policeAction(
-                              "Dispatch queued",
-                              `${q.id} assigned for unit dispatch.`,
-                            )}
-                            className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
-                          >
-                            Dispatch
-                          </button>
-                          <button
-                            type="button"
-                            onClick={policeAction(
-                              "Escalation requested",
-                              `${q.id} marked for senior review.`,
-                            )}
-                            className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300"
-                          >
-                            Escalate
-                          </button>
+                          {dispatched[q.id] ? (
+                            <span className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" /> Dispatched
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDispatched((current) => ({
+                                  ...current,
+                                  [q.id]: true,
+                                }));
+                                toast.success(`Unit dispatched to ${q.id}`);
+                              }}
+                              className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
+                            >
+                              Dispatch
+                            </button>
+                          )}
+                          {escalated[q.id] ? (
+                            <span className="flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300">
+                              <ShieldAlert className="h-3 w-3" /> Escalated
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEscalated((current) => ({
+                                  ...current,
+                                  [q.id]: true,
+                                }));
+                                toast.success(
+                                  `${q.id} escalated for senior review`,
+                                );
+                              }}
+                              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300"
+                            >
+                              Escalate
+                            </button>
+                          )}
                         </div>
                         <button
                           type="button"
-                          onClick={policeAction("Case opened", q.id)}
-                          className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300"
+                          onClick={() => {
+                            navigate("cases");
+                            toast.info(`Opening ${q.id} in Case Management`);
+                          }}
+                          className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
                         >
                           View Case
                         </button>
@@ -4047,7 +4073,7 @@ const QueueSection = () => {
                     ...current,
                   ]);
                   setTriageNote("");
-                  policeAction("Triage note added", note)();
+                  toast.success("Triage note added");
                 }}
                 className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 text-[11px] font-bold text-white"
               >
@@ -4136,7 +4162,11 @@ const QueueSection = () => {
         </p>
         <button
           type="button"
-          onClick={policeAction("SOS quick access opened")}
+          onClick={() =>
+            toast.warning(
+              "Immediate danger? Call 10111 or trigger SOS in the survivor app.",
+            )
+          }
           className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
         >
           <Siren className="h-4 w-4" /> SOS Quick Access
