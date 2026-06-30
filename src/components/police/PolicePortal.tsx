@@ -5,7 +5,10 @@
  * wired to a live AEGIS data source later without touching the layout.
  */
 import {
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -1558,6 +1561,31 @@ const statusTone = (s: string) => {
   return "slate";
 };
 
+/**
+ * Shared portal context so section components (which are rendered without
+ * props) can drive real navigation and open record detail views instead of
+ * showing placeholder acknowledgements.
+ */
+type EvidenceRow = (typeof MOCK_EVIDENCE)[number];
+
+type PolicePortalContextValue = {
+  section: SectionKey;
+  navigate: (section: SectionKey) => void;
+  openEvidence: (row: EvidenceRow) => void;
+};
+
+const PolicePortalContext = createContext<PolicePortalContextValue | null>(
+  null,
+);
+
+const usePolicePortal = (): PolicePortalContextValue => {
+  const ctx = useContext(PolicePortalContext);
+  if (!ctx) {
+    throw new Error("usePolicePortal must be used within PolicePortal");
+  }
+  return ctx;
+};
+
 const Pill = ({ tone, children }: { tone: string; children: ReactNode }) => (
   <span
     className={cn(
@@ -1801,39 +1829,37 @@ const SelectChip = ({ label }: { label: string }) => {
     </div>
   );
 };
-const LinkChip = ({ label }: { label: string }) => {
-  const [open, setOpen] = useState(false);
+/**
+ * A "View all" affordance. When `target` points to another section it
+ * navigates there; when the full list already renders in the current section
+ * it confirms that rather than opening a dead-end popover.
+ */
+const LinkChip = ({
+  label,
+  target,
+}: {
+  label: string;
+  target?: SectionKey;
+}) => {
+  const { section, navigate } = usePolicePortal();
+
+  const handleClick = () => {
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.info("Showing the full list below.");
+    }
+  };
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
-        aria-expanded={open}
-      >
-        {label}
-        <ChevronRight
-          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
-        />
-      </button>
-      {open && (
-        <div className="absolute right-0 z-40 mt-2 w-56 rounded-lg border border-white/10 bg-[#0c1224] p-3 text-left shadow-xl shadow-black/40">
-          <p className="text-[11px] font-black text-white">{label}</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-300">
-            Expanded in this portal. Use the section controls and table below to
-            review the full set.
-          </p>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="mt-3 rounded-md border border-white/10 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
-          >
-            Close
-          </button>
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
+    >
+      {label}
+      <ChevronRight className="h-3 w-3" />
+    </button>
   );
 };
 
@@ -2394,8 +2420,20 @@ const PolicePortal: React.FC = () => {
   const [section, setSection] = useState<SectionKey>("overview");
   const [caseQuery, setCaseQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [evidenceDetail, setEvidenceDetail] = useState<EvidenceRow | null>(
+    null,
+  );
   const [actionDialog, setActionDialog] = useState<PoliceActionDetail | null>(
     null,
+  );
+
+  const portalContext = useMemo<PolicePortalContextValue>(
+    () => ({
+      section,
+      navigate: setSection,
+      openEvidence: setEvidenceDetail,
+    }),
+    [section],
   );
   const [now, setNow] = useState(() => new Date());
   const menuRef = useRef<HTMLDivElement>(null);
@@ -2456,294 +2494,314 @@ const PolicePortal: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
-      {actionDialog && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={actionDialog.label}
-        >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1224] p-5 shadow-2xl shadow-black/50">
-            <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
-                <ShieldCheck className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-base font-black text-white">
-                  {actionDialog.label}
-                </h2>
-                <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                  {actionDialog.description}
-                </p>
+    <PolicePortalContext.Provider value={portalContext}>
+      <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
+        {evidenceDetail && (
+          <EvidenceDetailModal
+            row={evidenceDetail}
+            onClose={() => setEvidenceDetail(null)}
+            onOpenCase={() => {
+              setEvidenceDetail(null);
+              setSection("cases");
+            }}
+          />
+        )}
+        {actionDialog && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={actionDialog.label}
+          >
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1224] p-5 shadow-2xl shadow-black/50">
+              <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-black text-white">
+                    {actionDialog.label}
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                    {actionDialog.description}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActionDialog(null)}
+                  className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={openRelevantSection}
+                  className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+                >
+                  Open Related Section
+                </button>
               </div>
             </div>
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setActionDialog(null)}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={openRelevantSection}
-                className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
-              >
-                Open Related Section
-              </button>
+          </div>
+        )}
+        {/* Sidebar */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
+          <div className="flex items-center gap-3 px-5 py-5">
+            <svg
+              viewBox="0 0 40 40"
+              className="h-9 w-9 shrink-0"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="aegis-police" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#a78bfa" />
+                  <stop offset="100%" stopColor="#6d28d9" />
+                </linearGradient>
+              </defs>
+              <path d="M20 2 L36 11 L20 38 L4 11 Z" fill="url(#aegis-police)" />
+              <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
+              <path
+                d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
+                fill="#ffffff"
+              />
+            </svg>
+            <div className="leading-tight">
+              <p className="text-base font-black tracking-tight text-white">
+                AEGIS-AI
+              </p>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
+                Police Response Portal
+              </p>
             </div>
           </div>
-        </div>
-      )}
-      {/* Sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
-        <div className="flex items-center gap-3 px-5 py-5">
-          <svg
-            viewBox="0 0 40 40"
-            className="h-9 w-9 shrink-0"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="aegis-police" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#a78bfa" />
-                <stop offset="100%" stopColor="#6d28d9" />
-              </linearGradient>
-            </defs>
-            <path d="M20 2 L36 11 L20 38 L4 11 Z" fill="url(#aegis-police)" />
-            <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
-            <path
-              d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
-              fill="#ffffff"
-            />
-          </svg>
-          <div className="leading-tight">
-            <p className="text-base font-black tracking-tight text-white">
-              AEGIS-AI
-            </p>
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
-              Police Response Portal
-            </p>
-          </div>
-        </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            const active = section === item.key;
-            return (
+          <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              const active = section === item.key;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => setSection(item.key as SectionKey)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all",
+                    active
+                      ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-[18px] w-[18px] shrink-0",
+                      active ? "text-white" : "text-slate-300",
+                    )}
+                  />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {item.badge ? (
+                    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-violet-500/20 px-1 text-[10px] font-black text-violet-300">
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="px-4 pb-5">
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-violet-500/10 to-transparent p-4 text-center">
+              <p className="text-sm font-black tracking-wide text-white">
+                AEGIS-AI
+              </p>
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
+                AI-Enhanced · Survivor-Centered
+              </p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-violet-300">
+                Safer Together
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
+            <div className="relative hidden max-w-md flex-1 lg:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
+              <Input
+                value={caseQuery}
+                onChange={(event) => setCaseQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") setSection("cases");
+                }}
+                placeholder="Search cases, survivors, locations, or officers..."
+                className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-300"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-300">
+                ⌘K
+              </span>
+            </div>
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
+              <span className="hidden items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 md:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                LIVE <span className="text-slate-300">System Operational</span>{" "}
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              </span>
               <button
-                key={item.label}
                 type="button"
-                onClick={() => setSection(item.key as SectionKey)}
+                onClick={() => setSection("queue")}
+                className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:text-white"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
+                  7
+                </span>
+              </button>
+              <div className="hidden text-right leading-tight sm:block">
+                <p className="text-xs font-bold text-white">
+                  {now.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+                <p className="text-[10px] text-slate-300">
+                  {now.toLocaleDateString([], {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={policeAction(
+                  "Language selector",
+                  "English is active.",
+                )}
+                className="hidden items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white md:flex"
+              >
+                <Globe className="h-4 w-4" /> English{" "}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              <div
+                ref={menuRef}
+                className="relative border-l border-white/10 pl-2 sm:pl-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                >
+                  <Avatar name={account.name} />
+                  <div className="hidden text-left leading-tight lg:block">
+                    <p className="text-sm font-bold text-white">
+                      {account.name}
+                    </p>
+                    <p className="text-[10px] text-slate-300">{account.role}</p>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "hidden h-4 w-4 text-slate-300 transition-transform lg:block",
+                      menuOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void signOut();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                    >
+                      <LogOut className="h-4 w-4" /> Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {DETAILED.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSection(key)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all",
-                  active
-                    ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white",
+                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors",
+                  section === key
+                    ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+                    : "text-slate-300 hover:text-white",
                 )}
               >
-                <Icon
-                  className={cn(
-                    "h-[18px] w-[18px] shrink-0",
-                    active ? "text-white" : "text-slate-300",
-                  )}
-                />
-                <span className="flex-1 text-left">{item.label}</span>
-                {item.badge ? (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-violet-500/20 px-1 text-[10px] font-black text-violet-300">
-                    {item.badge}
-                  </span>
-                ) : null}
+                {key}
               </button>
-            );
-          })}
-        </nav>
+            ))}
+          </nav>
 
-        <div className="px-4 pb-5">
-          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-violet-500/10 to-transparent p-4 text-center">
-            <p className="text-sm font-black tracking-wide text-white">
-              AEGIS-AI
-            </p>
-            <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
-              AI-Enhanced · Survivor-Centered
-            </p>
-            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-violet-300">
-              Safer Together
-            </p>
-          </div>
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+              {section === "overview" && <OverviewSection />}
+              {section === "queue" && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <QueueSection />
+                </>
+              )}
+              {section === "cases" && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <CasesSection
+                    query={caseQuery}
+                    onQueryChange={setCaseQuery}
+                  />
+                </>
+              )}
+              {section === "dispatch" && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <DispatchSection />
+                </>
+              )}
+              {section === "evidence" && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <EvidenceSection />
+                </>
+              )}
+              {section === "partners" && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <PartnersSection />
+                </>
+              )}
+              {WORKSPACE_SECTION_KEYS.includes(
+                section as WorkspaceSectionKey,
+              ) && (
+                <>
+                  <SectionTitle meta={meta} />
+                  <OperationalWorkspaceSection
+                    section={section as WorkspaceSectionKey}
+                  />
+                </>
+              )}
+            </div>
+          </main>
         </div>
-      </aside>
-
-      {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
-          <div className="relative hidden max-w-md flex-1 lg:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-            <Input
-              value={caseQuery}
-              onChange={(event) => setCaseQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") setSection("cases");
-              }}
-              placeholder="Search cases, survivors, locations, or officers..."
-              className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-300"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-300">
-              ⌘K
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <span className="hidden items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 md:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-              LIVE <span className="text-slate-300">System Operational</span>{" "}
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            </span>
-            <button
-              type="button"
-              onClick={() => setSection("queue")}
-              className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:text-white"
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                7
-              </span>
-            </button>
-            <div className="hidden text-right leading-tight sm:block">
-              <p className="text-xs font-bold text-white">
-                {now.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
-              <p className="text-[10px] text-slate-300">
-                {now.toLocaleDateString([], {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={policeAction("Language selector", "English is active.")}
-              className="hidden items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white md:flex"
-            >
-              <Globe className="h-4 w-4" /> English{" "}
-              <ChevronDown className="h-3 w-3" />
-            </button>
-            <div
-              ref={menuRef}
-              className="relative border-l border-white/10 pl-2 sm:pl-3"
-            >
-              <button
-                type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="flex items-center gap-2"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-              >
-                <Avatar name={account.name} />
-                <div className="hidden text-left leading-tight lg:block">
-                  <p className="text-sm font-bold text-white">{account.name}</p>
-                  <p className="text-[10px] text-slate-300">{account.role}</p>
-                </div>
-                <ChevronDown
-                  className={cn(
-                    "hidden h-4 w-4 text-slate-300 transition-transform lg:block",
-                    menuOpen && "rotate-180",
-                  )}
-                />
-              </button>
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void signOut();
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
-                  >
-                    <LogOut className="h-4 w-4" /> Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {DETAILED.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSection(key)}
-              className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors",
-                section === key
-                  ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-                  : "text-slate-300 hover:text-white",
-              )}
-            >
-              {key}
-            </button>
-          ))}
-        </nav>
-
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
-            {section === "overview" && <OverviewSection />}
-            {section === "queue" && (
-              <>
-                <SectionTitle meta={meta} />
-                <QueueSection />
-              </>
-            )}
-            {section === "cases" && (
-              <>
-                <SectionTitle meta={meta} />
-                <CasesSection query={caseQuery} onQueryChange={setCaseQuery} />
-              </>
-            )}
-            {section === "dispatch" && (
-              <>
-                <SectionTitle meta={meta} />
-                <DispatchSection />
-              </>
-            )}
-            {section === "evidence" && (
-              <>
-                <SectionTitle meta={meta} />
-                <EvidenceSection />
-              </>
-            )}
-            {section === "partners" && (
-              <>
-                <SectionTitle meta={meta} />
-                <PartnersSection />
-              </>
-            )}
-            {WORKSPACE_SECTION_KEYS.includes(
-              section as WorkspaceSectionKey,
-            ) && (
-              <>
-                <SectionTitle meta={meta} />
-                <OperationalWorkspaceSection
-                  section={section as WorkspaceSectionKey}
-                />
-              </>
-            )}
-          </div>
-        </main>
       </div>
-    </div>
+    </PolicePortalContext.Provider>
   );
 };
 
@@ -2987,7 +3045,7 @@ const OverviewSection = () => {
 
         <Panel
           title="AEGIS Response Map – Southern Africa"
-          action={<LinkChip label="View Map Details" />}
+          action={<LinkChip label="View Map Details" target="analytics" />}
         >
           <WorldRiskMap
             regions={mapRegions}
@@ -3000,7 +3058,7 @@ const OverviewSection = () => {
         <Panel
           title="AEGIS System Operations"
           subtitle="All core services are operational"
-          action={<LinkChip label="View Status" />}
+          action={<LinkChip label="View Status" target="analytics" />}
         >
           <div className="space-y-2.5">
             {systemOps.length ? (
@@ -3098,7 +3156,7 @@ const OverviewSection = () => {
           title="AEGIS-AI Insights"
           subtitle="Smart insights from platform data"
           className="xl:col-span-1"
-          action={<LinkChip label="View all" />}
+          action={<LinkChip label="View all" target="analytics" />}
         >
           <div className="grid grid-cols-1 gap-2.5">
             {MOCK_AI_INSIGHTS.map((a) => {
@@ -3134,7 +3192,7 @@ const OverviewSection = () => {
         <Panel
           title="Recent Activity"
           subtitle="Live system activity feed"
-          action={<LinkChip label="View all" />}
+          action={<LinkChip label="View all" target="incidents" />}
         >
           <div className="space-y-3">
             {activity.map((a) => {
@@ -3164,7 +3222,10 @@ const OverviewSection = () => {
           </div>
         </Panel>
 
-        <Panel title="Critical Alerts" action={<LinkChip label="View All" />}>
+        <Panel
+          title="Critical Alerts"
+          action={<LinkChip label="View All" target="queue" />}
+        >
           <div className="space-y-2.5">
             {criticalAlerts.map((a) => (
               <div
@@ -3963,7 +4024,10 @@ const DispatchSection = () => (
             })}
           </div>
         </Panel>
-        <Panel title="Partner Handoffs" action={<LinkChip label="View All" />}>
+        <Panel
+          title="Partner Handoffs"
+          action={<LinkChip label="View All" target="partners" />}
+        >
           <div className="space-y-2.5">
             {MOCK_HANDOFFS.map((h, i) => {
               const Icon = h.icon;
@@ -4019,7 +4083,113 @@ const DispatchSection = () => (
 
 /* =============================== Evidence =============================== */
 
+const EvidenceDetailModal = ({
+  row,
+  onClose,
+  onOpenCase,
+}: {
+  row: EvidenceRow;
+  onClose: () => void;
+  onOpenCase: () => void;
+}) => {
+  const Icon = row.icon;
+  const fields: { label: string; value: string; sub?: string }[] = [
+    { label: "Evidence ID", value: row.id, sub: row.date },
+    { label: "Case ID", value: row.caseId, sub: row.alias },
+    { label: "Type", value: row.type },
+    { label: "Source", value: row.source, sub: row.sourceSub },
+    { label: "Uploaded By", value: row.by, sub: row.bySub },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Evidence ${row.id}`}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-black text-white">{row.type}</h2>
+            <p className="mt-0.5 font-mono text-[11px] text-slate-300">
+              {row.id}
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <Pill tone={statusTone(row.review)}>{row.review}</Pill>
+            <span
+              className={cn(
+                "flex items-center gap-1 text-[11px] font-bold",
+                row.integrity === "Intact"
+                  ? "text-emerald-400"
+                  : "text-amber-400",
+              )}
+            >
+              {row.integrity === "Intact" ? (
+                <CheckCircle2 className="h-3 w-3" />
+              ) : (
+                <AlertTriangle className="h-3 w-3" />
+              )}
+              {row.integrity}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 px-5 py-5">
+          {fields.map((field) => (
+            <div key={field.label}>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                {field.label}
+              </p>
+              <p className="mt-1 text-sm font-bold text-white">{field.value}</p>
+              {field.sub && (
+                <p className="text-[11px] text-slate-300">{field.sub}</p>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              policeAction(
+                "Evidence download started",
+                `${row.id} prepared for secure download.`,
+              )()
+            }
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-100 hover:bg-white/5"
+          >
+            <Download className="h-3.5 w-3.5" /> Download
+          </button>
+          <button
+            type="button"
+            onClick={onOpenCase}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+          >
+            Open Case
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EvidenceSection = () => {
+  const { openEvidence } = usePolicePortal();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const visibleEvidence = normalizedQuery
@@ -4157,20 +4327,16 @@ const EvidenceSection = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={policeAction(
-                              "Evidence preview opened",
-                              e.id,
-                            )}
+                            onClick={() => openEvidence(e)}
+                            aria-label={`Preview evidence ${e.id}`}
                             className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
-                            onClick={policeAction(
-                              "Evidence actions opened",
-                              e.id,
-                            )}
+                            onClick={() => openEvidence(e)}
+                            aria-label={`Open evidence ${e.id} details`}
                             className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
                           >
                             <MoreHorizontal className="h-3.5 w-3.5" />
