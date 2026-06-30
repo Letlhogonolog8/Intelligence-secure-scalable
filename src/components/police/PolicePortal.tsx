@@ -2366,52 +2366,586 @@ const WORKSPACE_CONTENT: Record<
   },
 };
 
-const OperationalWorkspaceSection = ({
-  section,
+/** Download an array of rows as a CSV file (browser only). */
+const downloadCsv = (
+  filename: string,
+  header: string[],
+  rows: (string | number)[][],
+) => {
+  if (typeof document === "undefined") return;
+  const escape = (value: string | number) => {
+    const text = String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const csv = [header, ...rows]
+    .map((row) => row.map(escape).join(","))
+    .join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+const WorkspaceKpis = ({ section }: { section: WorkspaceSectionKey }) => (
+  <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+    {WORKSPACE_CONTENT[section].cards.map((card) => (
+      <KpiCard
+        key={card.label}
+        label={card.label}
+        value={card.value}
+        icon={card.icon}
+        tone={card.tone}
+        note={card.note}
+      />
+    ))}
+  </section>
+);
+
+const Toggle = ({
+  on,
+  onChange,
+  label,
+  sub,
 }: {
-  section: WorkspaceSectionKey;
-}) => {
-  const content = WORKSPACE_CONTENT[section];
+  on: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  sub?: string;
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={on}
+    onClick={() => onChange(!on)}
+    className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left hover:bg-white/[0.02]"
+  >
+    <div>
+      <p className="text-sm font-bold text-white">{label}</p>
+      {sub ? <p className="mt-1 text-xs text-slate-300">{sub}</p> : null}
+    </div>
+    <span
+      className={cn(
+        "relative h-6 w-11 shrink-0 rounded-full border transition-colors",
+        on
+          ? "border-violet-400/50 bg-violet-500/40"
+          : "border-white/15 bg-white/[0.06]",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white transition-all",
+          on ? "left-[22px]" : "left-0.5",
+        )}
+      />
+    </span>
+  </button>
+);
+
+const IncidentsSection = () => {
+  const { navigate } = usePolicePortal();
+  const [handled, setHandled] = useState<Record<string, boolean>>({});
 
   return (
     <>
-      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {content.cards.map((card) => (
-          <KpiCard
-            key={card.label}
-            label={card.label}
-            value={card.value}
-            icon={card.icon}
-            tone={card.tone}
-            note={card.note}
-          />
-        ))}
-      </section>
-      <Panel title={content.title} bodyClassName="p-0">
+      <WorkspaceKpis section="incidents" />
+      <Panel
+        title="Active Incidents"
+        subtitle="Live triage queue — acknowledge or route to dispatch"
+        bodyClassName="p-0"
+      >
         <div className="divide-y divide-white/5">
-          {content.rows.map((row) => (
-            <div
-              key={row.title}
-              className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-white/[0.02]"
+          {WORKSPACE_CONTENT.incidents.rows.map((row) => {
+            const done = handled[row.title];
+            return (
+              <div
+                key={row.title}
+                className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+              >
+                <div className="flex items-center gap-3">
+                  <Pill tone={statusTone(row.status)}>{row.status}</Pill>
+                  <div>
+                    <p className="text-sm font-bold text-white">{row.title}</p>
+                    <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {done ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledged
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHandled((current) => ({
+                            ...current,
+                            [row.title]: true,
+                          }));
+                          toast.success(`Acknowledged: ${row.title}`);
+                        }}
+                        className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
+                      >
+                        Acknowledge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate("dispatch")}
+                        className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
+                      >
+                        Dispatch
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+    </>
+  );
+};
+
+const SurvivorSafetySection = () => {
+  const [checkedIn, setCheckedIn] = useState<Record<string, boolean>>({});
+
+  return (
+    <>
+      <WorkspaceKpis section="survivor" />
+      <Panel
+        title="Safety Check-ins"
+        subtitle="Due and overdue contact windows"
+        bodyClassName="p-0"
+      >
+        <div className="divide-y divide-white/5">
+          {WORKSPACE_CONTENT.survivor.rows.map((row) => {
+            const done = checkedIn[row.title];
+            return (
+              <div
+                key={row.title}
+                className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+              >
+                <div>
+                  <p className="text-sm font-bold text-white">{row.title}</p>
+                  <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toast.info(`Calling trusted contact for ${row.title}…`)
+                    }
+                    className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
+                  >
+                    <Phone className="h-3 w-3" /> Call
+                  </button>
+                  {done ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Checked in
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCheckedIn((current) => ({
+                          ...current,
+                          [row.title]: true,
+                        }));
+                        toast.success("Check-in recorded");
+                      }}
+                      className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-1.5 text-[11px] font-bold text-white"
+                    >
+                      Mark checked in
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+    </>
+  );
+};
+
+const MessagesSection = () => {
+  const threads = MOCK_SHARED_THREADS;
+  const [activeId, setActiveId] = useState(threads[0]?.caseId ?? "");
+  const [draft, setDraft] = useState("");
+  const [sent, setSent] = useState<Record<string, string[]>>({});
+  const active = threads.find((t) => t.caseId === activeId) ?? threads[0];
+
+  const send = () => {
+    if (!draft.trim() || !active) {
+      toast.error("Message is empty");
+      return;
+    }
+    setSent((current) => ({
+      ...current,
+      [active.caseId]: [...(current[active.caseId] ?? []), draft.trim()],
+    }));
+    setDraft("");
+    toast.success("Message sent");
+  };
+
+  return (
+    <>
+      <WorkspaceKpis section="messages" />
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
+        <Panel title="Threads" bodyClassName="p-0">
+          <div className="divide-y divide-white/5">
+            {threads.map((thread) => (
+              <button
+                key={thread.caseId}
+                type="button"
+                onClick={() => setActiveId(thread.caseId)}
+                className={cn(
+                  "flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/[0.03]",
+                  thread.caseId === active?.caseId && "bg-white/[0.05]",
+                )}
+              >
+                <Avatar name={thread.org} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-white">
+                    {thread.org}
+                  </p>
+                  <p className="truncate text-xs text-slate-300">
+                    {thread.msg}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[10px] text-slate-400">
+                  {thread.time}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Panel>
+        <Panel
+          title={active?.org ?? "Conversation"}
+          subtitle={active?.caseId}
+          bodyClassName="flex h-full flex-col"
+        >
+          <div className="flex-1 space-y-3">
+            <div className="max-w-[80%] rounded-2xl rounded-tl-sm border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200">
+              {active?.msg}
+            </div>
+            {(sent[active?.caseId ?? ""] ?? []).map((message, index) => (
+              <div
+                key={index}
+                className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-sm text-white"
+              >
+                {message}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <Input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") send();
+              }}
+              placeholder="Type a secure message…"
+              className="h-10 border-white/10 bg-slate-900/60 text-sm text-white"
+            />
+            <button
+              type="button"
+              onClick={send}
+              className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
             >
-              <div>
-                <p className="text-sm font-bold text-white">{row.title}</p>
-                <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
+              Send
+            </button>
+          </div>
+        </Panel>
+      </section>
+    </>
+  );
+};
+
+const AnalyticsSection = () => {
+  const exportCsv = () => {
+    downloadCsv(
+      "police-incident-volume.csv",
+      ["Time", "SOS", "Domestic Violence", "Sexual Assault"],
+      MOCK_CASE_ACTIVITY.map((point) => [
+        point.t,
+        point.sos,
+        point.dv,
+        point.sa,
+      ]),
+    );
+    toast.success("Analytics exported");
+  };
+
+  return (
+    <>
+      <WorkspaceKpis section="analytics" />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
+        <Panel
+          title="Incident Volume (24h)"
+          subtitle="SOS and domestic-violence reports per window"
+          action={
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300 hover:bg-violet-500/20"
+            >
+              <Download className="h-3 w-3" /> Export CSV
+            </button>
+          }
+        >
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={MOCK_CASE_ACTIVITY}>
+              <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="t" stroke="#94a3b8" fontSize={11} />
+              <YAxis stroke="#94a3b8" fontSize={11} />
+              <Tooltip {...chartTooltip} />
+              <Line
+                type="monotone"
+                dataKey="sos"
+                stroke="#a855f7"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="dv"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Panel>
+        <Panel title="Case Status Breakdown" bodyClassName="p-0">
+          <div className="divide-y divide-white/5">
+            {MOCK_CASES_BY_STATUS.map((status) => (
+              <div
+                key={status.name}
+                className="flex items-center justify-between px-5 py-3"
+              >
+                <span className="flex items-center gap-2 text-sm text-slate-200">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ background: status.color }}
+                  />
+                  {status.name}
+                </span>
+                <span className="text-sm font-bold text-white">
+                  {nf.format(status.value)}{" "}
+                  <span className="text-[11px] font-normal text-slate-400">
+                    {status.pct}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+    </>
+  );
+};
+
+const ReportsSection = () => {
+  const [reports, setReports] = useState(
+    WORKSPACE_CONTENT.reports.rows.map((row) => ({ ...row })),
+  );
+
+  const generate = () => {
+    setReports((current) => [
+      {
+        title: `Ad-hoc operations report #${current.length + 1}`,
+        detail: "Generated from the current shift's live data",
+        status: "Ready",
+      },
+      ...current,
+    ]);
+    toast.success("Report generated");
+  };
+
+  const download = (report: {
+    title: string;
+    detail: string;
+    status: string;
+  }) => {
+    downloadCsv(
+      `${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`,
+      ["Report", "Detail", "Status"],
+      [[report.title, report.detail, report.status]],
+    );
+    toast.success("Report downloaded");
+  };
+
+  return (
+    <>
+      <WorkspaceKpis section="reports" />
+      <Panel
+        title="Reports Workspace"
+        action={
+          <button
+            type="button"
+            onClick={generate}
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
+          >
+            <Plus className="h-3.5 w-3.5" /> Generate Report
+          </button>
+        }
+        bodyClassName="p-0"
+      >
+        <div className="divide-y divide-white/5">
+          {reports.map((report) => (
+            <div
+              key={report.title}
+              className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+            >
+              <div className="flex items-center gap-3">
+                <Pill tone={statusTone(report.status)}>{report.status}</Pill>
+                <div>
+                  <p className="text-sm font-bold text-white">{report.title}</p>
+                  <p className="mt-1 text-xs text-slate-300">{report.detail}</p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={policeAction(row.status, row.title)}
-                className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-black text-violet-200 hover:bg-violet-500/20"
+                onClick={() => download(report)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
               >
-                {row.status}
+                <Download className="h-3.5 w-3.5" /> Download CSV
               </button>
             </div>
           ))}
         </div>
       </Panel>
-      <ActionBar items={content.actions} />
     </>
   );
+};
+
+const SettingsSection = () => {
+  const [criticalPush, setCriticalPush] = useState(true);
+  const [caseAssign, setCaseAssign] = useState(true);
+  const [auditVisibility, setAuditVisibility] = useState(true);
+  const [available, setAvailable] = useState(true);
+  const [language, setLanguage] = useState("English");
+  const languages = ["English", "isiZulu", "Afrikaans", "Sesotho"];
+
+  return (
+    <>
+      <WorkspaceKpis section="settings" />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Panel title="Notifications" bodyClassName="p-0">
+          <div className="divide-y divide-white/5">
+            <Toggle
+              on={criticalPush}
+              onChange={setCriticalPush}
+              label="Critical alert push"
+              sub="SOS and high-risk escalations"
+            />
+            <Toggle
+              on={caseAssign}
+              onChange={setCaseAssign}
+              label="Case assignment notifications"
+              sub="Immediate dashboard and push updates"
+            />
+            <Toggle
+              on={auditVisibility}
+              onChange={setAuditVisibility}
+              label="Audit visibility"
+              sub="Staff actions are logged for accountability"
+            />
+          </div>
+        </Panel>
+        <Panel title="Responder Profile">
+          <div className="space-y-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Availability
+              </p>
+              <div className="mt-2 flex gap-2">
+                {[
+                  { label: "Online", value: true },
+                  { label: "Offline", value: false },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setAvailable(option.value)}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-2 text-[11px] font-bold",
+                      available === option.value
+                        ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                        : "border-white/10 text-slate-300 hover:bg-white/5",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Portal language
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {languages.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setLanguage(option)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                      language === option
+                        ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                        : "border-white/10 text-slate-300 hover:bg-white/5",
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                toast.success(
+                  `Preferences saved · ${available ? "Online" : "Offline"} · ${language}`,
+                )
+              }
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+            >
+              <SettingsIcon className="h-3.5 w-3.5" /> Save Preferences
+            </button>
+          </div>
+        </Panel>
+      </section>
+    </>
+  );
+};
+
+const OperationalWorkspaceSection = ({
+  section,
+}: {
+  section: WorkspaceSectionKey;
+}) => {
+  switch (section) {
+    case "incidents":
+      return <IncidentsSection />;
+    case "survivor":
+      return <SurvivorSafetySection />;
+    case "messages":
+      return <MessagesSection />;
+    case "analytics":
+      return <AnalyticsSection />;
+    case "reports":
+      return <ReportsSection />;
+    case "settings":
+      return <SettingsSection />;
+    default:
+      return null;
+  }
 };
 
 /* ================================ PORTAL ================================ */
