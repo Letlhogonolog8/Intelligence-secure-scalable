@@ -16,7 +16,15 @@ import { MODULE_METADATA, MODULE_LIST } from "@/data/aegisData";
  * / FEATURE_FLAGS / PERMISSIONS exactly as the platform enforces them.
  */
 
-const ROLES = Object.keys(ROLE_DEFINITIONS) as UserRole[];
+const WEB_PORTAL_ROLES: UserRole[] = [
+  "admin",
+  "counselor",
+  "survivor",
+  "ngo",
+  "police",
+  "analyst",
+];
+const ROLES = WEB_PORTAL_ROLES;
 
 const ACCESS_TONE: Record<string, string> = {
   full: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
@@ -189,8 +197,8 @@ export default function RolesMatrix() {
             ))}
           </div>
           <p className="mt-4 text-[11px] text-slate-500">
-            The seven core roles above are enforced live across the platform via
-            row-level security and module access controls.
+            The six web portal roles above are enforced live across the platform
+            via row-level security and module access controls.
           </p>
         </Card>
       </div>

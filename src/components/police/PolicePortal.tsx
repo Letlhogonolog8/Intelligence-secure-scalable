@@ -36,6 +36,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Clock,
+  Download,
   Eye,
   FileCheck,
   FileText,
@@ -67,6 +68,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
@@ -101,6 +103,18 @@ const fmtDateTime = (t: string) => {
   const d = new Date(t);
   return Number.isNaN(d.getTime()) ? t : d.toLocaleString();
 };
+const policeAction = (label: string, description?: string) => () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("aegis:police-action", {
+      detail: {
+        label,
+        description:
+          description ?? "Action opened in the Police Response Portal.",
+      },
+    }),
+  );
+};
 
 /** Canonical case-status buckets for the donut, from raw case_reports.status. */
 const POLICE_CASE_STATUS: { name: string; match: string[]; color: string }[] = [
@@ -119,11 +133,21 @@ const POLICE_CASE_STATUS: { name: string; match: string[]; color: string }[] = [
 type SectionKey =
   | "overview"
   | "queue"
+  | "incidents"
   | "cases"
   | "dispatch"
   | "evidence"
+  | "survivor"
+  | "messages"
   | "partners"
-  | "placeholder";
+  | "analytics"
+  | "reports"
+  | "settings";
+
+type PoliceActionDetail = {
+  label: string;
+  description: string;
+};
 
 /* ============================ MOCK / SAMPLE DATA ============================ */
 
@@ -1388,6 +1412,36 @@ const SECTION_META: Record<
     subtitle:
       "Survivor-centered inter-agency collaboration for coordinated case support and services.",
   },
+  incidents: {
+    title: "Incident Operations",
+    subtitle:
+      "Review live incidents, confirm priority, and route urgent field action.",
+  },
+  survivor: {
+    title: "Survivor Safety",
+    subtitle:
+      "Monitor safety plans, check-ins, contact windows, and high-risk survivor follow-ups.",
+  },
+  messages: {
+    title: "Secure Messages",
+    subtitle:
+      "Coordinate with responders, partner teams, and case workers from one secure queue.",
+  },
+  analytics: {
+    title: "Police Analytics",
+    subtitle:
+      "Track risk patterns, response metrics, and operational performance.",
+  },
+  reports: {
+    title: "Reports",
+    subtitle:
+      "Generate operational summaries, case exports, and compliance-ready reporting packs.",
+  },
+  settings: {
+    title: "Settings",
+    subtitle:
+      "Manage portal preferences, responder availability, notifications, and security settings.",
+  },
 };
 
 const NAV: {
@@ -1413,11 +1467,28 @@ const NAV: {
 const DETAILED: SectionKey[] = [
   "overview",
   "queue",
+  "incidents",
   "cases",
   "dispatch",
   "evidence",
+  "survivor",
+  "messages",
   "partners",
+  "analytics",
+  "reports",
+  "settings",
 ];
+
+const WORKSPACE_SECTION_KEYS = [
+  "incidents",
+  "survivor",
+  "messages",
+  "analytics",
+  "reports",
+  "settings",
+] as const;
+
+type WorkspaceSectionKey = (typeof WORKSPACE_SECTION_KEYS)[number];
 
 /* ============================== UI HELPERS ============================== */
 
@@ -1528,7 +1599,7 @@ const Panel = ({
             </h2>
           )}
           {subtitle && (
-            <p className="mt-0.5 text-[11px] text-slate-500">{subtitle}</p>
+            <p className="mt-0.5 text-[11px] text-slate-300">{subtitle}</p>
           )}
         </div>
         {action}
@@ -1566,7 +1637,7 @@ const KpiCard = ({
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">
           {label}
         </p>
         <p className="mt-1 text-2xl font-black text-white">{value}</p>
@@ -1580,7 +1651,7 @@ const KpiCard = ({
             {dir === "down" ? "▼" : "▲"} {delta}
           </p>
         ) : note ? (
-          <p className="mt-0.5 text-[11px] text-slate-500">{note}</p>
+          <p className="mt-0.5 text-[11px] text-slate-300">{note}</p>
         ) : null}
       </div>
     </div>
@@ -1624,7 +1695,7 @@ const Donut = ({
       </PieChart>
     </ResponsiveContainer>
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
         {centerLabel}
       </span>
       <span className="text-xl font-black text-white">{centerValue}</span>
@@ -1674,7 +1745,7 @@ const RiskRing = ({ score }: { score: number }) => {
 };
 
 const tableHead =
-  "border-b border-white/5 text-[10px] font-black uppercase tracking-wider text-slate-500";
+  "border-b border-white/5 text-[10px] font-black uppercase tracking-wider text-slate-300";
 const chartTooltip = {
   contentStyle: {
     background: "#0b1220",
@@ -1685,67 +1756,164 @@ const chartTooltip = {
   },
 } as const;
 
-const SelectChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-  >
-    {label}
-    <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-  </button>
-);
-const LinkChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
-  >
-    {label}
-    <ChevronRight className="h-3 w-3" />
-  </button>
-);
+const SelectChip = ({ label }: { label: string }) => {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(label);
+  const options = [label, "Critical only", "High priority"];
 
-const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => (
-  <div className="flex items-center gap-1">
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronsLeft className="h-3.5 w-3.5" />
-    </button>
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronLeft className="h-3.5 w-3.5" />
-    </button>
-    {pages.map((p, i) => (
+  return (
+    <div className="relative">
       <button
-        key={`${p}-${i}`}
         type="button"
-        className={cn(
-          "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold",
-          i === 0
-            ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-            : "border border-white/10 text-slate-400 hover:bg-white/5",
-        )}
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+        aria-expanded={open}
       >
-        {p}
+        {selected}
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-slate-300 transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
-    ))}
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronRight className="h-3.5 w-3.5" />
-    </button>
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronsRight className="h-3.5 w-3.5" />
-    </button>
-  </div>
-);
+      {open && (
+        <div className="absolute right-0 z-40 mt-2 w-40 overflow-hidden rounded-lg border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setSelected(option);
+                setOpen(false);
+                policeAction("Filter updated", option)();
+              }}
+              className={cn(
+                "block w-full px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
+                selected === option ? "text-violet-300" : "text-slate-300",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+const LinkChip = ({ label }: { label: string }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronRight
+          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+        />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-40 mt-2 w-56 rounded-lg border border-white/10 bg-[#0c1224] p-3 text-left shadow-xl shadow-black/40">
+          <p className="text-[11px] font-black text-white">{label}</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-300">
+            Expanded in this portal. Use the section controls and table below to
+            review the full set.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-3 rounded-md border border-white/10 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => {
+  const isEllipsisPage = (page: string) =>
+    page === "?" || page === "…" || page === "â€¦";
+  const selectablePages = pages.filter((page) => !isEllipsisPage(page));
+  const [activePage, setActivePage] = useState(selectablePages[0] ?? "1");
+  const activeIndex = Math.max(0, selectablePages.indexOf(activePage));
+  const setPage = (page: string) => {
+    setActivePage(page);
+    policeAction("Page changed", `Showing page ${page}`)();
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => setPage(selectablePages[0] ?? "1")}
+        disabled={activeIndex === 0}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40"
+      >
+        <ChevronsLeft className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setPage(selectablePages[Math.max(0, activeIndex - 1)] ?? "1")
+        }
+        disabled={activeIndex === 0}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+      </button>
+      {pages.map((page, index) => {
+        const isEllipsis = isEllipsisPage(page);
+        return (
+          <button
+            key={`${page}-${index}`}
+            type="button"
+            onClick={() => !isEllipsis && setPage(page)}
+            disabled={isEllipsis}
+            className={cn(
+              "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold disabled:cursor-default",
+              page === activePage
+                ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+                : "border border-white/10 text-slate-300 hover:bg-white/5",
+            )}
+          >
+            {page}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        onClick={() =>
+          setPage(
+            selectablePages[
+              Math.min(selectablePages.length - 1, activeIndex + 1)
+            ] ?? activePage,
+          )
+        }
+        disabled={activeIndex >= selectablePages.length - 1}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40"
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setPage(selectablePages[selectablePages.length - 1] ?? activePage)
+        }
+        disabled={activeIndex >= selectablePages.length - 1}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40"
+      >
+        <ChevronsRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+};
 
 const Avatar = ({ name, tone = "violet" }: { name: string; tone?: string }) => (
   <div
@@ -1779,6 +1947,7 @@ const ActionBar = ({
         <button
           key={a.label}
           type="button"
+          onClick={policeAction(a.label)}
           className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-left text-[11px] font-bold text-white transition-colors hover:border-white/20"
         >
           <span
@@ -1809,16 +1978,425 @@ const SectionTitle = ({
       <h2 className="text-2xl font-black tracking-tight text-white">
         {meta.title}
       </h2>
-      <p className="mt-0.5 text-sm text-slate-400">{meta.subtitle}</p>
+      <p className="mt-0.5 text-sm text-slate-300">{meta.subtitle}</p>
     </div>
   </div>
 );
+
+const WORKSPACE_CONTENT: Record<
+  WorkspaceSectionKey,
+  {
+    title: string;
+    cards: {
+      label: string;
+      value: string;
+      icon: ComponentType<{ className?: string }>;
+      tone: string;
+      note: string;
+    }[];
+    rows: { title: string; detail: string; status: string }[];
+    actions: {
+      label: string;
+      icon: ComponentType<{ className?: string }>;
+      tone: string;
+    }[];
+  }
+> = {
+  incidents: {
+    title: "Active Incident Workbench",
+    cards: [
+      {
+        label: "Open Incidents",
+        value: "84",
+        icon: AlertTriangle,
+        tone: "rose",
+        note: "Live triage",
+      },
+      {
+        label: "Critical",
+        value: "18",
+        icon: Siren,
+        tone: "amber",
+        note: "Immediate action",
+      },
+      {
+        label: "Verified",
+        value: "52",
+        icon: CheckCircle2,
+        tone: "emerald",
+        note: "Responder confirmed",
+      },
+      {
+        label: "Awaiting Unit",
+        value: "14",
+        icon: Clock,
+        tone: "sky",
+        note: "Dispatch pending",
+      },
+    ],
+    rows: [
+      {
+        title: "Community mobile report escalated",
+        detail: "Soweto · witness report · high priority",
+        status: "Dispatch",
+      },
+      {
+        title: "Silent SOS received",
+        detail: "Johannesburg CBD · GPS captured",
+        status: "Critical",
+      },
+      {
+        title: "Evidence-backed incident update",
+        detail: "Voice note translated and attached",
+        status: "Review",
+      },
+    ],
+    actions: [
+      { label: "Open Emergency Queue", icon: Siren, tone: "violet" },
+      { label: "Assign Dispatch Unit", icon: Car, tone: "sky" },
+      { label: "Escalate Incident", icon: ShieldAlert, tone: "rose" },
+      { label: "Generate Incident Summary", icon: FileText, tone: "emerald" },
+    ],
+  },
+  survivor: {
+    title: "Survivor Safety Workspace",
+    cards: [
+      {
+        label: "Safety Check-ins",
+        value: "39",
+        icon: ShieldCheck,
+        tone: "emerald",
+        note: "Due today",
+      },
+      {
+        label: "High-Risk Survivors",
+        value: "12",
+        icon: ShieldAlert,
+        tone: "rose",
+        note: "Needs follow-up",
+      },
+      {
+        label: "Trusted Contacts",
+        value: "64",
+        icon: Phone,
+        tone: "sky",
+        note: "Available",
+      },
+      {
+        label: "Safety Plans",
+        value: "28",
+        icon: FileCheck,
+        tone: "violet",
+        note: "Active",
+      },
+    ],
+    rows: [
+      {
+        title: "Check-in overdue",
+        detail: "Alias T.K. · contact window missed",
+        status: "Call",
+      },
+      {
+        title: "Safety plan updated",
+        detail: "Shelter route and safe contact changed",
+        status: "Synced",
+      },
+      {
+        title: "Trusted contact verified",
+        detail: "Emergency contact reachable",
+        status: "Safe",
+      },
+    ],
+    actions: [
+      { label: "Schedule Welfare Check", icon: Clock, tone: "amber" },
+      { label: "Contact Survivor", icon: Phone, tone: "sky" },
+      { label: "Open Safety Plan", icon: ShieldCheck, tone: "emerald" },
+      { label: "Coordinate Counselor", icon: Users, tone: "violet" },
+    ],
+  },
+  messages: {
+    title: "Secure Communication Queue",
+    cards: [
+      {
+        label: "Unread",
+        value: "12",
+        icon: MessageSquare,
+        tone: "violet",
+        note: "Needs response",
+      },
+      {
+        label: "Partner Threads",
+        value: "8",
+        icon: Handshake,
+        tone: "emerald",
+        note: "Active",
+      },
+      {
+        label: "Evidence Requests",
+        value: "5",
+        icon: FileCheck,
+        tone: "amber",
+        note: "Pending",
+      },
+      {
+        label: "Counselor Notes",
+        value: "17",
+        icon: Users,
+        tone: "sky",
+        note: "Synced",
+      },
+    ],
+    rows: [
+      {
+        title: "SafeHome Trust",
+        detail: "Shelter bed confirmed for case handoff",
+        status: "Reply",
+      },
+      {
+        title: "Trauma Counseling Unit",
+        detail: "Follow-up appointment accepted",
+        status: "Read",
+      },
+      {
+        title: "Evidence review request",
+        detail: "Officer asks for translated voice note",
+        status: "Pending",
+      },
+    ],
+    actions: [
+      { label: "Compose Message", icon: MessageSquare, tone: "violet" },
+      { label: "Open Partner Thread", icon: Handshake, tone: "emerald" },
+      { label: "Share Case Update", icon: FileText, tone: "sky" },
+      { label: "Mark Queue Reviewed", icon: CheckCircle2, tone: "amber" },
+    ],
+  },
+  analytics: {
+    title: "Operational Analytics",
+    cards: [
+      {
+        label: "Avg Response",
+        value: "18m",
+        icon: Clock,
+        tone: "cyan",
+        note: "Current shift",
+      },
+      {
+        label: "Critical Trend",
+        value: "+8%",
+        icon: BarChart3,
+        tone: "rose",
+        note: "7-day change",
+      },
+      {
+        label: "Case Closure",
+        value: "71%",
+        icon: CheckCircle2,
+        tone: "emerald",
+        note: "Month to date",
+      },
+      {
+        label: "Hotspots",
+        value: "9",
+        icon: MapPin,
+        tone: "amber",
+        note: "Monitored",
+      },
+    ],
+    rows: [
+      {
+        title: "Johannesburg hotspot",
+        detail: "SOS and witness reports increased",
+        status: "Monitor",
+      },
+      {
+        title: "Dispatch load stable",
+        detail: "Unit capacity within safe threshold",
+        status: "Healthy",
+      },
+      {
+        title: "Evidence translation demand",
+        detail: "Voice notes up 14% this week",
+        status: "Plan",
+      },
+    ],
+    actions: [
+      { label: "Export Analytics", icon: Download, tone: "violet" },
+      { label: "Open Heat Map", icon: MapPin, tone: "rose" },
+      { label: "Run Forecast", icon: BarChart3, tone: "sky" },
+      { label: "Create Brief", icon: FileText, tone: "emerald" },
+    ],
+  },
+  reports: {
+    title: "Reports Workspace",
+    cards: [
+      {
+        label: "Draft Reports",
+        value: "6",
+        icon: FileText,
+        tone: "violet",
+        note: "In progress",
+      },
+      {
+        label: "Ready to Export",
+        value: "11",
+        icon: Download,
+        tone: "emerald",
+        note: "Approved",
+      },
+      {
+        label: "Audit Items",
+        value: "4",
+        icon: Shield,
+        tone: "amber",
+        note: "Review",
+      },
+      {
+        label: "Compliance Packs",
+        value: "3",
+        icon: FileCheck,
+        tone: "sky",
+        note: "This month",
+      },
+    ],
+    rows: [
+      {
+        title: "Daily operations report",
+        detail: "Queue, dispatch, and evidence summary",
+        status: "Ready",
+      },
+      {
+        title: "GBV incident trend brief",
+        detail: "Anonymised regional analysis",
+        status: "Draft",
+      },
+      {
+        title: "Evidence chain report",
+        detail: "Court-ready chain-of-custody export",
+        status: "Review",
+      },
+    ],
+    actions: [
+      { label: "Generate Report", icon: FileText, tone: "violet" },
+      { label: "Export CSV", icon: Download, tone: "emerald" },
+      { label: "Print Brief", icon: FileCheck, tone: "sky" },
+      { label: "Share With Admin", icon: Users, tone: "amber" },
+    ],
+  },
+  settings: {
+    title: "Portal Settings",
+    cards: [
+      {
+        label: "Notifications",
+        value: "On",
+        icon: Bell,
+        tone: "violet",
+        note: "Critical alerts",
+      },
+      {
+        label: "Language",
+        value: "EN",
+        icon: Globe,
+        tone: "sky",
+        note: "Portal default",
+      },
+      {
+        label: "Security",
+        value: "MFA",
+        icon: Shield,
+        tone: "emerald",
+        note: "Enforced",
+      },
+      {
+        label: "Availability",
+        value: "Live",
+        icon: Radio,
+        tone: "amber",
+        note: "Responder online",
+      },
+    ],
+    rows: [
+      {
+        title: "Critical alert push",
+        detail: "Enabled for SOS and high-risk escalations",
+        status: "On",
+      },
+      {
+        title: "Case assignment notifications",
+        detail: "Immediate dashboard and push updates",
+        status: "On",
+      },
+      {
+        title: "Audit visibility",
+        detail: "Staff actions are logged for accountability",
+        status: "Active",
+      },
+    ],
+    actions: [
+      { label: "Save Preferences", icon: SettingsIcon, tone: "violet" },
+      { label: "Test Notifications", icon: Bell, tone: "sky" },
+      { label: "Update Availability", icon: Radio, tone: "emerald" },
+      { label: "Review Security", icon: Shield, tone: "amber" },
+    ],
+  },
+};
+
+const OperationalWorkspaceSection = ({
+  section,
+}: {
+  section: WorkspaceSectionKey;
+}) => {
+  const content = WORKSPACE_CONTENT[section];
+
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {content.cards.map((card) => (
+          <KpiCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            icon={card.icon}
+            tone={card.tone}
+            note={card.note}
+          />
+        ))}
+      </section>
+      <Panel title={content.title} bodyClassName="p-0">
+        <div className="divide-y divide-white/5">
+          {content.rows.map((row) => (
+            <div
+              key={row.title}
+              className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-white/[0.02]"
+            >
+              <div>
+                <p className="text-sm font-bold text-white">{row.title}</p>
+                <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
+              </div>
+              <button
+                type="button"
+                onClick={policeAction(row.status, row.title)}
+                className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-black text-violet-200 hover:bg-violet-500/20"
+              >
+                {row.status}
+              </button>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <ActionBar items={content.actions} />
+    </>
+  );
+};
 
 /* ================================ PORTAL ================================ */
 
 const PolicePortal: React.FC = () => {
   const [section, setSection] = useState<SectionKey>("overview");
+  const [caseQuery, setCaseQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [actionDialog, setActionDialog] = useState<PoliceActionDetail | null>(
+    null,
+  );
   const [now, setNow] = useState(() => new Date());
   const menuRef = useRef<HTMLDivElement>(null);
   const meta = SECTION_META[section] ?? { title: "Section", subtitle: "" };
@@ -1848,8 +2426,77 @@ const PolicePortal: React.FC = () => {
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  useEffect(() => {
+    const onAction = (event: Event) => {
+      const customEvent = event as CustomEvent<PoliceActionDetail>;
+      setActionDialog(customEvent.detail);
+    };
+    window.addEventListener("aegis:police-action", onAction);
+    return () => window.removeEventListener("aegis:police-action", onAction);
+  }, []);
+
+  const openRelevantSection = () => {
+    const label = actionDialog?.label.toLowerCase() ?? "";
+    if (label.includes("evidence") || label.includes("voice")) {
+      setSection("evidence");
+    } else if (
+      label.includes("dispatch") ||
+      label.includes("unit") ||
+      label.includes("route")
+    ) {
+      setSection("dispatch");
+    } else if (label.includes("partner") || label.includes("ngo")) {
+      setSection("partners");
+    } else if (label.includes("case") || label.includes("timeline")) {
+      setSection("cases");
+    } else if (label.includes("queue") || label.includes("sos")) {
+      setSection("queue");
+    }
+    setActionDialog(null);
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
+      {actionDialog && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={actionDialog.label}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1224] p-5 shadow-2xl shadow-black/50">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-black text-white">
+                  {actionDialog.label}
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                  {actionDialog.description}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setActionDialog(null)}
+                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={openRelevantSection}
+                className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+              >
+                Open Related Section
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
         <div className="flex items-center gap-3 px-5 py-5">
@@ -1894,13 +2541,13 @@ const PolicePortal: React.FC = () => {
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all",
                   active
                     ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white",
+                    : "text-slate-300 hover:bg-white/5 hover:text-white",
                 )}
               >
                 <Icon
                   className={cn(
                     "h-[18px] w-[18px] shrink-0",
-                    active ? "text-white" : "text-slate-500",
+                    active ? "text-white" : "text-slate-300",
                   )}
                 />
                 <span className="flex-1 text-left">{item.label}</span>
@@ -1919,7 +2566,7 @@ const PolicePortal: React.FC = () => {
             <p className="text-sm font-black tracking-wide text-white">
               AEGIS-AI
             </p>
-            <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
+            <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300">
               AI-Enhanced · Survivor-Centered
             </p>
             <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-violet-300">
@@ -1933,24 +2580,30 @@ const PolicePortal: React.FC = () => {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
           <div className="relative hidden max-w-md flex-1 lg:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
             <Input
+              value={caseQuery}
+              onChange={(event) => setCaseQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setSection("cases");
+              }}
               placeholder="Search cases, survivors, locations, or officers..."
-              className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-500"
+              className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-300"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-500">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-300">
               ⌘K
             </span>
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <span className="hidden items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 md:flex">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-              LIVE <span className="text-slate-400">System Operational</span>{" "}
+              LIVE <span className="text-slate-300">System Operational</span>{" "}
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </span>
             <button
               type="button"
-              className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white"
+              onClick={() => setSection("queue")}
+              className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:text-white"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -1965,7 +2618,7 @@ const PolicePortal: React.FC = () => {
                   minute: "2-digit",
                 })}
               </p>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-300">
                 {now.toLocaleDateString([], {
                   year: "numeric",
                   month: "short",
@@ -1975,7 +2628,8 @@ const PolicePortal: React.FC = () => {
             </div>
             <button
               type="button"
-              className="hidden items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-400 hover:text-white md:flex"
+              onClick={policeAction("Language selector", "English is active.")}
+              className="hidden items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white md:flex"
             >
               <Globe className="h-4 w-4" /> English{" "}
               <ChevronDown className="h-3 w-3" />
@@ -1994,11 +2648,11 @@ const PolicePortal: React.FC = () => {
                 <Avatar name={account.name} />
                 <div className="hidden text-left leading-tight lg:block">
                   <p className="text-sm font-bold text-white">{account.name}</p>
-                  <p className="text-[10px] text-slate-500">{account.role}</p>
+                  <p className="text-[10px] text-slate-300">{account.role}</p>
                 </div>
                 <ChevronDown
                   className={cn(
-                    "hidden h-4 w-4 text-slate-500 transition-transform lg:block",
+                    "hidden h-4 w-4 text-slate-300 transition-transform lg:block",
                     menuOpen && "rotate-180",
                   )}
                 />
@@ -2035,7 +2689,7 @@ const PolicePortal: React.FC = () => {
                 "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors",
                 section === key
                   ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white",
+                  : "text-slate-300 hover:text-white",
               )}
             >
               {key}
@@ -2055,7 +2709,7 @@ const PolicePortal: React.FC = () => {
             {section === "cases" && (
               <>
                 <SectionTitle meta={meta} />
-                <CasesSection />
+                <CasesSection query={caseQuery} onQueryChange={setCaseQuery} />
               </>
             )}
             {section === "dispatch" && (
@@ -2076,30 +2730,14 @@ const PolicePortal: React.FC = () => {
                 <PartnersSection />
               </>
             )}
-            {!DETAILED.includes(section) && (
+            {WORKSPACE_SECTION_KEYS.includes(
+              section as WorkspaceSectionKey,
+            ) && (
               <>
-                <SectionTitle
-                  meta={{
-                    title:
-                      NAV.find((n) => n.key === section)?.label ?? "Section",
-                    subtitle:
-                      "This module is part of the Police Response Portal layout.",
-                  }}
+                <SectionTitle meta={meta} />
+                <OperationalWorkspaceSection
+                  section={section as WorkspaceSectionKey}
                 />
-                <Panel>
-                  <div className="grid place-items-center px-4 py-16 text-center">
-                    <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl border-2 border-violet-500/30 bg-violet-500/10 text-violet-300">
-                      <Shield className="h-6 w-6" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-200">
-                      {NAV.find((n) => n.key === section)?.label}
-                    </p>
-                    <p className="mt-1 max-w-md text-xs text-slate-500">
-                      This module will surface live data once its backend is
-                      connected.
-                    </p>
-                  </div>
-                </Panel>
               </>
             )}
           </div>
@@ -2234,7 +2872,7 @@ const OverviewSection = () => {
           </span>
           Welcome, Law Enforcement Command
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-slate-300">
           Coordinated. Survivor-Centered. AI-Powered Response for a Safer
           Future.
         </p>
@@ -2277,7 +2915,7 @@ const OverviewSection = () => {
             ].map(([l, c]) => (
               <span
                 key={l}
-                className="flex items-center gap-1.5 text-[10px] text-slate-400"
+                className="flex items-center gap-1.5 text-[10px] text-slate-300"
               >
                 <span
                   className="h-2 w-2 rounded-full"
@@ -2398,12 +3036,13 @@ const OverviewSection = () => {
                 );
               })
             ) : (
-              <p className="py-4 text-center text-xs text-slate-500">
+              <p className="py-4 text-center text-xs text-slate-300">
                 No service data yet.
               </p>
             )}
             <button
               type="button"
+              onClick={policeAction("System status opened")}
               className="mt-1 w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
             >
               View System Status
@@ -2436,7 +3075,7 @@ const OverviewSection = () => {
                     </span>
                     <span className="font-bold text-white">
                       {c.value}{" "}
-                      <span className="font-medium text-slate-500">
+                      <span className="font-medium text-slate-300">
                         (
                         {casesByStatusTotal
                           ? Math.round((c.value / casesByStatusTotal) * 100)
@@ -2449,7 +3088,7 @@ const OverviewSection = () => {
               </div>
             </>
           ) : (
-            <p className="grid place-items-center py-12 text-center text-xs text-slate-500">
+            <p className="grid place-items-center py-12 text-center text-xs text-slate-300">
               No case data yet.
             </p>
           )}
@@ -2485,7 +3124,7 @@ const OverviewSection = () => {
                   <p className="mt-1 text-[11px] font-bold text-white">
                     {a.title}
                   </p>
-                  <p className="text-[10px] text-slate-500">{a.sub}</p>
+                  <p className="text-[10px] text-slate-300">{a.sub}</p>
                 </div>
               );
             })}
@@ -2514,11 +3153,11 @@ const OverviewSection = () => {
                     <p className="truncate text-xs font-bold text-white">
                       {a.title}
                     </p>
-                    <p className="truncate text-[10px] text-slate-500">
+                    <p className="truncate text-[10px] text-slate-300">
                       {a.sub}
                     </p>
                   </div>
-                  <span className="text-[10px] text-slate-500">{a.time}</span>
+                  <span className="text-[10px] text-slate-300">{a.time}</span>
                 </div>
               );
             })}
@@ -2553,11 +3192,11 @@ const OverviewSection = () => {
                     />
                     <p className="text-xs font-bold text-white">{a.title}</p>
                   </div>
-                  <span className="shrink-0 text-[10px] text-slate-500">
+                  <span className="shrink-0 text-[10px] text-slate-300">
                     {a.time}
                   </span>
                 </div>
-                <p className="mt-1 pl-6 text-[10px] text-slate-400">{a.desc}</p>
+                <p className="mt-1 pl-6 text-[10px] text-slate-300">{a.desc}</p>
               </div>
             ))}
           </div>
@@ -2577,6 +3216,10 @@ const QueueSection = () => {
     staleTime: 10000,
     refetchInterval: 30000,
   });
+  const [triageNote, setTriageNote] = useState("");
+  const [localNotes, setLocalNotes] = useState<
+    { time: string; by: string; note: string }[]
+  >([]);
 
   const sevRank = (s: string) => (s === "critical" ? 0 : s === "high" ? 1 : 2);
   const queueRows = escalations.length
@@ -2708,7 +3351,7 @@ const QueueSection = () => {
                       <p className="font-mono text-[11px] text-slate-300">
                         {q.id}
                       </p>
-                      <p className="text-[10px] text-slate-500">{q.via}</p>
+                      <p className="text-[10px] text-slate-300">{q.via}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-300">{q.type}</td>
                     <td className="px-4 py-3">
@@ -2724,18 +3367,18 @@ const QueueSection = () => {
                       >
                         {q.safety}
                       </p>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[10px] text-slate-300">
                         {q.safetySub}
                       </p>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs text-slate-300">{q.loc}</p>
-                      <p className="text-[10px] text-slate-500">{q.locSub}</p>
+                      <p className="text-[10px] text-slate-300">{q.locSub}</p>
                     </td>
                     <td className="px-4 py-3">
                       <RiskRing score={q.score} />
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-400">
+                    <td className="px-4 py-3 text-xs text-slate-300">
                       {q.officer}
                     </td>
                     <td className="px-4 py-3">
@@ -2743,12 +3386,20 @@ const QueueSection = () => {
                         <div className="flex gap-1.5">
                           <button
                             type="button"
+                            onClick={policeAction(
+                              "Dispatch queued",
+                              `${q.id} assigned for unit dispatch.`,
+                            )}
                             className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
                           >
                             Dispatch
                           </button>
                           <button
                             type="button"
+                            onClick={policeAction(
+                              "Escalation requested",
+                              `${q.id} marked for senior review.`,
+                            )}
                             className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300"
                           >
                             Escalate
@@ -2756,6 +3407,7 @@ const QueueSection = () => {
                         </div>
                         <button
                           type="button"
+                          onClick={policeAction("Case opened", q.id)}
                           className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300"
                         >
                           View Case
@@ -2768,7 +3420,7 @@ const QueueSection = () => {
             </table>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-slate-300">
               Showing 1 to 8 of 84 results
             </span>
             <Pagination pages={["1", "2", "3", "…", "11"]} />
@@ -2783,20 +3435,35 @@ const QueueSection = () => {
             <div className="mb-3 flex gap-2">
               <Input
                 placeholder="Add a triage note..."
+                value={triageNote}
+                onChange={(event) => setTriageNote(event.target.value)}
                 className="h-8 border-white/10 bg-slate-900/60 text-xs text-white"
               />
               <button
                 type="button"
+                onClick={() => {
+                  const note = triageNote.trim();
+                  if (!note) {
+                    toast.error("Triage note is empty");
+                    return;
+                  }
+                  setLocalNotes((current) => [
+                    { time: "Just now", by: "You", note },
+                    ...current,
+                  ]);
+                  setTriageNote("");
+                  policeAction("Triage note added", note)();
+                }}
                 className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 text-[11px] font-bold text-white"
               >
                 Add Note
               </button>
             </div>
             <div className="space-y-3">
-              {MOCK_TRIAGE_NOTES.map((n, i) => (
+              {[...localNotes, ...MOCK_TRIAGE_NOTES].map((n, i) => (
                 <div key={i} className="border-l-2 border-violet-500/40 pl-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400">
+                    <span className="text-[10px] font-bold text-slate-300">
                       {n.time}
                     </span>
                   </div>
@@ -2849,12 +3516,12 @@ const QueueSection = () => {
                           : "text-yellow-400",
                     )}
                   />
-                  <span className="text-[10px] text-slate-500">{a.time}</span>
+                  <span className="text-[10px] text-slate-300">{a.time}</span>
                   <div className="min-w-0 flex-1">
                     <span className="text-[11px] font-medium text-white">
                       {a.type}
                     </span>{" "}
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-[10px] text-slate-300">
                       • {a.loc}
                     </span>
                   </div>
@@ -2866,7 +3533,7 @@ const QueueSection = () => {
         </div>
       </section>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/50 px-5 py-3">
-        <p className="flex items-center gap-2 text-[11px] text-slate-400">
+        <p className="flex items-center gap-2 text-[11px] text-slate-300">
           <Shield className="h-4 w-4 text-violet-300" /> AEGIS-AI is committed
           to survivor safety, dignity, and justice. If you are in immediate
           danger, call <span className="font-black text-white">10111</span> or
@@ -2874,6 +3541,7 @@ const QueueSection = () => {
         </p>
         <button
           type="button"
+          onClick={policeAction("SOS quick access opened")}
           className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
         >
           <Siren className="h-4 w-4" /> SOS Quick Access
@@ -2885,7 +3553,13 @@ const QueueSection = () => {
 
 /* =============================== Cases =============================== */
 
-const CasesSection = () => {
+const CasesSection = ({
+  query,
+  onQueryChange,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+}) => {
   const { data: cases = [] } = useCaseReports({
     limit: 1000,
     staleTime: 10000,
@@ -2937,12 +3611,23 @@ const CasesSection = () => {
       ? MOCK_CASES
       : [];
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleCaseRows = normalizedQuery
+    ? caseRows.filter((c) =>
+        [c.id, c.alias, c.type, c.risk, c.status, c.officer, c.counselor, c.ngo]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery),
+      )
+    : caseRows;
+
   return (
     <>
       <div className="flex items-center justify-end gap-2">
         <SelectChip label="Filter Cases" />
         <button
           type="button"
+          onClick={policeAction("New case workflow opened")}
           className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
         >
           <Plus className="h-3.5 w-3.5" /> New Case
@@ -2968,8 +3653,10 @@ const CasesSection = () => {
           action={
             <div className="flex items-center gap-2">
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
                 <Input
+                  value={query}
+                  onChange={(event) => onQueryChange(event.target.value)}
                   placeholder="Search by Case ID, Survivor Alias..."
                   className="h-8 w-56 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
                 />
@@ -2994,7 +3681,17 @@ const CasesSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {caseRows.map((c) => (
+                {visibleCaseRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="px-4 py-10 text-center text-xs text-slate-300"
+                    >
+                      No cases match “{query}”.
+                    </td>
+                  </tr>
+                )}
+                {visibleCaseRows.map((c) => (
                   <tr key={c.id} className="hover:bg-white/[0.02]">
                     <td className="px-4 py-3 font-mono text-[11px] text-violet-300">
                       {c.id}
@@ -3038,7 +3735,8 @@ const CasesSection = () => {
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
+                        onClick={policeAction("Case actions opened", c.id)}
+                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
@@ -3049,8 +3747,8 @@ const CasesSection = () => {
             </table>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
-              {caseRows.length ? `1–${caseRows.length}` : "0"} of{" "}
+            <span className="text-[11px] text-slate-300">
+              {visibleCaseRows.length ? `1–${visibleCaseRows.length}` : "0"} of{" "}
               {nf.format(caseRows.length)}
             </span>
             <Pagination />
@@ -3066,10 +3764,10 @@ const CasesSection = () => {
               <p className="font-mono text-xs text-violet-300">
                 AEGIS-2025-05121
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-300">
                 Survivor Alias: Thandi K.
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-300">
                 Case Type: Intimate Partner Violence
               </p>
             </div>
@@ -3088,7 +3786,7 @@ const CasesSection = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-white">{t.title}</p>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[10px] text-slate-300">
                         {t.sub} · {t.date}
                       </p>
                     </div>
@@ -3097,6 +3795,7 @@ const CasesSection = () => {
               })}
               <button
                 type="button"
+                onClick={policeAction("Full case timeline opened")}
                 className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
               >
                 View Full Case Timeline →
@@ -3118,7 +3817,7 @@ const CasesSection = () => {
                     <p className="truncate text-xs font-bold text-white">
                       {s.name}
                     </p>
-                    <p className="truncate text-[10px] text-slate-500">
+                    <p className="truncate text-[10px] text-slate-300">
                       {s.id}
                     </p>
                   </div>
@@ -3126,12 +3825,13 @@ const CasesSection = () => {
                     <p className="text-[10px] font-bold text-rose-400">
                       High Risk
                     </p>
-                    <p className="text-[10px] text-slate-500">{s.note}</p>
+                    <p className="text-[10px] text-slate-300">{s.note}</p>
                   </div>
                 </div>
               ))}
               <button
                 type="button"
+                onClick={policeAction("High-risk cases opened")}
                 className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
               >
                 View All High-Risk Cases
@@ -3211,18 +3911,18 @@ const DispatchSection = () => (
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs text-white">{a.loc}</p>
-                      <p className="text-[10px] text-slate-500">{a.locSub}</p>
+                      <p className="text-[10px] text-slate-300">{a.locSub}</p>
                     </td>
                     <td className="px-4 py-3">
                       <Pill tone={statusTone(a.priority)}>{a.priority}</Pill>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs font-medium text-white">{a.unit}</p>
-                      <p className="text-[10px] text-slate-500">{a.officers}</p>
+                      <p className="text-[10px] text-slate-300">{a.officers}</p>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs text-white">{a.eta}</p>
-                      <p className="text-[10px] text-slate-500">{a.dist}</p>
+                      <p className="text-[10px] text-slate-300">{a.dist}</p>
                     </td>
                     <td className="px-4 py-3">
                       <Pill tone={statusTone(a.status)}>{a.status}</Pill>
@@ -3256,7 +3956,7 @@ const DispatchSection = () => (
                     <p className="text-xs font-bold text-white">
                       {w.n}. {w.title}
                     </p>
-                    <p className="text-[10px] text-slate-500">{w.sub}</p>
+                    <p className="text-[10px] text-slate-300">{w.sub}</p>
                   </div>
                 </div>
               );
@@ -3281,13 +3981,13 @@ const DispatchSection = () => (
                         <p className="text-xs font-bold text-white">
                           {h.title}
                         </p>
-                        <p className="text-[10px] text-slate-500">{h.org}</p>
+                        <p className="text-[10px] text-slate-300">{h.org}</p>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">{h.time}</span>
+                    <span className="text-[10px] text-slate-300">{h.time}</span>
                   </div>
                   <div className="mt-1.5 flex items-center justify-between">
-                    <p className="text-[10px] text-slate-500">{h.sub}</p>
+                    <p className="text-[10px] text-slate-300">{h.sub}</p>
                     <Pill tone={statusTone(h.status)}>{h.status}</Pill>
                   </div>
                 </div>
@@ -3295,6 +3995,7 @@ const DispatchSection = () => (
             })}
             <button
               type="button"
+              onClick={policeAction("Panel opened")}
               className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
             >
               Manage Partner Handoffs →
@@ -3318,265 +4019,302 @@ const DispatchSection = () => (
 
 /* =============================== Evidence =============================== */
 
-const EvidenceSection = () => (
-  <>
-    <div className="flex items-center justify-end">
-      <button
-        type="button"
-        className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-white hover:bg-white/5"
-      >
-        <Upload className="h-3.5 w-3.5" /> Upload Evidence
-      </button>
-    </div>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_EVIDENCE_KPIS.map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-          dir={k.dir}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
-      <Panel
-        title="Evidence Files"
-        bodyClassName="p-0"
-        action={
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-              <Input
-                placeholder="Search evidence..."
-                className="h-8 w-44 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
-              />
-            </div>
-            <SelectChip label="All Types" />
-            <SelectChip label="Filters" />
-            <SelectChip label="Export" />
-          </div>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-4 py-3">Evidence ID</th>
-                <th className="px-4 py-3">Case ID</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Uploaded By</th>
-                <th className="px-4 py-3">Integrity</th>
-                <th className="px-4 py-3">Review</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_EVIDENCE.map((e) => {
-                const Icon = e.icon;
-                return (
-                  <tr key={e.id} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3">
-                      <p className="font-mono text-[11px] text-slate-300">
-                        {e.id}
-                      </p>
-                      <p className="text-[10px] text-slate-500">{e.date}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-mono text-[11px] text-slate-300">
-                        {e.caseId}
-                      </p>
-                      <p className="text-[10px] text-slate-500">{e.alias}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-xs text-slate-300">
-                        <Icon className="h-3.5 w-3.5 text-violet-300" />
-                        {e.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-white">{e.source}</p>
-                      <p className="text-[10px] text-slate-500">
-                        {e.sourceSub}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-white">{e.by}</p>
-                      <p className="text-[10px] text-slate-500">{e.bySub}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "flex items-center gap-1 text-[11px] font-bold",
-                          e.integrity === "Intact"
-                            ? "text-emerald-400"
-                            : "text-amber-400",
-                        )}
-                      >
-                        {e.integrity === "Intact" ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : (
-                          <AlertTriangle className="h-3 w-3" />
-                        )}
-                        {e.integrity}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Pill tone={statusTone(e.review)}>{e.review}</Pill>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
-                        >
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-          <span className="text-[11px] text-slate-500">
-            Showing 1 to 8 of 1,248 results
-          </span>
-          <Pagination pages={["1", "2", "3", "…", "156"]} />
-        </div>
-      </Panel>
+const EvidenceSection = () => {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleEvidence = normalizedQuery
+    ? MOCK_EVIDENCE.filter((e) =>
+        [e.id, e.caseId, e.alias, e.type, e.source, e.by, e.integrity, e.review]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery),
+      )
+    : MOCK_EVIDENCE;
 
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Voice Note Translation"
-          action={<Pill tone="violet">Selected Evidence</Pill>}
+  return (
+    <>
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={policeAction("Evidence upload opened")}
+          className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-white hover:bg-white/5"
         >
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div>
-              <p className="text-slate-500">Evidence ID</p>
-              <p className="font-mono text-slate-300">EV-2025-05121-0003</p>
-            </div>
-            <div className="text-right">
-              <p className="text-slate-500">Case ID</p>
-              <p className="font-mono text-slate-300">GBV-2025-05121-0087</p>
-            </div>
-          </div>
-          <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold text-white">
-                Original (isiZulu)
-              </p>
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-300"
-              >
-                <Play className="h-3 w-3" /> Original Playback
-              </button>
-            </div>
-            <p className="mt-2 text-[11px] italic text-slate-400">
-              "Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
-              Angifuni ukubuyela lapho futhi ngiyesaba."
-            </p>
-          </div>
-          <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold text-white">
-                Transcript Preview (isiZulu)
-              </p>
-              <span className="text-[10px] text-emerald-400">
-                Confidence: 92%
-              </span>
-            </div>
-            <p className="mt-2 text-[11px] text-slate-400">
-              Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
-              Angifuni ukubuyela lapho futhi ngiyesaba…
-            </p>
-            <LinkChip label="Show full transcript" />
-          </div>
-          <div className="mt-3">
-            <p className="mb-1 text-[10px] text-slate-500">Translate To</p>
-            <SelectChip label="English (US)" />
-          </div>
-          <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold text-white">
-                Translated (English)
-              </p>
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300"
-              >
-                <Play className="h-3 w-3" /> Translated Playback
-              </button>
-            </div>
-            <p className="mt-2 text-[11px] text-slate-300">
-              "Please help me. It happened last night at my uncle's house. I
-              don't want to go back there and I'm afraid."
-            </p>
-            <p className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400">
-              <CheckCircle2 className="h-3 w-3" /> Auto-translation completed ·
-              Confidence: 94%
-            </p>
-          </div>
-        </Panel>
+          <Upload className="h-3.5 w-3.5" /> Upload Evidence
+        </button>
+      </div>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {MOCK_EVIDENCE_KPIS.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={k.delta}
+            dir={k.dir}
+          />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <Panel
-          title="Evidence Chain of Custody"
+          title="Evidence Files"
+          bodyClassName="p-0"
           action={
-            <button
-              type="button"
-              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300"
-            >
-              View Full Chain
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search evidence..."
+                  className="h-8 w-44 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
+                />
+              </div>
+              <SelectChip label="All Types" />
+              <SelectChip label="Filters" />
+              <SelectChip label="Export" />
+            </div>
           }
         >
-          <div className="space-y-3">
-            {MOCK_CHAIN.map((c, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <div className="flex flex-col items-center">
-                  <span
-                    className={cn(
-                      "h-2.5 w-2.5 rounded-full",
-                      c.tone === "emerald"
-                        ? "bg-emerald-400"
-                        : c.tone === "amber"
-                          ? "bg-amber-400"
-                          : c.tone === "violet"
-                            ? "bg-violet-400"
-                            : "bg-sky-400",
-                    )}
-                  />
-                  {i < MOCK_CHAIN.length - 1 && (
-                    <span className="mt-1 h-6 w-px bg-white/10" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] text-slate-500">{c.time}</p>
-                    {c.tag && <Pill tone={statusTone(c.tag)}>{c.tag}</Pill>}
-                  </div>
-                  <p className="text-xs font-bold text-white">{c.title}</p>
-                  <p className="text-[10px] text-slate-500">{c.sub}</p>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-4 py-3">Evidence ID</th>
+                  <th className="px-4 py-3">Case ID</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Uploaded By</th>
+                  <th className="px-4 py-3">Integrity</th>
+                  <th className="px-4 py-3">Review</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {visibleEvidence.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-4 py-10 text-center text-xs text-slate-300"
+                    >
+                      No evidence matches “{query}”.
+                    </td>
+                  </tr>
+                )}
+                {visibleEvidence.map((e) => {
+                  const Icon = e.icon;
+                  return (
+                    <tr key={e.id} className="hover:bg-white/[0.02]">
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-[11px] text-slate-300">
+                          {e.id}
+                        </p>
+                        <p className="text-[10px] text-slate-300">{e.date}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-[11px] text-slate-300">
+                          {e.caseId}
+                        </p>
+                        <p className="text-[10px] text-slate-300">{e.alias}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-1.5 text-xs text-slate-300">
+                          <Icon className="h-3.5 w-3.5 text-violet-300" />
+                          {e.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-white">{e.source}</p>
+                        <p className="text-[10px] text-slate-300">
+                          {e.sourceSub}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-white">{e.by}</p>
+                        <p className="text-[10px] text-slate-300">{e.bySub}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "flex items-center gap-1 text-[11px] font-bold",
+                            e.integrity === "Intact"
+                              ? "text-emerald-400"
+                              : "text-amber-400",
+                          )}
+                        >
+                          {e.integrity === "Intact" ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <AlertTriangle className="h-3 w-3" />
+                          )}
+                          {e.integrity}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill tone={statusTone(e.review)}>{e.review}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={policeAction(
+                              "Evidence preview opened",
+                              e.id,
+                            )}
+                            className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={policeAction(
+                              "Evidence actions opened",
+                              e.id,
+                            )}
+                            className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+            <span className="text-[11px] text-slate-300">
+              Showing 1 to 8 of 1,248 results
+            </span>
+            <Pagination pages={["1", "2", "3", "…", "156"]} />
           </div>
         </Panel>
-      </div>
-    </section>
-  </>
-);
+
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Voice Note Translation"
+            action={<Pill tone="violet">Selected Evidence</Pill>}
+          >
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <p className="text-slate-300">Evidence ID</p>
+                <p className="font-mono text-slate-300">EV-2025-05121-0003</p>
+              </div>
+              <div className="text-right">
+                <p className="text-slate-300">Case ID</p>
+                <p className="font-mono text-slate-300">GBV-2025-05121-0087</p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold text-white">
+                  Original (isiZulu)
+                </p>
+                <button
+                  type="button"
+                  onClick={policeAction("Original voice note playback started")}
+                  className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-300"
+                >
+                  <Play className="h-3 w-3" /> Original Playback
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] italic text-slate-300">
+                "Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
+                Angifuni ukubuyela lapho futhi ngiyesaba."
+              </p>
+            </div>
+            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold text-white">
+                  Transcript Preview (isiZulu)
+                </p>
+                <span className="text-[10px] text-emerald-400">
+                  Confidence: 92%
+                </span>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-300">
+                Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
+                Angifuni ukubuyela lapho futhi ngiyesaba…
+              </p>
+              <LinkChip label="Show full transcript" />
+            </div>
+            <div className="mt-3">
+              <p className="mb-1 text-[10px] text-slate-300">Translate To</p>
+              <SelectChip label="English (US)" />
+            </div>
+            <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold text-white">
+                  Translated (English)
+                </p>
+                <button
+                  type="button"
+                  onClick={policeAction("Translated voice playback started")}
+                  className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300"
+                >
+                  <Play className="h-3 w-3" /> Translated Playback
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-300">
+                "Please help me. It happened last night at my uncle's house. I
+                don't want to go back there and I'm afraid."
+              </p>
+              <p className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" /> Auto-translation completed
+                · Confidence: 94%
+              </p>
+            </div>
+          </Panel>
+          <Panel
+            title="Evidence Chain of Custody"
+            action={
+              <button
+                type="button"
+                onClick={policeAction("Evidence chain opened")}
+                className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300"
+              >
+                View Full Chain
+              </button>
+            }
+          >
+            <div className="space-y-3">
+              {MOCK_CHAIN.map((c, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="flex flex-col items-center">
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full",
+                        c.tone === "emerald"
+                          ? "bg-emerald-400"
+                          : c.tone === "amber"
+                            ? "bg-amber-400"
+                            : c.tone === "violet"
+                              ? "bg-violet-400"
+                              : "bg-sky-400",
+                      )}
+                    />
+                    {i < MOCK_CHAIN.length - 1 && (
+                      <span className="mt-1 h-6 w-px bg-white/10" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-slate-300">{c.time}</p>
+                      {c.tag && <Pill tone={statusTone(c.tag)}>{c.tag}</Pill>}
+                    </div>
+                    <p className="text-xs font-bold text-white">{c.title}</p>
+                    <p className="text-[10px] text-slate-300">{c.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Partner Coordination =============================== */
 
@@ -3589,6 +4327,7 @@ const PartnersSection = () => {
     "Hospitals",
     "Legal Support",
   ];
+  const [activeTab, setActiveTab] = useState("All");
   const ptypeTone: Record<string, string> = {
     NGO: "violet",
     Counselor: "sky",
@@ -3623,15 +4362,19 @@ const PartnersSection = () => {
           }
         >
           <div className="flex gap-1 border-b border-white/5 px-4 pt-3">
-            {tabs.map((t, i) => (
+            {tabs.map((t) => (
               <button
                 key={t}
                 type="button"
+                onClick={() => {
+                  setActiveTab(t);
+                  policeAction("Partner tab changed", t)();
+                }}
                 className={cn(
                   "rounded-t-lg px-3 py-2 text-[11px] font-bold",
-                  i === 0
+                  activeTab === t
                     ? "border-b-2 border-violet-500 text-white"
-                    : "text-slate-400 hover:text-white",
+                    : "text-slate-300 hover:text-white",
                 )}
               >
                 {t}
@@ -3668,7 +4411,7 @@ const PartnersSection = () => {
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs text-white">{p.lead}</p>
-                      <p className="text-[10px] text-slate-500">{p.phone}</p>
+                      <p className="text-[10px] text-slate-300">{p.phone}</p>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-300">
                       {p.service}
@@ -3676,18 +4419,23 @@ const PartnersSection = () => {
                     <td className="px-4 py-3">
                       <Pill tone={statusTone(p.status)}>{p.status}</Pill>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-400">{p.rt}</td>
+                    <td className="px-4 py-3 text-xs text-slate-300">{p.rt}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
+                          onClick={policeAction(
+                            "Partner message opened",
+                            p.org,
+                          )}
                           className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
+                          onClick={policeAction("Partner handoff opened", p.id)}
+                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </button>
@@ -3699,7 +4447,7 @@ const PartnersSection = () => {
             </table>
           </div>
           <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-slate-300">
               Showing 1 to 8 of 128 entries
             </span>
             <Pagination pages={["1", "2", "3", "4", "5", "…", "16"]} />
@@ -3731,15 +4479,15 @@ const PartnersSection = () => {
                             {t.ptype}
                           </Pill>
                         </div>
-                        <p className="truncate text-[10px] text-slate-500">
+                        <p className="truncate text-[10px] text-slate-300">
                           {t.caseId}
                         </p>
-                        <p className="truncate text-[10px] text-slate-400">
+                        <p className="truncate text-[10px] text-slate-300">
                           {t.msg}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <span className="text-[10px] text-slate-500">
+                        <span className="text-[10px] text-slate-300">
                           {t.time}
                         </span>
                         <span className="grid h-4 w-4 place-items-center rounded-full bg-violet-500 text-[9px] font-black text-white">
@@ -3772,15 +4520,15 @@ const PartnersSection = () => {
                       <p className="truncate text-xs font-bold text-white">
                         {a.org}
                       </p>
-                      <p className="truncate text-[10px] text-slate-500">
+                      <p className="truncate text-[10px] text-slate-300">
                         {a.caseId}
                       </p>
-                      <p className="truncate text-[10px] text-slate-400">
+                      <p className="truncate text-[10px] text-slate-300">
                         {a.task}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-slate-500">Due in</p>
+                      <p className="text-[10px] text-slate-300">Due in</p>
                       <p className="text-[11px] font-bold text-amber-400">
                         {a.due}
                       </p>

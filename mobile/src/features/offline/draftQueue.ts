@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { supabase } from "@/lib/supabase";
+import { submitCaseReportWithEscalation } from "@/features/reports/submitCaseReport";
 
 /**
  * Offline-safe queue for non-emergency incident reports (spec §13.2).
@@ -38,10 +38,15 @@ export async function flushDrafts(): Promise<number> {
   const remaining: ReportDraft[] = [];
   let sent = 0;
   for (const draft of drafts) {
-    const { _queuedAt, ...payload } = draft as ReportDraft & { _queuedAt?: string };
-    const { error } = await supabase.from("case_reports").insert(payload as never);
-    if (error) remaining.push(draft);
-    else sent += 1;
+    const { _queuedAt, ...payload } = draft as ReportDraft & {
+      _queuedAt?: string;
+    };
+    try {
+      await submitCaseReportWithEscalation(payload);
+      sent += 1;
+    } catch {
+      remaining.push(draft);
+    }
   }
   await AsyncStorage.setItem(KEY, JSON.stringify(remaining));
   return sent;

@@ -12,15 +12,16 @@ import { useTranslation } from "react-i18next";
 import { Screen, Button, Banner } from "@/components/ui";
 import { Icon, type IconName } from "@/components/Icon";
 import { useAuth } from "@/auth/AuthProvider";
-import { supabase } from "@/lib/supabase";
 import i18n from "@/i18n";
 import { saveDraft } from "@/features/offline/draftQueue";
 import { getLocationSafe } from "@/features/sos/escalation";
+import { submitCaseReportWithEscalation } from "@/features/reports/submitCaseReport";
 import { VoiceCapture } from "@/features/voice/VoiceCapture";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
 
 type Urgency = "low" | "medium" | "high";
 type WhenKey = "today" | "yesterday" | "earlier" | "";
+type ReporterRelationship = "self" | "on_behalf" | "witness" | "concern";
 
 const CATEGORIES: { key: string; label: string; icon: IconName }[] = [
   { key: "Physical Abuse", label: "Physical abuse", icon: "shield" },
@@ -49,6 +50,13 @@ const WHENS: { key: Exclude<WhenKey, "">; label: string }[] = [
   { key: "earlier", label: "Earlier" },
 ];
 
+const RELATIONSHIPS: { key: ReporterRelationship; label: string }[] = [
+  { key: "self", label: "I need help" },
+  { key: "on_behalf", label: "Someone else needs help" },
+  { key: "witness", label: "I witnessed something" },
+  { key: "concern", label: "Community safety concern" },
+];
+
 function whenToTimestamp(when: WhenKey): string | null {
   const now = new Date();
   if (when === "today") return now.toISOString();
@@ -70,6 +78,8 @@ export default function Report() {
   const [description, setDescription] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("medium");
   const [when, setWhen] = useState<WhenKey>("");
+  const [relationship, setRelationship] =
+    useState<ReporterRelationship>("self");
   const [shareLocation, setShareLocation] = useState(false);
   const [anonymous, setAnonymous] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -91,7 +101,8 @@ export default function Report() {
       survivor_id: null,
       reported_by: anonymous ? null : (user?.id ?? null),
       source: "mobile_app",
-      report_method: "in_app",
+      report_method: relationship === "self" ? "in_app" : "community_mobile",
+      reporter_relationship: relationship === "self" ? null : relationship,
       language: i18n.language,
       status: "new",
       category: cats.length ? cats.join(", ") : null,
@@ -110,6 +121,7 @@ export default function Report() {
     setCats([]);
     setAffected([]);
     setWhen("");
+    setRelationship("self");
     setConsent(false);
   }
 
@@ -122,13 +134,8 @@ export default function Report() {
     setLoading(true);
     const payload = await buildPayload();
     try {
-      const { data, error } = await supabase
-        .from("case_reports")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (error) throw error;
-      const ref = (data as { id: string }).id.slice(0, 8).toUpperCase();
+      const data = await submitCaseReportWithEscalation(payload);
+      const ref = (data.id ?? "submitted").slice(0, 8).toUpperCase();
       setResult({ tone: "success", text: t("report.submitted", { ref }) });
       reset();
     } catch {
@@ -158,6 +165,32 @@ export default function Report() {
       </View>
 
       {result ? <Banner tone={result.tone}>{result.text}</Banner> : null}
+
+      {/* Reporter relationship */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={styles.sectionLabel}>
+          {t("report.relationship", "Who are you reporting for?")}
+        </Text>
+        <View style={styles.chips}>
+          {RELATIONSHIPS.map((r) => (
+            <Pressable
+              key={r.key}
+              onPress={() => setRelationship(r.key)}
+              style={[styles.chip, relationship === r.key && styles.chipActive]}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  relationship === r.key && styles.chipTextActive,
+                ]}
+              >
+                {t(`report.relationship_${r.key}`, r.label)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
       {/* What happened */}
       <View style={{ gap: spacing.sm }}>

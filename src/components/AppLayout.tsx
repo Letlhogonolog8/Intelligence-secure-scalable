@@ -204,6 +204,27 @@ const AppLayout: React.FC = () => {
     return <SurvivorAppRedirect />;
   }
 
+  // Community Health Worker is no longer offered on the web portal. Existing
+  // CHW accounts are shown a clear notice rather than the retired dashboard.
+  if (role === "chw") {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+        <div className="max-w-lg w-full">
+          <ErrorState
+            variant="card"
+            title="Community Health Worker access has moved"
+            message="The web portal no longer hosts the Community Health Worker workspace. Please contact your administrator if you need access to another role."
+          />
+          <div className="mt-4 flex justify-center">
+            <Button variant="outline" onClick={() => signOut()}>
+              Sign out
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Analysts get a dedicated full-screen intelligence portal with its own
   // sidebar/topbar, so it bypasses the shared shell entirely.
   if (role === "analyst") {

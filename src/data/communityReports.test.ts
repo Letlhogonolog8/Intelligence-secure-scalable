@@ -18,6 +18,7 @@ const createQueryBuilder = (result: QueryResult) => {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
     then: (onFulfilled: (value: QueryResult) => unknown) =>
@@ -25,6 +26,7 @@ const createQueryBuilder = (result: QueryResult) => {
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
+  builder.in.mockReturnValue(builder);
   builder.order.mockReturnValue(builder);
   builder.limit.mockReturnValue(builder);
   return builder;
@@ -39,7 +41,7 @@ afterEach(() => {
 });
 
 describe("fetchCommunityReports", () => {
-  it("filters to community_web reports and maps rows", async () => {
+  it("filters to community reports and maps rows", async () => {
     const builder = createQueryBuilder({
       data: [
         {
@@ -61,7 +63,10 @@ describe("fetchCommunityReports", () => {
     const reports = await fetchCommunityReports();
 
     expect(mockFrom).toHaveBeenCalledWith("case_reports");
-    expect(builder.eq).toHaveBeenCalledWith("report_method", "community_web");
+    expect(builder.in).toHaveBeenCalledWith("report_method", [
+      "community_web",
+      "community_mobile",
+    ]);
     expect(reports).toEqual([
       {
         id: "cr-1",

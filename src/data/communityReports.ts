@@ -63,7 +63,7 @@ export async function fetchCommunityReports(
   const { data, error } = await supabase
     .from("case_reports")
     .select(COMMUNITY_REPORT_COLUMNS)
-    .eq("report_method", "community_web")
+    .in("report_method", ["community_web", "community_mobile"])
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;

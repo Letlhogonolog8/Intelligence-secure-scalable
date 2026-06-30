@@ -57,25 +57,34 @@ const RoleSelection: React.FC = () => {
         label: t("roles.survivor.title", "Survivor"),
         description: t(
           "roles.survivor.desc",
-          "Survivor support is a dedicated, private mobile app — with quick-exit, offline access, and emergency SOS."
+          "Survivor support is a dedicated, private mobile app — with quick-exit, offline access, and emergency SOS.",
         ),
         icon: <Heart className="h-6 w-6" />,
         requiresAuth: false,
         color: "from-blue-500 to-sky-400",
-        badges: [t("roles.mobileApp", "Mobile app"), t("roles.privateOffline", "Private & offline")],
-        hint: t("roles.useMobileApp", "Available on the AEGIS Support mobile app"),
+        badges: [
+          t("roles.mobileApp", "Mobile app"),
+          t("roles.privateOffline", "Private & offline"),
+        ],
+        hint: t(
+          "roles.useMobileApp",
+          "Available on the AEGIS Support mobile app",
+        ),
       },
       {
         id: "counselor",
         label: t("roles.counselor.title", "Counselor"),
         description: t(
           "roles.counselor.desc",
-          "Care providers coordinating survivor cases and intervention plans."
+          "Care providers coordinating survivor cases and intervention plans.",
         ),
         icon: <Users className="h-6 w-6" />,
         requiresAuth: true,
         color: "from-slate-700 to-blue-600",
-        badges: [t("roles.adminApproval", "Admin approval"), t("roles.credentialOnly", "Credential-only")],
+        badges: [
+          t("roles.adminApproval", "Admin approval"),
+          t("roles.credentialOnly", "Credential-only"),
+        ],
         hint: t("roles.loginOnly", "Login only with authorized credentials"),
       },
       {
@@ -83,7 +92,7 @@ const RoleSelection: React.FC = () => {
         label: t("roles.ngo.title", "NGO Representative"),
         description: t(
           "roles.ngo.desc",
-          "Partner organizations delivering outreach and protection services."
+          "Partner organizations delivering outreach and protection services.",
         ),
         icon: <Briefcase className="h-6 w-6" />,
         requiresAuth: true,
@@ -100,12 +109,15 @@ const RoleSelection: React.FC = () => {
         label: t("roles.police.title", "Police Officer"),
         description: t(
           "roles.police.desc",
-          "Law enforcement personnel with investigative intelligence access."
+          "Law enforcement personnel with investigative intelligence access.",
         ),
         icon: <Shield className="h-6 w-6" />,
         requiresAuth: true,
         color: "from-blue-700 to-indigo-600",
-        badges: [t("roles.restrictedAccess", "Restricted access"), t("roles.credentialOnly", "Credential-only")],
+        badges: [
+          t("roles.restrictedAccess", "Restricted access"),
+          t("roles.credentialOnly", "Credential-only"),
+        ],
         hint: t("roles.loginOnly", "Login only with authorized credentials"),
       },
       {
@@ -113,12 +125,15 @@ const RoleSelection: React.FC = () => {
         label: t("roles.analyst.title", "Data Analyst"),
         description: t(
           "roles.analyst.desc",
-          "Analytical teams monitoring trends and policy effectiveness."
+          "Analytical teams monitoring trends and policy effectiveness.",
         ),
         icon: <BarChart3 className="h-6 w-6" />,
         requiresAuth: true,
         color: "from-slate-700 to-slate-500",
-        badges: [t("roles.adminApproval", "Admin approval"), t("roles.credentialOnly", "Credential-only")],
+        badges: [
+          t("roles.adminApproval", "Admin approval"),
+          t("roles.credentialOnly", "Credential-only"),
+        ],
         hint: t("roles.loginOnly", "Login only with authorized credentials"),
       },
       {
@@ -126,7 +141,7 @@ const RoleSelection: React.FC = () => {
         label: t("roles.admin.title", "Administrator"),
         description: t(
           "roles.admin.desc",
-          "System owners managing governance, users, and compliance."
+          "System owners managing governance, users, and compliance.",
         ),
         icon: <Lock className="h-6 w-6" />,
         requiresAuth: true,
@@ -138,44 +153,34 @@ const RoleSelection: React.FC = () => {
         ],
         hint: t("roles.loginOnly", "Login only with authorized credentials"),
       },
-      {
-        id: "chw" as UserRole,
-        label: t("roles.chw.title", "Community Health Worker"),
-        description: t(
-          "roles.chw.desc",
-          "Field workers conducting rural outreach, referrals, and survivor follow-up in last-mile communities."
-        ),
-        icon: <Heart className="h-6 w-6" />,
-        requiresAuth: true,
-        color: "from-emerald-700 to-teal-600",
-        badges: [
-          t("roles.adminApproval", "Admin approval"),
-          t("roles.credentialOnly", "Credential-only"),
-          t("roles.offlineCapable", "Offline capable"),
-        ],
-        hint: t("roles.loginOnly", "Login only with authorized credentials"),
-      },
     ],
-    [t]
+    [t],
   );
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
   };
 
-  const selectedRoleConfig = selectedRole ? roles.find((role) => role.id === selectedRole) ?? null : null;
+  const selectedRoleConfig = selectedRole
+    ? (roles.find((role) => role.id === selectedRole) ?? null)
+    : null;
   // The web app is the PROFESSIONAL portal. Survivors use the dedicated mobile
   // app, so when the Survivor role is selected we offer the app, not web sign-in.
   const isSurvivor = selectedRole === "survivor";
   const mobileAppUrl = env.VITE_MOBILE_APP_URL;
   const selectedPolicy = selectedRole ? ROLE_AUTH_POLICIES[selectedRole] : null;
-  const selectedRequiresMfa = selectedRole ? requiresMfaForRole(selectedRole) : false;
-  const canInitialize = selectedRole
-    ? canSelfRegister(selectedRole) || canRequestPrivilegedAccess(selectedRole) || isAdminUser
+  const selectedRequiresMfa = selectedRole
+    ? requiresMfaForRole(selectedRole)
     : false;
-  const initializeLabel = selectedRole && canRequestPrivilegedAccess(selectedRole) && !isAdminUser
-    ? "Request Access"
-    : "Initialize Profile";
+  const canInitialize = selectedRole
+    ? canSelfRegister(selectedRole) ||
+      canRequestPrivilegedAccess(selectedRole) ||
+      isAdminUser
+    : false;
+  const initializeLabel =
+    selectedRole && canRequestPrivilegedAccess(selectedRole) && !isAdminUser
+      ? "Request Access"
+      : "Initialize Profile";
 
   const initializeHint = !selectedRole
     ? "Select a role to continue."
@@ -210,7 +215,7 @@ const RoleSelection: React.FC = () => {
       setIsAdminUser(
         data?.role === "admin" &&
           data?.is_active !== false &&
-          data?.approval_status === "approved"
+          data?.approval_status === "approved",
       );
       setIsProfileLoading(false);
     };
@@ -251,7 +256,7 @@ const RoleSelection: React.FC = () => {
               title={t("roles.selectTitle", "Select your access role")}
               description={t(
                 "roles.selectSubtitle",
-                "Role-based authentication ensures each user accesses only the modules, workflows, and data appropriate to their function."
+                "Role-based authentication ensures each user accesses only the modules, workflows, and data appropriate to their function.",
               )}
               className="space-y-0 border-none bg-transparent p-0 shadow-none"
             >
@@ -282,9 +287,13 @@ const RoleSelection: React.FC = () => {
             <div className="rounded-[28px] border border-white/10 bg-slate-950/70 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.32em] text-slate-400">Selection summary</p>
+                  <p className="text-xs uppercase tracking-[0.32em] text-slate-400">
+                    Selection summary
+                  </p>
                   <h2 className="mt-2 text-2xl font-semibold text-white">
-                    {selectedRoleConfig ? selectedRoleConfig.label : "No role selected"}
+                    {selectedRoleConfig
+                      ? selectedRoleConfig.label
+                      : "No role selected"}
                   </h2>
                 </div>
                 {selectedRoleConfig && (
@@ -299,21 +308,29 @@ const RoleSelection: React.FC = () => {
                   title="Current guidance"
                   description={
                     selectedRoleConfig
-                      ? selectedRoleConfig.hint ?? ""
-                      : t("roles.chooseRole", "Choose a role to view clearance and access details.")
+                      ? (selectedRoleConfig.hint ?? "")
+                      : t(
+                          "roles.chooseRole",
+                          "Choose a role to view clearance and access details.",
+                        )
                   }
                 />
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <AuthMetricCard
                     label="Session timeout"
-                    value={selectedPolicy ? `${selectedPolicy.sessionTimeout} min` : "—"}
+                    value={
+                      selectedPolicy
+                        ? `${selectedPolicy.sessionTimeout} min`
+                        : "—"
+                    }
                   />
                   <AuthMetricCard
                     label="Security level"
                     value={
                       selectedRole
-                        ? selectedRequiresMfa || selectedPolicy?.requiresBiometric
+                        ? selectedRequiresMfa ||
+                          selectedPolicy?.requiresBiometric
                           ? t("roles.high", "High")
                           : t("roles.standard", "Standard")
                         : "—"
@@ -329,7 +346,8 @@ const RoleSelection: React.FC = () => {
 
                 {isProfileLoading && (
                   <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-                    Checking your approved admin status for privileged setup actions.
+                    Checking your approved admin status for privileged setup
+                    actions.
                   </div>
                 )}
               </div>
@@ -345,11 +363,16 @@ const RoleSelection: React.FC = () => {
             <div className="rounded-[32px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_25px_60px_rgba(2,6,23,0.55)] sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Roles</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Choose where you need access</h2>
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                    Roles
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    Choose where you need access
+                  </h2>
                 </div>
                 <p className="max-w-md text-sm text-slate-400">
-                  Each role exposes a different operational surface, assurance level, and onboarding path.
+                  Each role exposes a different operational surface, assurance
+                  level, and onboarding path.
                 </p>
               </div>
 
@@ -357,7 +380,8 @@ const RoleSelection: React.FC = () => {
                 {roles.map((role) => {
                   const isSelected = selectedRole === role.id;
                   const policy = ROLE_AUTH_POLICIES[role.id];
-                  const roleRequiresHighSecurity = requiresMfaForRole(role.id) || policy?.requiresBiometric;
+                  const roleRequiresHighSecurity =
+                    requiresMfaForRole(role.id) || policy?.requiresBiometric;
 
                   return (
                     <motion.button
@@ -371,24 +395,33 @@ const RoleSelection: React.FC = () => {
                         "relative rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]",
                         isSelected
                           ? "border-blue-300/80 bg-slate-900/90 shadow-[0_14px_40px_rgba(59,130,246,0.22)] ring-1 ring-blue-400/40"
-                          : "border-white/10 bg-slate-950/75 hover:border-white/25 hover:bg-slate-900/80"
+                          : "border-white/10 bg-slate-950/75 hover:border-white/25 hover:bg-slate-900/80",
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-lg", role.color)}>
+                        <div
+                          className={cn(
+                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-lg",
+                            role.color,
+                          )}
+                        >
                           {role.icon}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-[15px] font-semibold text-white">{role.label}</h3>
+                          <h3 className="truncate text-[15px] font-semibold text-white">
+                            {role.label}
+                          </h3>
                           <span
                             className={cn(
                               "mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]",
                               role.requiresAuth
                                 ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
-                                : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                                : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
                             )}
                           >
-                            {role.requiresAuth ? t("roles.restricted", "Restricted") : t("roles.openAccess", "Open Access")}
+                            {role.requiresAuth
+                              ? t("roles.restricted", "Restricted")
+                              : t("roles.openAccess", "Open Access")}
                           </span>
                         </div>
                         {isSelected && (
@@ -398,7 +431,9 @@ const RoleSelection: React.FC = () => {
                         )}
                       </div>
 
-                      <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-slate-300/80">{role.description}</p>
+                      <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-slate-300/80">
+                        {role.description}
+                      </p>
 
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {role.badges.map((badge) => (
@@ -410,7 +445,9 @@ const RoleSelection: React.FC = () => {
                           </span>
                         ))}
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">
-                          {roleRequiresHighSecurity ? t("roles.high", "High") : t("roles.standard", "Standard")}
+                          {roleRequiresHighSecurity
+                            ? t("roles.high", "High")
+                            : t("roles.standard", "Standard")}
                         </span>
                       </div>
                     </motion.button>
@@ -426,8 +463,12 @@ const RoleSelection: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.5 }}
               >
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Continue</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">Next step</h3>
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                  Continue
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  Next step
+                </h3>
                 <p className="mt-2 text-sm text-slate-400">
                   {selectedRoleConfig
                     ? `Continue as ${selectedRoleConfig.label} using the valid path below.`
@@ -445,7 +486,13 @@ const RoleSelection: React.FC = () => {
                     <div className="mt-6 flex flex-col gap-3">
                       {mobileAppUrl ? (
                         <Button
-                          onClick={() => window.open(mobileAppUrl, "_blank", "noopener,noreferrer")}
+                          onClick={() =>
+                            window.open(
+                              mobileAppUrl,
+                              "_blank",
+                              "noopener,noreferrer",
+                            )
+                          }
                           className="h-12 bg-gradient-to-r from-sky-500 to-blue-600 text-base shadow-lg shadow-blue-500/25"
                         >
                           Get the AEGIS Support app
@@ -453,8 +500,9 @@ const RoleSelection: React.FC = () => {
                         </Button>
                       ) : (
                         <p className="text-xs text-slate-400">
-                          Ask your support worker or coordinator how to install the AEGIS Support
-                          app. You can sign in there with the same username and passphrase.
+                          Ask your support worker or coordinator how to install
+                          the AEGIS Support app. You can sign in there with the
+                          same username and passphrase.
                         </p>
                       )}
                     </div>
@@ -475,7 +523,10 @@ const RoleSelection: React.FC = () => {
 
                     <div className="mt-6 flex flex-col gap-3">
                       <Button
-                        onClick={() => selectedRole && navigate(`/auth/verify?role=${selectedRole}`)}
+                        onClick={() =>
+                          selectedRole &&
+                          navigate(`/auth/verify?role=${selectedRole}`)
+                        }
                         className="h-12 bg-gradient-to-r from-blue-500 via-slate-700 to-rose-500 text-base shadow-lg shadow-blue-500/25"
                         disabled={!selectedRole}
                       >
@@ -484,7 +535,11 @@ const RoleSelection: React.FC = () => {
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => selectedRole && canInitialize && navigate(`/auth/initialize?role=${selectedRole}`)}
+                        onClick={() =>
+                          selectedRole &&
+                          canInitialize &&
+                          navigate(`/auth/initialize?role=${selectedRole}`)
+                        }
                         className="h-12 border-white/20 bg-white/5 text-base text-slate-100 hover:bg-white/10"
                         disabled={!selectedRole || !canInitialize}
                       >
@@ -492,7 +547,8 @@ const RoleSelection: React.FC = () => {
                       </Button>
                       {!canInitialize && selectedRole && (
                         <p className="text-xs text-slate-400">
-                          Initialization is disabled because this role requires approved credentials before onboarding.
+                          Initialization is disabled because this role requires
+                          approved credentials before onboarding.
                         </p>
                       )}
                     </div>
