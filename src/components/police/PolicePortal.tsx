@@ -75,6 +75,7 @@ import { toast } from "sonner";
 import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
+import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
 import {
   useAlertsFeed,
   useAuditLogs,
@@ -2540,63 +2541,244 @@ const IncidentsSection = () => {
   );
 };
 
+type SafetyRow = {
+  key: string;
+  caseLabel: string;
+  severity: string;
+  statusLabel: string;
+  statusTone: string;
+  escalation: string;
+  reason: string;
+  loc: string;
+  when: string;
+  officer: string;
+  resolved: boolean;
+};
+
+const safetyStatusFor = (severity: string): { label: string; tone: string } => {
+  const s = severity.toLowerCase();
+  if (s === "critical") return { label: "In Immediate Danger", tone: "rose" };
+  if (s === "high") return { label: "At Risk", tone: "amber" };
+  if (s === "medium") return { label: "Monitoring", tone: "sky" };
+  return { label: "Stable", tone: "emerald" };
+};
+
 const SurvivorSafetySection = () => {
-  const [checkedIn, setCheckedIn] = useState<Record<string, boolean>>({});
+  const { navigate } = usePolicePortal();
+  const { data: escalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
+
+  const sevRank = (s: string) =>
+    s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
+
+  const liveRows: SafetyRow[] = [...escalations]
+    .sort(
+      (a, b) =>
+        sevRank(a.severity.toLowerCase()) - sevRank(b.severity.toLowerCase()),
+    )
+    .map((e) => {
+      const status = safetyStatusFor(e.severity);
+      const closed = ["acknowledged", "resolved", "closed"].includes(
+        (e.status || "").toLowerCase(),
+      );
+      return {
+        key: e.id,
+        caseLabel: e.caseId
+          ? `AEG-${e.caseId.slice(0, 8).toUpperCase()}`
+          : `ESC-${e.id.slice(0, 8).toUpperCase()}`,
+        severity: titleCase(e.severity || "medium"),
+        statusLabel: status.label,
+        statusTone: status.tone,
+        escalation: titleCase(
+          (e.escalationType || "Escalation").replace(/_/g, " "),
+        ),
+        reason: e.reason || "—",
+        loc:
+          e.lat != null && e.lng != null
+            ? `${e.lat.toFixed(3)}, ${e.lng.toFixed(3)}`
+            : "Location pending",
+        when: e.triggeredAt ? fmtRelative(e.triggeredAt) : "—",
+        officer: e.assignedTo || "Unassigned",
+        resolved: closed,
+      };
+    });
+
+  const fallbackRows: SafetyRow[] = MOCK_QUEUE.map((q) => ({
+    key: q.id,
+    caseLabel: q.id,
+    severity: q.priority,
+    statusLabel: q.safety,
+    statusTone: safetyStatusFor(q.priority).tone,
+    escalation: q.type,
+    reason: q.safetySub,
+    loc: q.loc,
+    when: q.ago,
+    officer: q.officer,
+    resolved: false,
+  }));
+
+  const rows = liveRows.length ? liveRows : ALLOW_MOCK ? fallbackRows : [];
+  const isLive = liveRows.length > 0;
+
+  const count = (predicate: (r: SafetyRow) => boolean) =>
+    nf.format(rows.filter(predicate).length);
+  const kpiValue = (live: string, sample: string) =>
+    isLive ? live : ALLOW_MOCK ? sample : NO_DATA;
+
+  const safetyKpis = [
+    {
+      label: "High-Risk Survivors",
+      value: kpiValue(
+        count((r) => ["Critical", "High"].includes(r.severity)),
+        "12",
+      ),
+      icon: ShieldAlert,
+      tone: "rose",
+      note: "Critical & high severity",
+    },
+    {
+      label: "Active Escalations",
+      value: kpiValue(
+        count((r) => !r.resolved),
+        "39",
+      ),
+      icon: Siren,
+      tone: "amber",
+      note: "Awaiting response",
+    },
+    {
+      label: "Acknowledged",
+      value: kpiValue(
+        count((r) => r.resolved),
+        "28",
+      ),
+      icon: ShieldCheck,
+      tone: "emerald",
+      note: "Responder confirmed",
+    },
+    {
+      label: "Total Tracked",
+      value: kpiValue(nf.format(rows.length), "64"),
+      icon: Users,
+      tone: "sky",
+      note: "Survivor safety events",
+    },
+  ];
 
   return (
     <>
-      <WorkspaceKpis section="survivor" />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {safetyKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            note={k.note}
+          />
+        ))}
+      </section>
       <Panel
-        title="Safety Check-ins"
-        subtitle="Due and overdue contact windows"
+        title="Survivor Safety & Escalations"
+        subtitle={
+          isLive
+            ? "Live risk status and escalation details from survivor reports and SOS alerts"
+            : "Live risk status from survivor reports and SOS alerts"
+        }
         bodyClassName="p-0"
       >
-        <div className="divide-y divide-white/5">
-          {WORKSPACE_CONTENT.survivor.rows.map((row) => {
-            const done = checkedIn[row.title];
-            return (
-              <div
-                key={row.title}
-                className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
-              >
-                <div>
-                  <p className="text-sm font-bold text-white">{row.title}</p>
-                  <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toast.info(`Calling trusted contact for ${row.title}…`)
-                    }
-                    className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
-                  >
-                    <Phone className="h-3 w-3" /> Call
-                  </button>
-                  {done ? (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Checked in
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCheckedIn((current) => ({
-                          ...current,
-                          [row.title]: true,
-                        }));
-                        toast.success("Check-in recorded");
-                      }}
-                      className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-1.5 text-[11px] font-bold text-white"
-                    >
-                      Mark checked in
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {rows.length === 0 ? (
+          <div className="px-5 py-12 text-center text-sm text-slate-300">
+            No survivor safety escalations right now. New SOS alerts and
+            high-risk survivor reports appear here in real time.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-4 py-3">Case</th>
+                  <th className="px-4 py-3">Risk</th>
+                  <th className="px-4 py-3">Safety Status</th>
+                  <th className="px-4 py-3">Escalation</th>
+                  <th className="px-4 py-3">Location</th>
+                  <th className="px-4 py-3">Triggered</th>
+                  <th className="px-4 py-3">Officer</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {rows.map((r) => {
+                  const done = acknowledged[r.key] || r.resolved;
+                  return (
+                    <tr key={r.key} className="hover:bg-white/[0.02]">
+                      <td className="px-4 py-3 font-mono text-[11px] text-violet-300">
+                        {r.caseLabel}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill tone={statusTone(r.severity)}>{r.severity}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill tone={r.statusTone}>{r.statusLabel}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-white">{r.escalation}</p>
+                        <p className="max-w-[220px] truncate text-[10px] text-slate-300">
+                          {r.reason}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-300">
+                        {r.loc}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-slate-300">
+                        {r.when}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-300">
+                        {r.officer}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => navigate("cases")}
+                            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
+                          >
+                            View Case
+                          </button>
+                          {done ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5" />{" "}
+                              Acknowledged
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAcknowledged((current) => ({
+                                  ...current,
+                                  [r.key]: true,
+                                }));
+                                toast.success("Safety escalation acknowledged");
+                              }}
+                              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/20"
+                            >
+                              Acknowledge
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
     </>
   );
@@ -4757,6 +4939,9 @@ const EvidenceSection = () => {
           />
         ))}
       </section>
+      {/* Live: evidence a survivor has consented to share with their case team,
+          uploaded from the mobile app (photos, voice notes, documents). */}
+      <SharedEvidencePanel />
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <Panel
           title="Evidence Files"
