@@ -54,7 +54,6 @@ import {
   Mic,
   MoreHorizontal,
   Phone,
-  Play,
   Plus,
   Radio,
   Scale,
@@ -105,6 +104,14 @@ import {
   escalateEscalation,
   ESCALATION_EVENTS_KEY,
 } from "@/data/escalationActions";
+import {
+  CASE_EVIDENCE_QUERY_KEY,
+  caseEvidenceKind,
+  createCaseEvidenceUrl,
+  uploadCaseEvidence,
+  useCaseEvidence,
+  type CaseEvidenceEntry,
+} from "@/data/caseEvidence";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
@@ -1004,192 +1011,6 @@ const MOCK_HANDOFFS = [
   },
 ];
 
-const MOCK_EVIDENCE_KPIS = [
-  {
-    label: "Evidence Files",
-    value: "1,248",
-    icon: FileText,
-    tone: "violet",
-    delta: "14% from yesterday",
-    dir: "up",
-  },
-  {
-    label: "Pending Review",
-    value: "214",
-    icon: Clock,
-    tone: "amber",
-    delta: "8% from yesterday",
-    dir: "up",
-  },
-  {
-    label: "Voice Notes Awaiting Translation",
-    value: "47",
-    icon: Mic,
-    tone: "sky",
-    delta: "11% from yesterday",
-    dir: "up",
-  },
-  {
-    label: "Verified Uploads",
-    value: "936",
-    icon: ShieldCheck,
-    tone: "emerald",
-    delta: "19% from yesterday",
-    dir: "up",
-  },
-] as const;
-
-const MOCK_EVIDENCE = [
-  {
-    id: "EV-2025-05121-0001",
-    date: "May 21, 2025 09:12 AM",
-    caseId: "GBV-2025-05121-0087",
-    alias: "Naledi M.",
-    type: "Photo",
-    icon: Camera,
-    source: "Mobile Upload",
-    sourceSub: "Android Device",
-    by: "Officer J. Dlamini",
-    bySub: "Unit 12A",
-    integrity: "Intact",
-    review: "Pending",
-  },
-  {
-    id: "EV-2025-05121-0002",
-    date: "May 21, 2025 08:47 AM",
-    caseId: "GBV-2025-05121-0087",
-    alias: "Naledi M.",
-    type: "Medical Report",
-    icon: FileText,
-    source: "Hospital System",
-    sourceSub: "Life Sentinel EMR",
-    by: "Dr. S. Khumalo",
-    bySub: "City Hospital",
-    integrity: "Intact",
-    review: "In Review",
-  },
-  {
-    id: "EV-2025-05121-0003",
-    date: "May 21, 2025 08:35 AM",
-    caseId: "GBV-2025-05121-0087",
-    alias: "Naledi M.",
-    type: "Voice Note",
-    icon: Mic,
-    source: "Victim Interview",
-    sourceSub: "AEGIS Recorder",
-    by: "Officer J. Dlamini",
-    bySub: "Unit 12A",
-    integrity: "Intact",
-    review: "Pending Translation",
-  },
-  {
-    id: "EV-2025-05121-0004",
-    date: "May 21, 2025 07:58 AM",
-    caseId: "GBV-2025-05120-0076",
-    alias: "Naledi P.",
-    type: "Video",
-    icon: Video,
-    source: "Body Camera",
-    sourceSub: "Unit 12A",
-    by: "Officer L. Ndlovu",
-    bySub: "Unit 12A",
-    integrity: "Intact",
-    review: "In Review",
-  },
-  {
-    id: "EV-2025-05120-0099",
-    date: "May 20, 2025 11:22 PM",
-    caseId: "GBV-2025-05120-0074",
-    alias: "Aisha K.",
-    type: "Statement Document",
-    icon: FileText,
-    source: "Web Portal",
-    sourceSub: "Victim Portal",
-    by: "Social Worker P. Naidoo",
-    bySub: "SafeHarbor NGO",
-    integrity: "Intact",
-    review: "Verified",
-  },
-  {
-    id: "EV-2025-05120-0098",
-    date: "May 20, 2025 10:15 PM",
-    caseId: "GBV-2025-05120-0074",
-    alias: "Aisha K.",
-    type: "Voice Note",
-    icon: Mic,
-    source: "Victim Interview",
-    sourceSub: "AEGIS Recorder",
-    by: "Officer M. Jacobs",
-    bySub: "Unit 07B",
-    integrity: "Tampered",
-    review: "Requires Attention",
-  },
-  {
-    id: "EV-2025-05120-0097",
-    date: "May 20, 2025 09:40 PM",
-    caseId: "GBV-2025-05120-0071",
-    alias: "Lerato S.",
-    type: "Photo",
-    icon: Camera,
-    source: "Mobile Upload",
-    sourceSub: "iOS Device",
-    by: "Officer T. Mokoena",
-    bySub: "Unit 07B",
-    integrity: "Intact",
-    review: "Verified",
-  },
-  {
-    id: "EV-2025-05120-0096",
-    date: "May 20, 2025 08:12 PM",
-    caseId: "GBV-2025-05120-0071",
-    alias: "Lerato S.",
-    type: "Medical Report",
-    icon: FileText,
-    source: "Hospital System",
-    sourceSub: "Life Sentinel EMR",
-    by: "Dr. N. Patel",
-    bySub: "Community Clinic",
-    integrity: "Intact",
-    review: "Verified",
-  },
-];
-
-const MOCK_CHAIN = [
-  {
-    time: "May 21, 2025 08:35 AM",
-    title: "Evidence collected",
-    sub: "Officer J. Dlamini (Unit 12A)",
-    tone: "violet",
-  },
-  {
-    time: "May 21, 2025 08:36 AM",
-    title: "Secure upload to AEGIS-AI",
-    sub: "Device ID: AEG-REC-1127",
-    tone: "sky",
-  },
-  {
-    time: "May 21, 2025 08:38 AM",
-    title: "Integrity check completed",
-    sub: "AEGIS-AI Forensic Engine",
-    tone: "emerald",
-    tag: "Intact",
-  },
-  {
-    time: "May 21, 2025 08:41 AM",
-    title: "Queued for translation",
-    sub: "AEGIS-AI Language Service",
-    tone: "amber",
-    tag: "Pending",
-  },
-  {
-    time: "May 21, 2025 08:47 AM",
-    title: "Assigned for review",
-    sub: "Supervisor K. Naidoo",
-    tone: "sky",
-    tag: "In Review",
-  },
-];
-
 const MOCK_PARTNER_KPIS = [
   {
     label: "Active NGO Referrals",
@@ -1575,12 +1396,9 @@ const statusTone = (s: string) => {
  * props) can drive real navigation and open record detail views instead of
  * showing placeholder acknowledgements.
  */
-type EvidenceRow = (typeof MOCK_EVIDENCE)[number];
-
 type PolicePortalContextValue = {
   section: SectionKey;
   navigate: (section: SectionKey) => void;
-  openEvidence: (row: EvidenceRow) => void;
 };
 
 const PolicePortalContext = createContext<PolicePortalContextValue | null>(
@@ -3560,15 +3378,11 @@ const PolicePortal: React.FC = () => {
   const [section, setSection] = useState<SectionKey>("overview");
   const [caseQuery, setCaseQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [evidenceDetail, setEvidenceDetail] = useState<EvidenceRow | null>(
-    null,
-  );
 
   const portalContext = useMemo<PolicePortalContextValue>(
     () => ({
       section,
       navigate: setSection,
-      openEvidence: setEvidenceDetail,
     }),
     [section],
   );
@@ -3604,16 +3418,6 @@ const PolicePortal: React.FC = () => {
   return (
     <PolicePortalContext.Provider value={portalContext}>
       <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
-        {evidenceDetail && (
-          <EvidenceDetailModal
-            row={evidenceDetail}
-            onClose={() => setEvidenceDetail(null)}
-            onOpenCase={() => {
-              setEvidenceDetail(null);
-              setSection("cases");
-            }}
-          />
-        )}
         {/* Sidebar */}
         <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
           <div className="flex items-center gap-3 px-5 py-5">
@@ -5226,104 +5030,114 @@ const DispatchSection = () => {
 
 /* =============================== Evidence =============================== */
 
-const EvidenceDetailModal = ({
-  row,
+const EVIDENCE_KIND_ICON = {
+  image: Camera,
+  audio: Mic,
+  video: Video,
+  document: FileText,
+} as const;
+
+const EvidenceUploadModal = ({
+  uploaderId,
   onClose,
-  onOpenCase,
+  onUploaded,
 }: {
-  row: EvidenceRow;
+  uploaderId: string;
   onClose: () => void;
-  onOpenCase: () => void;
+  onUploaded: () => void;
 }) => {
-  const Icon = row.icon;
-  const fields: { label: string; value: string; sub?: string }[] = [
-    { label: "Evidence ID", value: row.id, sub: row.date },
-    { label: "Case ID", value: row.caseId, sub: row.alias },
-    { label: "Type", value: row.type },
-    { label: "Source", value: row.source, sub: row.sourceSub },
-    { label: "Uploaded By", value: row.by, sub: row.bySub },
-  ];
+  const [file, setFile] = useState<File | null>(null);
+  const [caseRef, setCaseRef] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!file) {
+      toast.error("Choose a file to upload");
+      return;
+    }
+    if (!uploaderId) {
+      toast.error("Sign in to upload evidence");
+      return;
+    }
+    setBusy(true);
+    try {
+      await uploadCaseEvidence({
+        file,
+        uploaderId,
+        caseReference: caseRef,
+        note,
+      });
+      toast.success("Evidence uploaded");
+      onUploaded();
+    } catch {
+      toast.error("Upload failed — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label={`Evidence ${row.id}`}
+      aria-label="Upload evidence"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
-            <Icon className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-black text-white">{row.type}</h2>
-            <p className="mt-0.5 font-mono text-[11px] text-slate-300">
-              {row.id}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <Pill tone={statusTone(row.review)}>{row.review}</Pill>
-            <span
-              className={cn(
-                "flex items-center gap-1 text-[11px] font-bold",
-                row.integrity === "Intact"
-                  ? "text-emerald-400"
-                  : "text-amber-400",
-              )}
-            >
-              {row.integrity === "Intact" ? (
-                <CheckCircle2 className="h-3 w-3" />
-              ) : (
-                <AlertTriangle className="h-3 w-3" />
-              )}
-              {row.integrity}
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">Upload evidence</h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Photos, documents, audio or video attached to a case.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-6 text-center hover:border-violet-400/40">
+            <Upload className="h-5 w-5 text-violet-300" />
+            <span className="text-xs font-bold text-white">
+              {file ? file.name : "Choose a file"}
             </span>
-          </div>
+            <span className="text-[10px] text-slate-400">
+              {file ? `${Math.ceil(file.size / 1024)} KB` : "Click to browse"}
+            </span>
+            <input
+              type="file"
+              className="hidden"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <Input
+            value={caseRef}
+            onChange={(event) => setCaseRef(event.target.value)}
+            placeholder="Case reference (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <Input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Note (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
         </div>
-        <div className="grid grid-cols-2 gap-4 px-5 py-5">
-          {fields.map((field) => (
-            <div key={field.label}>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                {field.label}
-              </p>
-              <p className="mt-1 text-sm font-bold text-white">{field.value}</p>
-              {field.sub && (
-                <p className="text-[11px] text-slate-300">{field.sub}</p>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 px-5 py-4">
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
           >
-            Close
+            Cancel
           </button>
           <button
             type="button"
-            onClick={() =>
-              policeAction(
-                "Evidence download started",
-                `${row.id} prepared for secure download.`,
-              )()
-            }
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-100 hover:bg-white/5"
+            onClick={submit}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
-            <Download className="h-3.5 w-3.5" /> Download
-          </button>
-          <button
-            type="button"
-            onClick={onOpenCase}
-            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
-          >
-            Open Case
+            {busy ? "Uploading…" : "Upload"}
           </button>
         </div>
       </div>
@@ -5331,302 +5145,240 @@ const EvidenceDetailModal = ({
   );
 };
 
-const EvidenceSection = () => {
-  const { openEvidence } = usePolicePortal();
+const CaseEvidenceRegister = () => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: evidence = [], isLoading } = useCaseEvidence();
   const [query, setQuery] = useState("");
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleEvidence = normalizedQuery
-    ? MOCK_EVIDENCE.filter((e) =>
-        [e.id, e.caseId, e.alias, e.type, e.source, e.by, e.integrity, e.review]
+  const [uploading, setUploading] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const channel = supabase
+      .channel("case-evidence-feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "case_evidence" },
+        () => {
+          void queryClient.invalidateQueries({
+            queryKey: CASE_EVIDENCE_QUERY_KEY,
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const normalized = query.trim().toLowerCase();
+  const rows = normalized
+    ? evidence.filter((e) =>
+        [e.fileName, e.caseReference, e.evidenceType, e.note]
+          .filter(Boolean)
           .join(" ")
           .toLowerCase()
-          .includes(normalizedQuery),
+          .includes(normalized),
       )
-    : MOCK_EVIDENCE;
+    : evidence;
+
+  const countKind = (kind: string) =>
+    evidence.filter((e) => caseEvidenceKind(e) === kind).length;
+
+  const kpis = [
+    {
+      label: "Evidence Files",
+      value: nf.format(evidence.length),
+      icon: FileText,
+      tone: "violet",
+    },
+    {
+      label: "Images",
+      value: nf.format(countKind("image")),
+      icon: Camera,
+      tone: "sky",
+    },
+    {
+      label: "Audio / Video",
+      value: nf.format(countKind("audio") + countKind("video")),
+      icon: Mic,
+      tone: "amber",
+    },
+    {
+      label: "Documents",
+      value: nf.format(countKind("document")),
+      icon: FileCheck,
+      tone: "emerald",
+    },
+  ];
+
+  const openFile = async (entry: CaseEvidenceEntry) => {
+    setOpeningId(entry.id);
+    try {
+      const url = await createCaseEvidenceUrl(entry.storagePath);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      else toast.error("Couldn't open that file.");
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const uploaderLabel = (id: string | null) =>
+    !id ? "—" : id === user?.id ? "You" : id.slice(0, 8);
 
   return (
     <>
+      {uploading && (
+        <EvidenceUploadModal
+          uploaderId={user?.id ?? ""}
+          onClose={() => setUploading(false)}
+          onUploaded={() => {
+            setUploading(false);
+            void queryClient.invalidateQueries({
+              queryKey: CASE_EVIDENCE_QUERY_KEY,
+            });
+          }}
+        />
+      )}
       <div className="flex items-center justify-end">
         <button
           type="button"
-          onClick={policeAction("Evidence upload opened")}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-white hover:bg-white/5"
+          onClick={() => setUploading(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
         >
           <Upload className="h-3.5 w-3.5" /> Upload Evidence
         </button>
       </div>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_EVIDENCE_KPIS.map((k) => (
+        {kpis.map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
-            value={k.value}
+            value={hasSupabase ? k.value : NO_DATA}
             icon={k.icon}
             tone={k.tone}
-            delta={k.delta}
-            dir={k.dir}
           />
         ))}
       </section>
-      {/* Live: evidence a survivor has consented to share with their case team,
-          uploaded from the mobile app (photos, voice notes, documents). */}
-      <SharedEvidencePanel />
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
-        <Panel
-          title="Evidence Files"
-          bodyClassName="p-0"
-          action={
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search evidence..."
-                  className="h-8 w-44 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
-                />
-              </div>
-              <SelectChip label="All Types" />
-              <SelectChip label="Filters" />
-              <SelectChip label="Export" />
-            </div>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className={tableHead}>
-                  <th className="px-4 py-3">Evidence ID</th>
-                  <th className="px-4 py-3">Case ID</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Source</th>
-                  <th className="px-4 py-3">Uploaded By</th>
-                  <th className="px-4 py-3">Integrity</th>
-                  <th className="px-4 py-3">Review</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+      <Panel
+        title="Case Evidence Register"
+        subtitle="Responder-uploaded evidence, attached to cases"
+        bodyClassName="p-0"
+        action={
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search evidence..."
+              className="h-8 w-44 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
+            />
+          </div>
+        }
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className={tableHead}>
+                <th className="px-4 py-3">File</th>
+                <th className="px-4 py-3">Case</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Uploaded By</th>
+                <th className="px-4 py-3">When</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-xs text-slate-300"
+                  >
+                    Loading evidence…
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {visibleEvidence.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-4 py-10 text-center text-xs text-slate-300"
-                    >
-                      No evidence matches “{query}”.
-                    </td>
-                  </tr>
-                )}
-                {visibleEvidence.map((e) => {
-                  const Icon = e.icon;
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-xs text-slate-300"
+                  >
+                    {query
+                      ? `No evidence matches “${query}”.`
+                      : "No case evidence yet. Use Upload Evidence to attach files to a case."}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((e) => {
+                  const kind = caseEvidenceKind(e);
+                  const Icon = EVIDENCE_KIND_ICON[kind];
                   return (
                     <tr key={e.id} className="hover:bg-white/[0.02]">
                       <td className="px-4 py-3">
-                        <p className="font-mono text-[11px] text-slate-300">
-                          {e.id}
+                        <p className="text-xs font-bold text-white">
+                          {e.fileName ?? "Evidence"}
                         </p>
-                        <p className="text-[10px] text-slate-300">{e.date}</p>
+                        {e.note ? (
+                          <p className="max-w-[220px] truncate text-[10px] text-slate-300">
+                            {e.note}
+                          </p>
+                        ) : null}
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="font-mono text-[11px] text-slate-300">
-                          {e.caseId}
-                        </p>
-                        <p className="text-[10px] text-slate-300">{e.alias}</p>
+                      <td className="px-4 py-3 font-mono text-[11px] text-violet-300">
+                        {e.caseReference ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-1.5 text-xs text-slate-300">
                           <Icon className="h-3.5 w-3.5 text-violet-300" />
-                          {e.type}
+                          {titleCase(kind)}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-white">{e.source}</p>
-                        <p className="text-[10px] text-slate-300">
-                          {e.sourceSub}
-                        </p>
+                      <td className="px-4 py-3 text-xs text-slate-300">
+                        {uploaderLabel(e.uploadedBy)}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-slate-300">
+                        {e.createdAt ? fmtRelative(e.createdAt) : "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-xs text-white">{e.by}</p>
-                        <p className="text-[10px] text-slate-300">{e.bySub}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            "flex items-center gap-1 text-[11px] font-bold",
-                            e.integrity === "Intact"
-                              ? "text-emerald-400"
-                              : "text-amber-400",
-                          )}
-                        >
-                          {e.integrity === "Intact" ? (
-                            <CheckCircle2 className="h-3 w-3" />
-                          ) : (
-                            <AlertTriangle className="h-3 w-3" />
-                          )}
-                          {e.integrity}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Pill tone={statusTone(e.review)}>{e.review}</Pill>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end">
                           <button
                             type="button"
-                            onClick={() => openEvidence(e)}
-                            aria-label={`Preview evidence ${e.id}`}
-                            className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
+                            onClick={() => void openFile(e)}
+                            disabled={openingId === e.id}
+                            aria-label={`Open ${e.fileName ?? "evidence"}`}
+                            className="flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-violet-300 hover:bg-white/5 disabled:opacity-50"
                           >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEvidence(e)}
-                            aria-label={`Open evidence ${e.id} details`}
-                            className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
+                            <Eye className="h-3.5 w-3.5" /> Open
                           </button>
                         </div>
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-300">
-              Showing 1 to 8 of 1,248 results
-            </span>
-            <Pagination pages={["1", "2", "3", "…", "156"]} />
-          </div>
-        </Panel>
-
-        <div className="flex flex-col gap-6">
-          <Panel
-            title="Voice Note Translation"
-            action={<Pill tone="violet">Selected Evidence</Pill>}
-          >
-            <div className="grid grid-cols-2 gap-2 text-[10px]">
-              <div>
-                <p className="text-slate-300">Evidence ID</p>
-                <p className="font-mono text-slate-300">EV-2025-05121-0003</p>
-              </div>
-              <div className="text-right">
-                <p className="text-slate-300">Case ID</p>
-                <p className="font-mono text-slate-300">GBV-2025-05121-0087</p>
-              </div>
-            </div>
-            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-white">
-                  Original (isiZulu)
-                </p>
-                <button
-                  type="button"
-                  onClick={policeAction("Original voice note playback started")}
-                  className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-300"
-                >
-                  <Play className="h-3 w-3" /> Original Playback
-                </button>
-              </div>
-              <p className="mt-2 text-[11px] italic text-slate-300">
-                "Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
-                Angifuni ukubuyela lapho futhi ngiyesaba."
-              </p>
-            </div>
-            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-white">
-                  Transcript Preview (isiZulu)
-                </p>
-                <span className="text-[10px] text-emerald-400">
-                  Confidence: 92%
-                </span>
-              </div>
-              <p className="mt-2 text-[11px] text-slate-300">
-                Ngicela ukuthi usize. Kwenzeke izolo ebusuku endlini kamalume.
-                Angifuni ukubuyela lapho futhi ngiyesaba…
-              </p>
-              <LinkChip label="Show full transcript" />
-            </div>
-            <div className="mt-3">
-              <p className="mb-1 text-[10px] text-slate-300">Translate To</p>
-              <SelectChip label="English (US)" />
-            </div>
-            <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-white">
-                  Translated (English)
-                </p>
-                <button
-                  type="button"
-                  onClick={policeAction("Translated voice playback started")}
-                  className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300"
-                >
-                  <Play className="h-3 w-3" /> Translated Playback
-                </button>
-              </div>
-              <p className="mt-2 text-[11px] text-slate-300">
-                "Please help me. It happened last night at my uncle's house. I
-                don't want to go back there and I'm afraid."
-              </p>
-              <p className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400">
-                <CheckCircle2 className="h-3 w-3" /> Auto-translation completed
-                · Confidence: 94%
-              </p>
-            </div>
-          </Panel>
-          <Panel
-            title="Evidence Chain of Custody"
-            action={
-              <button
-                type="button"
-                onClick={policeAction("Evidence chain opened")}
-                className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300"
-              >
-                View Full Chain
-              </button>
-            }
-          >
-            <div className="space-y-3">
-              {MOCK_CHAIN.map((c, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="flex flex-col items-center">
-                    <span
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full",
-                        c.tone === "emerald"
-                          ? "bg-emerald-400"
-                          : c.tone === "amber"
-                            ? "bg-amber-400"
-                            : c.tone === "violet"
-                              ? "bg-violet-400"
-                              : "bg-sky-400",
-                      )}
-                    />
-                    {i < MOCK_CHAIN.length - 1 && (
-                      <span className="mt-1 h-6 w-px bg-white/10" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] text-slate-300">{c.time}</p>
-                      {c.tag && <Pill tone={statusTone(c.tag)}>{c.tag}</Pill>}
-                    </div>
-                    <p className="text-xs font-bold text-white">{c.title}</p>
-                    <p className="text-[10px] text-slate-300">{c.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      </section>
+        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+          <span className="text-[11px] text-slate-300">
+            {rows.length} file{rows.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </Panel>
     </>
   );
 };
+
+const EvidenceSection = () => (
+  <>
+    {/* Live: evidence a survivor consented to share from the mobile app. */}
+    <SharedEvidencePanel />
+    {/* Live: evidence responders upload and attach to cases. */}
+    <CaseEvidenceRegister />
+  </>
+);
 
 /* =============================== Partner Coordination =============================== */
 

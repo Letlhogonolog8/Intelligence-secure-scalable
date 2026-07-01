@@ -161,6 +161,28 @@ export type Database = {
           translated_by?: string | null;
         }
       >;
+      case_evidence: TableDefinition<
+        {
+          id: string;
+          case_reference: string | null;
+          storage_path: string;
+          file_name: string | null;
+          mime_type: string | null;
+          evidence_type: string | null;
+          note: string | null;
+          uploaded_by: string | null;
+          created_at: string;
+        },
+        {
+          case_reference?: string | null;
+          storage_path: string;
+          file_name?: string | null;
+          mime_type?: string | null;
+          evidence_type?: string | null;
+          note?: string | null;
+          uploaded_by: string;
+        }
+      >;
       evidence_consents: TableDefinition<
         {
           id: string;
