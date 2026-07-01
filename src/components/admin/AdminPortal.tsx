@@ -83,6 +83,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import SecureMessagesWorkspace from "@/components/messaging/SecureMessagesWorkspace";
 import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
@@ -134,7 +135,8 @@ type SectionKey =
   | "approvals"
   | "identities"
   | "operations"
-  | "compliance";
+  | "compliance"
+  | "messages";
 
 /* ============================ MOCK / SAMPLE DATA ============================ */
 /* Replace each constant with a live data hook when wiring the portal. */
@@ -1262,6 +1264,11 @@ const SECTION_META: Record<
     subtitle:
       "Manage data protection, privacy compliance, and regulatory obligations.",
   },
+  messages: {
+    title: "Secure Messages",
+    subtitle:
+      "Coordinate securely with officers, NGOs, counselors, and survivors.",
+  },
 };
 
 /** Maps icon names stored on operational rows to their lucide component. */
@@ -1498,6 +1505,7 @@ const NAV_GROUPS: {
       { key: "identities", label: "Identities", icon: Users },
       { key: "operations", label: "Operations", icon: Boxes },
       { key: "compliance", label: "Compliance", icon: Shield },
+      { key: "messages", label: "Messages", icon: MessageSquare },
     ],
   },
   {
@@ -1862,6 +1870,7 @@ const AdminPortal: React.FC = () => {
             {section === "identities" && <IdentitiesSection />}
             {section === "operations" && <OperationsSection />}
             {section === "compliance" && <ComplianceSection />}
+            {section === "messages" && <SecureMessagesWorkspace />}
           </div>
         </main>
       </div>

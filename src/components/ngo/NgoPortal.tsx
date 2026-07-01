@@ -74,6 +74,7 @@ import { Input } from "@/components/ui/input";
 import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
+import SecureMessagesWorkspace from "@/components/messaging/SecureMessagesWorkspace";
 import { useCaseReports, useShelters, useUserProfile } from "@/data/aegisData";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganizationContext } from "@/contexts/organizationContext";
@@ -106,6 +107,7 @@ type SectionKey =
   | "medical"
   | "analytics"
   | "reports"
+  | "messages"
   | "placeholder";
 
 /* ============================ MOCK / SAMPLE DATA ============================ */
@@ -1834,6 +1836,7 @@ const NAV_GROUPS: {
       { key: "survivors", label: "Survivors", icon: Users },
       { key: "referrals", label: "Referrals", icon: Send },
       { key: "followups", label: "Follow-ups", icon: RefreshCw },
+      { key: "messages", label: "Secure Messages", icon: MessageSquare },
     ],
   },
   {
@@ -1890,6 +1893,7 @@ const DETAILED: SectionKey[] = [
   "medical",
   "analytics",
   "reports",
+  "messages",
 ];
 
 /* ============================== UI HELPERS ============================== */
@@ -2505,6 +2509,7 @@ const NgoPortal: React.FC = () => {
             {section === "medical" && <MedicalSection />}
             {section === "analytics" && <AnalyticsSection />}
             {section === "reports" && <ReportsSection />}
+            {section === "messages" && <SecureMessagesWorkspace />}
             {!DETAILED.includes(section) && <PlaceholderSection meta={meta} />}
           </div>
         </main>
