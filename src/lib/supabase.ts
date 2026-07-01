@@ -308,12 +308,60 @@ export type Database = {
         created_at: string | null;
         updated_at: string | null;
       }>;
+      secure_conversations: TableDefinition<{
+        id: string;
+        subject: string | null;
+        case_id: string | null;
+        created_by: string | null;
+        created_at: string;
+        last_message_at: string;
+      }>;
+      secure_conversation_participants: TableDefinition<
+        {
+          id: string;
+          conversation_id: string;
+          user_id: string;
+          role: string | null;
+          added_at: string;
+          last_read_at: string;
+        },
+        {
+          conversation_id: string;
+          user_id: string;
+          role?: string | null;
+          last_read_at?: string;
+        }
+      >;
+      secure_messages: TableDefinition<
+        {
+          id: string;
+          conversation_id: string;
+          sender_id: string;
+          sender_role: string | null;
+          body: string;
+          created_at: string;
+        },
+        {
+          conversation_id: string;
+          sender_id: string;
+          sender_role?: string | null;
+          body: string;
+        }
+      >;
     };
     Views: Record<string, never>;
     Functions: {
       set_preferred_language: {
         Args: { lang: string };
         Returns: undefined;
+      };
+      start_secure_conversation: {
+        Args: {
+          p_subject: string | null;
+          p_case_id: string | null;
+          p_participants: string[];
+        };
+        Returns: string;
       };
     };
     Enums: Record<string, never>;

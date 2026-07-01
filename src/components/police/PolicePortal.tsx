@@ -69,6 +69,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -85,7 +86,21 @@ import {
   useRegions,
   useSystemMetrics,
   useUserProfile,
+  useUserProfiles,
 } from "@/data/aegisData";
+import {
+  isConversationUnread,
+  markConversationRead,
+  secureMessagesKey,
+  sendSecureMessage,
+  SECURE_CONVERSATIONS_KEY,
+  startSecureConversation,
+  useSecureConversations,
+  useSecureMessages,
+  type SecureConversation,
+} from "@/data/secureMessages";
+import { supabase } from "@/lib/supabase";
+import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
 import { ALLOW_MOCK, NO_DATA, mockList } from "@/lib/mockData";
@@ -2784,90 +2799,448 @@ const SurvivorSafetySection = () => {
   );
 };
 
-const MessagesSection = () => {
-  const threads = MOCK_SHARED_THREADS;
-  const [activeId, setActiveId] = useState(threads[0]?.caseId ?? "");
-  const [draft, setDraft] = useState("");
-  const [sent, setSent] = useState<Record<string, string[]>>({});
-  const active = threads.find((t) => t.caseId === activeId) ?? threads[0];
+const conversationTitle = (
+  conv: SecureConversation,
+  selfId: string,
+  nameFor: (id: string) => string,
+) => {
+  if (conv.subject) return conv.subject;
+  const others = conv.participants.filter((p) => p.userId !== selfId);
+  if (others.length === 0) return "Just you";
+  return others.map((p) => nameFor(p.userId)).join(", ");
+};
 
-  const send = () => {
-    if (!draft.trim() || !active) {
-      toast.error("Message is empty");
+const NewConversationModal = ({
+  selfId,
+  onClose,
+  onCreated,
+}: {
+  selfId: string;
+  onClose: () => void;
+  onCreated: (conversationId: string) => void;
+}) => {
+  const { data: profiles = [] } = useUserProfiles({ limit: 200 });
+  const [subject, setSubject] = useState("");
+  const [caseRef, setCaseRef] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const recipients = profiles.filter(
+    (p) => p.id !== selfId && p.isActive !== false,
+  );
+
+  const toggle = (id: string) =>
+    setSelected((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+
+  const create = async () => {
+    if (selected.length === 0) {
+      toast.error("Select at least one recipient");
       return;
     }
-    setSent((current) => ({
-      ...current,
-      [active.caseId]: [...(current[active.caseId] ?? []), draft.trim()],
-    }));
-    setDraft("");
-    toast.success("Message sent");
+    setBusy(true);
+    try {
+      const id = await startSecureConversation({
+        subject: subject.trim() || null,
+        caseId: caseRef.trim() || null,
+        participantIds: selected,
+      });
+      toast.success("Conversation started");
+      onCreated(id);
+    } catch {
+      toast.error("Couldn't start the conversation");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <>
-      <WorkspaceKpis section="messages" />
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-        <Panel title="Threads" bodyClassName="p-0">
-          <div className="divide-y divide-white/5">
-            {threads.map((thread) => (
-              <button
-                key={thread.caseId}
-                type="button"
-                onClick={() => setActiveId(thread.caseId)}
-                className={cn(
-                  "flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/[0.03]",
-                  thread.caseId === active?.caseId && "bg-white/[0.05]",
-                )}
-              >
-                <Avatar name={thread.org} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-white">
-                    {thread.org}
-                  </p>
-                  <p className="truncate text-xs text-slate-300">
-                    {thread.msg}
-                  </p>
-                </div>
-                <span className="shrink-0 text-[10px] text-slate-400">
-                  {thread.time}
-                </span>
-              </button>
-            ))}
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="New secure conversation"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">
+            New secure conversation
+          </h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Message survivors, NGOs, counselors, and fellow officers.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <Input
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            placeholder="Subject (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <Input
+            value={caseRef}
+            onChange={(event) => setCaseRef(event.target.value)}
+            placeholder="Case reference (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Recipients
+            </p>
+            <div className="max-h-52 space-y-1 overflow-y-auto rounded-lg border border-white/10 p-1">
+              {recipients.length === 0 ? (
+                <p className="px-3 py-4 text-xs text-slate-400">
+                  No other users available to message yet.
+                </p>
+              ) : (
+                recipients.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggle(p.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-white/5",
+                      selected.includes(p.id) && "bg-violet-500/15",
+                    )}
+                  >
+                    <Avatar name={p.fullName || p.email || "User"} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-white">
+                        {p.fullName || p.email || "User"}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                        {p.role}
+                      </p>
+                    </div>
+                    {selected.includes(p.id) && (
+                      <CheckCircle2 className="h-4 w-4 text-violet-300" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={create}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Starting…" : "Start conversation"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MessagesSection = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const selfId = user?.id ?? "";
+  const { data: profile } = useUserProfile(selfId || undefined);
+  const { data: profiles = [] } = useUserProfiles({ limit: 200 });
+  const { data: conversations = [] } = useSecureConversations();
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [composing, setComposing] = useState(false);
+
+  const nameFor = (id: string) => {
+    if (id === selfId) return "You";
+    const p = profiles.find((x) => x.id === id);
+    return p?.fullName || p?.email || id.slice(0, 8);
+  };
+
+  const activeConversation =
+    conversations.find((c) => c.id === activeId) ?? null;
+  const { data: messages = [] } = useSecureMessages(activeId);
+
+  useEffect(() => {
+    if (!activeId && conversations.length > 0) {
+      setActiveId(conversations[0].id);
+    }
+  }, [activeId, conversations]);
+
+  useEffect(() => {
+    if (!activeId || !selfId) return;
+    void markConversationRead(activeId, selfId).then(() => {
+      void queryClient.invalidateQueries({
+        queryKey: SECURE_CONVERSATIONS_KEY,
+      });
+    });
+  }, [activeId, selfId, queryClient, messages.length]);
+
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const channel = supabase
+      .channel("secure-messages-feed")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "secure_messages" },
+        (payload) => {
+          const row = payload.new as { conversation_id?: string };
+          void queryClient.invalidateQueries({
+            queryKey: SECURE_CONVERSATIONS_KEY,
+          });
+          if (row.conversation_id) {
+            void queryClient.invalidateQueries({
+              queryKey: secureMessagesKey(row.conversation_id),
+            });
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const send = async () => {
+    const body = draft.trim();
+    if (!activeId) {
+      toast.error("Select a conversation first");
+      return;
+    }
+    if (!body || !selfId) {
+      if (!body) toast.error("Message is empty");
+      return;
+    }
+    setDraft("");
+    try {
+      await sendSecureMessage({
+        conversationId: activeId,
+        senderId: selfId,
+        senderRole: profile?.role ?? null,
+        body,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: secureMessagesKey(activeId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: SECURE_CONVERSATIONS_KEY,
+      });
+    } catch {
+      setDraft(body);
+      toast.error("Couldn't send message");
+    }
+  };
+
+  const unreadCount = conversations.filter((c) =>
+    isConversationUnread(c, selfId),
+  ).length;
+  const participantCount = new Set(
+    conversations.flatMap((c) => c.participants.map((p) => p.userId)),
+  ).size;
+
+  const messagesKpis = [
+    {
+      label: "Conversations",
+      value: hasSupabase ? nf.format(conversations.length) : NO_DATA,
+      icon: MessageSquare,
+      tone: "violet",
+      note: "Secure threads",
+    },
+    {
+      label: "Unread",
+      value: hasSupabase ? nf.format(unreadCount) : NO_DATA,
+      icon: Bell,
+      tone: "amber",
+      note: "Awaiting your reply",
+    },
+    {
+      label: "Participants",
+      value: hasSupabase ? nf.format(participantCount) : NO_DATA,
+      icon: Users,
+      tone: "sky",
+      note: "Across all threads",
+    },
+    {
+      label: "Channel",
+      value: "Live",
+      icon: Radio,
+      tone: "emerald",
+      note: "Realtime encrypted",
+    },
+  ];
+
+  return (
+    <>
+      {composing && (
+        <NewConversationModal
+          selfId={selfId}
+          onClose={() => setComposing(false)}
+          onCreated={(id) => {
+            setComposing(false);
+            void queryClient.invalidateQueries({
+              queryKey: SECURE_CONVERSATIONS_KEY,
+            });
+            setActiveId(id);
+          }}
+        />
+      )}
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {messagesKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            note={k.note}
+          />
+        ))}
+      </section>
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setComposing(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+        >
+          <Plus className="h-3.5 w-3.5" /> New Conversation
+        </button>
+      </div>
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
+        <Panel title="Conversations" bodyClassName="p-0">
+          {conversations.length === 0 ? (
+            <p className="px-5 py-10 text-center text-xs text-slate-300">
+              No conversations yet. Start one to message survivors, NGOs,
+              counselors, or fellow officers.
+            </p>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {conversations.map((conv) => {
+                const unread = isConversationUnread(conv, selfId);
+                const title = conversationTitle(conv, selfId, nameFor);
+                return (
+                  <button
+                    key={conv.id}
+                    type="button"
+                    onClick={() => setActiveId(conv.id)}
+                    className={cn(
+                      "flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-white/[0.03]",
+                      conv.id === activeId && "bg-white/[0.05]",
+                    )}
+                  >
+                    <Avatar name={title} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-white">
+                        {title}
+                      </p>
+                      <p className="truncate text-xs text-slate-300">
+                        {conv.caseId ? `Case ${conv.caseId} · ` : ""}
+                        {conv.participants.length} participant
+                        {conv.participants.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-[10px] text-slate-400">
+                        {fmtRelative(conv.lastMessageAt)}
+                      </span>
+                      {unread && (
+                        <span className="h-2 w-2 rounded-full bg-violet-400" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </Panel>
         <Panel
-          title={active?.org ?? "Conversation"}
-          subtitle={active?.caseId}
-          bodyClassName="flex h-full flex-col"
+          title={
+            activeConversation
+              ? conversationTitle(activeConversation, selfId, nameFor)
+              : "Conversation"
+          }
+          subtitle={
+            activeConversation?.caseId
+              ? `Case ${activeConversation.caseId}`
+              : activeConversation
+                ? `${activeConversation.participants.length} participants`
+                : "Select a conversation"
+          }
+          bodyClassName="flex h-[520px] flex-col"
         >
-          <div className="flex-1 space-y-3">
-            <div className="max-w-[80%] rounded-2xl rounded-tl-sm border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200">
-              {active?.msg}
-            </div>
-            {(sent[active?.caseId ?? ""] ?? []).map((message, index) => (
-              <div
-                key={index}
-                className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-sm text-white"
-              >
-                {message}
-              </div>
-            ))}
+          <div className="flex-1 space-y-3 overflow-y-auto">
+            {!activeConversation ? (
+              <p className="py-10 text-center text-xs text-slate-400">
+                Select or start a conversation to view messages.
+              </p>
+            ) : messages.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">
+                No messages yet. Say hello.
+              </p>
+            ) : (
+              messages.map((m) => {
+                const mine = m.senderId === selfId;
+                return (
+                  <div
+                    key={m.id}
+                    className={cn("max-w-[80%]", mine && "ml-auto")}
+                  >
+                    {!mine && (
+                      <p className="mb-0.5 text-[10px] font-bold text-violet-300">
+                        {nameFor(m.senderId)}
+                        {m.senderRole ? ` · ${titleCase(m.senderRole)}` : ""}
+                      </p>
+                    )}
+                    <div
+                      className={cn(
+                        "rounded-2xl px-4 py-2 text-sm",
+                        mine
+                          ? "rounded-tr-sm bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+                          : "rounded-tl-sm border border-white/10 bg-white/[0.04] text-slate-200",
+                      )}
+                    >
+                      {m.body}
+                    </div>
+                    <p
+                      className={cn(
+                        "mt-0.5 text-[9px] text-slate-500",
+                        mine && "text-right",
+                      )}
+                    >
+                      {fmtRelative(m.createdAt)}
+                    </p>
+                  </div>
+                );
+              })
+            )}
           </div>
           <div className="mt-4 flex items-center gap-2">
             <Input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") send();
+                if (event.key === "Enter") void send();
               }}
-              placeholder="Type a secure message…"
+              placeholder={
+                activeConversation
+                  ? "Type a secure message…"
+                  : "Select a conversation first"
+              }
+              disabled={!activeConversation}
               className="h-10 border-white/10 bg-slate-900/60 text-sm text-white"
             />
             <button
               type="button"
-              onClick={send}
-              className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+              onClick={() => void send()}
+              disabled={!activeConversation}
+              className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
             >
               Send
             </button>
