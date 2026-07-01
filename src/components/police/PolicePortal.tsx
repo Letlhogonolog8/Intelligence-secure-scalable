@@ -106,17 +106,9 @@ const fmtDateTime = (t: string) => {
   const d = new Date(t);
   return Number.isNaN(d.getTime()) ? t : d.toLocaleString();
 };
+/** Lightweight confirmation for actions that don't yet have a live backend. */
 const policeAction = (label: string, description?: string) => () => {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("aegis:police-action", {
-      detail: {
-        label,
-        description:
-          description ?? "Action opened in the Police Response Portal.",
-      },
-    }),
-  );
+  toast(label, description ? { description } : undefined);
 };
 
 /** Canonical case-status buckets for the donut, from raw case_reports.status. */
@@ -146,11 +138,6 @@ type SectionKey =
   | "analytics"
   | "reports"
   | "settings";
-
-type PoliceActionDetail = {
-  label: string;
-  description: string;
-};
 
 /* ============================ MOCK / SAMPLE DATA ============================ */
 
@@ -1871,7 +1858,6 @@ const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => {
   const activeIndex = Math.max(0, selectablePages.indexOf(activePage));
   const setPage = (page: string) => {
     setActivePage(page);
-    policeAction("Page changed", `Showing page ${page}`)();
   };
 
   return (
@@ -1957,6 +1943,37 @@ const Avatar = ({ name, tone = "violet" }: { name: string; tone?: string }) => (
   </div>
 );
 
+/** Maps quick-action labels to the section that handles them. */
+const ACTION_TARGETS: { match: string; section: SectionKey }[] = [
+  { match: "queue", section: "queue" },
+  { match: "emergency", section: "queue" },
+  { match: "evidence", section: "evidence" },
+  { match: "dispatch", section: "dispatch" },
+  { match: "unit", section: "dispatch" },
+  { match: "route", section: "dispatch" },
+  { match: "ngo", section: "partners" },
+  { match: "counselor", section: "partners" },
+  { match: "shelter", section: "partners" },
+  { match: "hospital", section: "partners" },
+  { match: "legal", section: "partners" },
+  { match: "partner", section: "partners" },
+  { match: "coordination", section: "partners" },
+  { match: "survivor", section: "survivor" },
+  { match: "safety plan", section: "survivor" },
+  { match: "welfare", section: "survivor" },
+  { match: "report", section: "reports" },
+  { match: "brief", section: "reports" },
+  { match: "incident", section: "incidents" },
+  { match: "message", section: "messages" },
+  { match: "heat map", section: "analytics" },
+  { match: "forecast", section: "analytics" },
+  { match: "analytics", section: "analytics" },
+];
+
+const sectionForAction = (label: string): SectionKey | undefined =>
+  ACTION_TARGETS.find((entry) => label.toLowerCase().includes(entry.match))
+    ?.section;
+
 const ActionBar = ({
   items,
 }: {
@@ -1965,31 +1982,44 @@ const ActionBar = ({
     icon: ComponentType<{ className?: string }>;
     tone: string;
   }[];
-}) => (
-  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-3 sm:grid-cols-3 xl:grid-cols-6">
-    {items.map((a) => {
-      const Icon = a.icon;
-      return (
-        <button
-          key={a.label}
-          type="button"
-          onClick={policeAction(a.label)}
-          className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-left text-[11px] font-bold text-white transition-colors hover:border-white/20"
-        >
-          <span
-            className={cn(
-              "grid h-7 w-7 shrink-0 place-items-center rounded-lg border",
-              ICON_TONES[a.tone],
-            )}
+}) => {
+  const { section, navigate } = usePolicePortal();
+
+  const handleAction = (label: string) => {
+    const target = sectionForAction(label);
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.success(label);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-3 sm:grid-cols-3 xl:grid-cols-6">
+      {items.map((a) => {
+        const Icon = a.icon;
+        return (
+          <button
+            key={a.label}
+            type="button"
+            onClick={() => handleAction(a.label)}
+            className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-left text-[11px] font-bold text-white transition-colors hover:border-white/20"
           >
-            <Icon className="h-3.5 w-3.5" />
-          </span>
-          {a.label}
-        </button>
-      );
-    })}
-  </div>
-);
+            <span
+              className={cn(
+                "grid h-7 w-7 shrink-0 place-items-center rounded-lg border",
+                ICON_TONES[a.tone],
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            {a.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 const SectionTitle = ({
   meta,
@@ -2957,9 +2987,6 @@ const PolicePortal: React.FC = () => {
   const [evidenceDetail, setEvidenceDetail] = useState<EvidenceRow | null>(
     null,
   );
-  const [actionDialog, setActionDialog] = useState<PoliceActionDetail | null>(
-    null,
-  );
 
   const portalContext = useMemo<PolicePortalContextValue>(
     () => ({
@@ -2998,35 +3025,6 @@ const PolicePortal: React.FC = () => {
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
-  useEffect(() => {
-    const onAction = (event: Event) => {
-      const customEvent = event as CustomEvent<PoliceActionDetail>;
-      setActionDialog(customEvent.detail);
-    };
-    window.addEventListener("aegis:police-action", onAction);
-    return () => window.removeEventListener("aegis:police-action", onAction);
-  }, []);
-
-  const openRelevantSection = () => {
-    const label = actionDialog?.label.toLowerCase() ?? "";
-    if (label.includes("evidence") || label.includes("voice")) {
-      setSection("evidence");
-    } else if (
-      label.includes("dispatch") ||
-      label.includes("unit") ||
-      label.includes("route")
-    ) {
-      setSection("dispatch");
-    } else if (label.includes("partner") || label.includes("ngo")) {
-      setSection("partners");
-    } else if (label.includes("case") || label.includes("timeline")) {
-      setSection("cases");
-    } else if (label.includes("queue") || label.includes("sos")) {
-      setSection("queue");
-    }
-    setActionDialog(null);
-  };
-
   return (
     <PolicePortalContext.Provider value={portalContext}>
       <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
@@ -3039,46 +3037,6 @@ const PolicePortal: React.FC = () => {
               setSection("cases");
             }}
           />
-        )}
-        {actionDialog && (
-          <div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label={actionDialog.label}
-          >
-            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1224] p-5 shadow-2xl shadow-black/50">
-              <div className="flex items-start gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-200">
-                  <ShieldCheck className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-black text-white">
-                    {actionDialog.label}
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                    {actionDialog.description}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActionDialog(null)}
-                  className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={openRelevantSection}
-                  className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
-                >
-                  Open Related Section
-                </button>
-              </div>
-            </div>
-          </div>
         )}
         {/* Sidebar */}
         <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
@@ -3211,10 +3169,7 @@ const PolicePortal: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={policeAction(
-                  "Language selector",
-                  "English is active.",
-                )}
+                onClick={() => setSection("settings")}
                 className="hidden items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white md:flex"
               >
                 <Globe className="h-4 w-4" /> English{" "}
@@ -4481,169 +4436,182 @@ const CasesSection = ({
 
 /* =============================== Dispatch =============================== */
 
-const DispatchSection = () => (
-  <>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {MOCK_DISPATCH_KPIS.map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={"delta" in k ? k.delta : undefined}
-          dir={"dir" in k ? k.dir : undefined}
-          note={"note" in k ? k.note : undefined}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Live Operations Map – Southern Africa"
-          action={
-            <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-              Live
-            </span>
-          }
-        >
-          <WorldRiskMap
-            regions={MOCK_SA_MAP}
-            height={340}
-            center={[-20, 27]}
-            zoom={4}
+const DispatchSection = () => {
+  const { navigate } = usePolicePortal();
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {MOCK_DISPATCH_KPIS.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+            dir={"dir" in k ? k.dir : undefined}
+            note={"note" in k ? k.note : undefined}
           />
-        </Panel>
-        <Panel title="Active Response Assignments" bodyClassName="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className={tableHead}>
-                  <th className="px-4 py-3">Incident</th>
-                  <th className="px-4 py-3">Location</th>
-                  <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Assigned Unit</th>
-                  <th className="px-4 py-3">ETA</th>
-                  <th className="px-4 py-3">Response Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {MOCK_ASSIGNMENTS.map((a) => (
-                  <tr key={a.id} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 font-mono text-[11px] text-slate-300">
-                      {a.id}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-white">{a.loc}</p>
-                      <p className="text-[10px] text-slate-300">{a.locSub}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Pill tone={statusTone(a.priority)}>{a.priority}</Pill>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs font-medium text-white">{a.unit}</p>
-                      <p className="text-[10px] text-slate-300">{a.officers}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-white">{a.eta}</p>
-                      <p className="text-[10px] text-slate-300">{a.dist}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Pill tone={statusTone(a.status)}>{a.status}</Pill>
-                    </td>
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Live Operations Map – Southern Africa"
+            action={
+              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                Live
+              </span>
+            }
+          >
+            <WorldRiskMap
+              regions={MOCK_SA_MAP}
+              height={340}
+              center={[-20, 27]}
+              zoom={4}
+            />
+          </Panel>
+          <Panel title="Active Response Assignments" bodyClassName="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="px-4 py-3">Incident</th>
+                    <th className="px-4 py-3">Location</th>
+                    <th className="px-4 py-3">Priority</th>
+                    <th className="px-4 py-3">Assigned Unit</th>
+                    <th className="px-4 py-3">ETA</th>
+                    <th className="px-4 py-3">Response Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="border-t border-white/5 py-3 text-center text-[11px] font-bold text-violet-400">
-            View All Assignments →
-          </p>
-        </Panel>
-      </div>
-      <div className="flex flex-col gap-6">
-        <Panel title="Dispatch Workflow">
-          <div className="space-y-4">
-            {MOCK_WORKFLOW.map((w, i) => {
-              const Icon = w.icon;
-              return (
-                <div key={w.n} className="flex items-start gap-3">
-                  <div className="flex flex-col items-center">
-                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    {i < MOCK_WORKFLOW.length - 1 && (
-                      <span className="mt-1 h-5 w-px bg-white/10" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white">
-                      {w.n}. {w.title}
-                    </p>
-                    <p className="text-[10px] text-slate-300">{w.sub}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-        <Panel
-          title="Partner Handoffs"
-          action={<LinkChip label="View All" target="partners" />}
-        >
-          <div className="space-y-2.5">
-            {MOCK_HANDOFFS.map((h, i) => {
-              const Icon = h.icon;
-              return (
-                <div
-                  key={i}
-                  className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2">
-                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <div>
-                        <p className="text-xs font-bold text-white">
-                          {h.title}
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {MOCK_ASSIGNMENTS.map((a) => (
+                    <tr key={a.id} className="hover:bg-white/[0.02]">
+                      <td className="px-4 py-3 font-mono text-[11px] text-slate-300">
+                        {a.id}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-white">{a.loc}</p>
+                        <p className="text-[10px] text-slate-300">{a.locSub}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill tone={statusTone(a.priority)}>{a.priority}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-medium text-white">
+                          {a.unit}
                         </p>
-                        <p className="text-[10px] text-slate-300">{h.org}</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-slate-300">{h.time}</span>
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between">
-                    <p className="text-[10px] text-slate-300">{h.sub}</p>
-                    <Pill tone={statusTone(h.status)}>{h.status}</Pill>
-                  </div>
-                </div>
-              );
-            })}
+                        <p className="text-[10px] text-slate-300">
+                          {a.officers}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-white">{a.eta}</p>
+                        <p className="text-[10px] text-slate-300">{a.dist}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill tone={statusTone(a.status)}>{a.status}</Pill>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <button
               type="button"
-              onClick={policeAction("Panel opened")}
-              className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
+              onClick={() => toast.info("Showing all active assignments.")}
+              className="w-full border-t border-white/5 py-3 text-center text-[11px] font-bold text-violet-400 hover:bg-white/[0.02]"
             >
-              Manage Partner Handoffs →
+              View All Assignments →
             </button>
-          </div>
-        </Panel>
-      </div>
-    </section>
-    <ActionBar
-      items={[
-        { label: "Open Emergency Queue", icon: Siren, tone: "violet" },
-        { label: "Unit Status", icon: Car, tone: "sky" },
-        { label: "Assign Unit", icon: Car, tone: "cyan" },
-        { label: "Route Planner", icon: MapPin, tone: "emerald" },
-        { label: "Partner Directory", icon: Handshake, tone: "amber" },
-        { label: "Contact Survivor", icon: Phone, tone: "violet" },
-      ]}
-    />
-  </>
-);
+          </Panel>
+        </div>
+        <div className="flex flex-col gap-6">
+          <Panel title="Dispatch Workflow">
+            <div className="space-y-4">
+              {MOCK_WORKFLOW.map((w, i) => {
+                const Icon = w.icon;
+                return (
+                  <div key={w.n} className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <span className="grid h-8 w-8 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      {i < MOCK_WORKFLOW.length - 1 && (
+                        <span className="mt-1 h-5 w-px bg-white/10" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-white">
+                        {w.n}. {w.title}
+                      </p>
+                      <p className="text-[10px] text-slate-300">{w.sub}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+          <Panel
+            title="Partner Handoffs"
+            action={<LinkChip label="View All" target="partners" />}
+          >
+            <div className="space-y-2.5">
+              {MOCK_HANDOFFS.map((h, i) => {
+                const Icon = h.icon;
+                return (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
+                          <Icon className="h-3.5 w-3.5" />
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold text-white">
+                            {h.title}
+                          </p>
+                          <p className="text-[10px] text-slate-300">{h.org}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-slate-300">
+                        {h.time}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <p className="text-[10px] text-slate-300">{h.sub}</p>
+                      <Pill tone={statusTone(h.status)}>{h.status}</Pill>
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => navigate("partners")}
+                className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
+              >
+                Manage Partner Handoffs →
+              </button>
+            </div>
+          </Panel>
+        </div>
+      </section>
+      <ActionBar
+        items={[
+          { label: "Open Emergency Queue", icon: Siren, tone: "violet" },
+          { label: "Unit Status", icon: Car, tone: "sky" },
+          { label: "Assign Unit", icon: Car, tone: "cyan" },
+          { label: "Route Planner", icon: MapPin, tone: "emerald" },
+          { label: "Partner Directory", icon: Handshake, tone: "amber" },
+          { label: "Contact Survivor", icon: Phone, tone: "violet" },
+        ]}
+      />
+    </>
+  );
+};
 
 /* =============================== Evidence =============================== */
 
@@ -5065,6 +5033,17 @@ const PartnersSection = () => {
     Shelter: "emerald",
     Hospital: "rose",
   };
+  const TAB_PTYPE: Record<string, string> = {
+    NGOs: "NGO",
+    Counselors: "Counselor",
+    Shelters: "Shelter",
+    Hospitals: "Hospital",
+    "Legal Support": "Legal",
+  };
+  const visiblePartners =
+    activeTab === "All"
+      ? MOCK_PARTNER_BOARD
+      : MOCK_PARTNER_BOARD.filter((p) => p.ptype === TAB_PTYPE[activeTab]);
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -5096,10 +5075,7 @@ const PartnersSection = () => {
               <button
                 key={t}
                 type="button"
-                onClick={() => {
-                  setActiveTab(t);
-                  policeAction("Partner tab changed", t)();
-                }}
+                onClick={() => setActiveTab(t)}
                 className={cn(
                   "rounded-t-lg px-3 py-2 text-[11px] font-bold",
                   activeTab === t
@@ -5126,7 +5102,17 @@ const PartnersSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MOCK_PARTNER_BOARD.map((p) => (
+                {visiblePartners.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-4 py-10 text-center text-xs text-slate-300"
+                    >
+                      No {activeTab.toLowerCase()} referrals right now.
+                    </td>
+                  </tr>
+                )}
+                {visiblePartners.map((p) => (
                   <tr key={p.id} className="hover:bg-white/[0.02]">
                     <td className="px-4 py-3 font-mono text-[11px] text-slate-300">
                       {p.id}
