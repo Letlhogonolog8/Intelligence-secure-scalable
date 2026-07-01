@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { Button, Muted } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
+import { CaseTeamMessages } from "@/features/messages/CaseTeamMessages";
 import {
   sendToAI,
   QUICK_PROMPTS,
@@ -27,7 +28,7 @@ import {
 import type { PeerSupportMessageRow } from "@/shared/types";
 import { colors, font, gradients, radius, spacing, TOUCH_MIN } from "@/theme";
 
-type Tab = "ai" | "peer";
+type Tab = "ai" | "peer" | "team";
 
 export default function Support() {
   const { t } = useTranslation();
@@ -52,8 +53,19 @@ export default function Support() {
           label={t("support.peer", "Peer support")}
           onPress={() => setTab("peer")}
         />
+        <SegBtn
+          active={tab === "team"}
+          label={t("support.caseTeam", "Case team")}
+          onPress={() => setTab("team")}
+        />
       </View>
-      {tab === "ai" ? <AiChat /> : <PeerSupport />}
+      {tab === "ai" ? (
+        <AiChat />
+      ) : tab === "peer" ? (
+        <PeerSupport />
+      ) : (
+        <CaseTeamMessages />
+      )}
     </SafeAreaView>
   );
 }
