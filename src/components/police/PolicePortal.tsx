@@ -1772,9 +1772,8 @@ const SectionTitle = ({
 );
 
 const WORKSPACE_CONTENT: Record<
-  WorkspaceSectionKey,
+  "incidents" | "settings",
   {
-    title: string;
     cards: {
       label: string;
       value: string;
@@ -1783,15 +1782,9 @@ const WORKSPACE_CONTENT: Record<
       note: string;
     }[];
     rows: { title: string; detail: string; status: string }[];
-    actions: {
-      label: string;
-      icon: ComponentType<{ className?: string }>;
-      tone: string;
-    }[];
   }
 > = {
   incidents: {
-    title: "Active Incident Workbench",
     cards: [
       {
         label: "Open Incidents",
@@ -1839,239 +1832,8 @@ const WORKSPACE_CONTENT: Record<
         status: "Review",
       },
     ],
-    actions: [
-      { label: "Open Emergency Queue", icon: Siren, tone: "violet" },
-      { label: "Assign Dispatch Unit", icon: Car, tone: "sky" },
-      { label: "Escalate Incident", icon: ShieldAlert, tone: "rose" },
-      { label: "Generate Incident Summary", icon: FileText, tone: "emerald" },
-    ],
-  },
-  survivor: {
-    title: "Survivor Safety Workspace",
-    cards: [
-      {
-        label: "Safety Check-ins",
-        value: "39",
-        icon: ShieldCheck,
-        tone: "emerald",
-        note: "Due today",
-      },
-      {
-        label: "High-Risk Survivors",
-        value: "12",
-        icon: ShieldAlert,
-        tone: "rose",
-        note: "Needs follow-up",
-      },
-      {
-        label: "Trusted Contacts",
-        value: "64",
-        icon: Phone,
-        tone: "sky",
-        note: "Available",
-      },
-      {
-        label: "Safety Plans",
-        value: "28",
-        icon: FileCheck,
-        tone: "violet",
-        note: "Active",
-      },
-    ],
-    rows: [
-      {
-        title: "Check-in overdue",
-        detail: "Alias T.K. · contact window missed",
-        status: "Call",
-      },
-      {
-        title: "Safety plan updated",
-        detail: "Shelter route and safe contact changed",
-        status: "Synced",
-      },
-      {
-        title: "Trusted contact verified",
-        detail: "Emergency contact reachable",
-        status: "Safe",
-      },
-    ],
-    actions: [
-      { label: "Schedule Welfare Check", icon: Clock, tone: "amber" },
-      { label: "Contact Survivor", icon: Phone, tone: "sky" },
-      { label: "Open Safety Plan", icon: ShieldCheck, tone: "emerald" },
-      { label: "Coordinate Counselor", icon: Users, tone: "violet" },
-    ],
-  },
-  messages: {
-    title: "Secure Communication Queue",
-    cards: [
-      {
-        label: "Unread",
-        value: "12",
-        icon: MessageSquare,
-        tone: "violet",
-        note: "Needs response",
-      },
-      {
-        label: "Partner Threads",
-        value: "8",
-        icon: Handshake,
-        tone: "emerald",
-        note: "Active",
-      },
-      {
-        label: "Evidence Requests",
-        value: "5",
-        icon: FileCheck,
-        tone: "amber",
-        note: "Pending",
-      },
-      {
-        label: "Counselor Notes",
-        value: "17",
-        icon: Users,
-        tone: "sky",
-        note: "Synced",
-      },
-    ],
-    rows: [
-      {
-        title: "SafeHome Trust",
-        detail: "Shelter bed confirmed for case handoff",
-        status: "Reply",
-      },
-      {
-        title: "Trauma Counseling Unit",
-        detail: "Follow-up appointment accepted",
-        status: "Read",
-      },
-      {
-        title: "Evidence review request",
-        detail: "Officer asks for translated voice note",
-        status: "Pending",
-      },
-    ],
-    actions: [
-      { label: "Compose Message", icon: MessageSquare, tone: "violet" },
-      { label: "Open Partner Thread", icon: Handshake, tone: "emerald" },
-      { label: "Share Case Update", icon: FileText, tone: "sky" },
-      { label: "Mark Queue Reviewed", icon: CheckCircle2, tone: "amber" },
-    ],
-  },
-  analytics: {
-    title: "Operational Analytics",
-    cards: [
-      {
-        label: "Avg Response",
-        value: "18m",
-        icon: Clock,
-        tone: "cyan",
-        note: "Current shift",
-      },
-      {
-        label: "Critical Trend",
-        value: "+8%",
-        icon: BarChart3,
-        tone: "rose",
-        note: "7-day change",
-      },
-      {
-        label: "Case Closure",
-        value: "71%",
-        icon: CheckCircle2,
-        tone: "emerald",
-        note: "Month to date",
-      },
-      {
-        label: "Hotspots",
-        value: "9",
-        icon: MapPin,
-        tone: "amber",
-        note: "Monitored",
-      },
-    ],
-    rows: [
-      {
-        title: "Johannesburg hotspot",
-        detail: "SOS and witness reports increased",
-        status: "Monitor",
-      },
-      {
-        title: "Dispatch load stable",
-        detail: "Unit capacity within safe threshold",
-        status: "Healthy",
-      },
-      {
-        title: "Evidence translation demand",
-        detail: "Voice notes up 14% this week",
-        status: "Plan",
-      },
-    ],
-    actions: [
-      { label: "Export Analytics", icon: Download, tone: "violet" },
-      { label: "Open Heat Map", icon: MapPin, tone: "rose" },
-      { label: "Run Forecast", icon: BarChart3, tone: "sky" },
-      { label: "Create Brief", icon: FileText, tone: "emerald" },
-    ],
-  },
-  reports: {
-    title: "Reports Workspace",
-    cards: [
-      {
-        label: "Draft Reports",
-        value: "6",
-        icon: FileText,
-        tone: "violet",
-        note: "In progress",
-      },
-      {
-        label: "Ready to Export",
-        value: "11",
-        icon: Download,
-        tone: "emerald",
-        note: "Approved",
-      },
-      {
-        label: "Audit Items",
-        value: "4",
-        icon: Shield,
-        tone: "amber",
-        note: "Review",
-      },
-      {
-        label: "Compliance Packs",
-        value: "3",
-        icon: FileCheck,
-        tone: "sky",
-        note: "This month",
-      },
-    ],
-    rows: [
-      {
-        title: "Daily operations report",
-        detail: "Queue, dispatch, and evidence summary",
-        status: "Ready",
-      },
-      {
-        title: "GBV incident trend brief",
-        detail: "Anonymised regional analysis",
-        status: "Draft",
-      },
-      {
-        title: "Evidence chain report",
-        detail: "Court-ready chain-of-custody export",
-        status: "Review",
-      },
-    ],
-    actions: [
-      { label: "Generate Report", icon: FileText, tone: "violet" },
-      { label: "Export CSV", icon: Download, tone: "emerald" },
-      { label: "Print Brief", icon: FileCheck, tone: "sky" },
-      { label: "Share With Admin", icon: Users, tone: "amber" },
-    ],
   },
   settings: {
-    title: "Portal Settings",
     cards: [
       {
         label: "Notifications",
@@ -2102,29 +1864,7 @@ const WORKSPACE_CONTENT: Record<
         note: "Responder online",
       },
     ],
-    rows: [
-      {
-        title: "Critical alert push",
-        detail: "Enabled for SOS and high-risk escalations",
-        status: "On",
-      },
-      {
-        title: "Case assignment notifications",
-        detail: "Immediate dashboard and push updates",
-        status: "On",
-      },
-      {
-        title: "Audit visibility",
-        detail: "Staff actions are logged for accountability",
-        status: "Active",
-      },
-    ],
-    actions: [
-      { label: "Save Preferences", icon: SettingsIcon, tone: "violet" },
-      { label: "Test Notifications", icon: Bell, tone: "sky" },
-      { label: "Update Availability", icon: Radio, tone: "emerald" },
-      { label: "Review Security", icon: Shield, tone: "amber" },
-    ],
+    rows: [],
   },
 };
 
@@ -2151,7 +1891,7 @@ const downloadCsv = (
   URL.revokeObjectURL(url);
 };
 
-const WorkspaceKpis = ({ section }: { section: WorkspaceSectionKey }) => (
+const WorkspaceKpis = ({ section }: { section: "incidents" | "settings" }) => (
   <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
     {WORKSPACE_CONTENT[section].cards.map((card) => (
       <KpiCard
