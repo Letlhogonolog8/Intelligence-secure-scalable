@@ -3091,28 +3091,123 @@ const MessagesSection = () => {
   );
 };
 
+const dayKey = (iso?: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+};
+
+/** Build a 7-day incident/case volume series ending today. */
+const buildVolumeSeries = (
+  escalations: { triggeredAt?: string | null }[],
+  cases: { createdAt?: string | null }[],
+) => {
+  const days: { key: string; label: string }[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push({
+      key: d.toISOString().slice(0, 10),
+      label: d.toLocaleDateString([], { weekday: "short" }),
+    });
+  }
+  return days.map((day) => ({
+    t: day.label,
+    incidents: escalations.filter((e) => dayKey(e.triggeredAt) === day.key)
+      .length,
+    cases: cases.filter((c) => dayKey(c.createdAt) === day.key).length,
+  }));
+};
+
 const AnalyticsSection = () => {
+  const { data: cases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const { data: escalations = [] } = useEscalationEvents({
+    limit: 500,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+
+  const total = cases.length;
+  const breakdown = POLICE_CASE_STATUS.map((bucket) => {
+    const value = cases.filter((c) =>
+      bucket.match.includes((c.status || "").toLowerCase()),
+    ).length;
+    return {
+      name: bucket.name,
+      value,
+      color: bucket.color,
+      pct: total ? `${Math.round((value / total) * 100)}%` : "0%",
+    };
+  });
+  const series = buildVolumeSeries(escalations, cases);
+
+  const openCases = cases.filter(
+    (c) => !["closed", "resolved"].includes((c.status || "").toLowerCase()),
+  ).length;
+  const activeEscalations = escalations.filter(
+    (e) => !["resolved", "closed"].includes((e.status || "").toLowerCase()),
+  ).length;
+  const critical = cases.filter((c) =>
+    ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+  ).length;
+
+  const kpis = [
+    {
+      label: "Total Cases",
+      value: nf.format(total),
+      icon: BarChart3,
+      tone: "violet",
+    },
+    {
+      label: "Open Cases",
+      value: nf.format(openCases),
+      icon: FileText,
+      tone: "sky",
+    },
+    {
+      label: "Active Escalations",
+      value: nf.format(activeEscalations),
+      icon: Siren,
+      tone: "amber",
+    },
+    {
+      label: "High / Critical",
+      value: nf.format(critical),
+      icon: ShieldAlert,
+      tone: "rose",
+    },
+  ];
+
   const exportCsv = () => {
     downloadCsv(
       "police-incident-volume.csv",
-      ["Time", "SOS", "Domestic Violence", "Sexual Assault"],
-      MOCK_CASE_ACTIVITY.map((point) => [
-        point.t,
-        point.sos,
-        point.dv,
-        point.sa,
-      ]),
+      ["Day", "Incidents", "Cases"],
+      series.map((point) => [point.t, point.incidents, point.cases]),
     );
     toast.success("Analytics exported");
   };
 
   return (
     <>
-      <WorkspaceKpis section="analytics" />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {kpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={hasSupabase ? k.value : NO_DATA}
+            icon={k.icon}
+            tone={k.tone}
+          />
+        ))}
+      </section>
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <Panel
-          title="Incident Volume (24h)"
-          subtitle="SOS and domestic-violence reports per window"
+          title="Incident & Case Volume (7 days)"
+          subtitle="Escalations and new cases per day"
           action={
             <button
               type="button"
@@ -3124,21 +3219,21 @@ const AnalyticsSection = () => {
           }
         >
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={MOCK_CASE_ACTIVITY}>
+            <LineChart data={series}>
               <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
               <XAxis dataKey="t" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} />
+              <YAxis stroke="#94a3b8" fontSize={11} allowDecimals={false} />
               <Tooltip {...chartTooltip} />
               <Line
                 type="monotone"
-                dataKey="sos"
+                dataKey="incidents"
                 stroke="#a855f7"
                 strokeWidth={2}
                 dot={false}
               />
               <Line
                 type="monotone"
-                dataKey="dv"
+                dataKey="cases"
                 stroke="#06b6d4"
                 strokeWidth={2}
                 dot={false}
@@ -3147,28 +3242,34 @@ const AnalyticsSection = () => {
           </ResponsiveContainer>
         </Panel>
         <Panel title="Case Status Breakdown" bodyClassName="p-0">
-          <div className="divide-y divide-white/5">
-            {MOCK_CASES_BY_STATUS.map((status) => (
-              <div
-                key={status.name}
-                className="flex items-center justify-between px-5 py-3"
-              >
-                <span className="flex items-center gap-2 text-sm text-slate-200">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ background: status.color }}
-                  />
-                  {status.name}
-                </span>
-                <span className="text-sm font-bold text-white">
-                  {nf.format(status.value)}{" "}
-                  <span className="text-[11px] font-normal text-slate-400">
-                    {status.pct}
+          {total === 0 ? (
+            <p className="px-5 py-10 text-center text-xs text-slate-300">
+              No case data yet.
+            </p>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {breakdown.map((status) => (
+                <div
+                  key={status.name}
+                  className="flex items-center justify-between px-5 py-3"
+                >
+                  <span className="flex items-center gap-2 text-sm text-slate-200">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: status.color }}
+                    />
+                    {status.name}
                   </span>
-                </span>
-              </div>
-            ))}
-          </div>
+                  <span className="text-sm font-bold text-white">
+                    {nf.format(status.value)}{" "}
+                    <span className="text-[11px] font-normal text-slate-400">
+                      {status.pct}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
       </section>
     </>
@@ -3176,67 +3277,141 @@ const AnalyticsSection = () => {
 };
 
 const ReportsSection = () => {
-  const [reports, setReports] = useState(
-    WORKSPACE_CONTENT.reports.rows.map((row) => ({ ...row })),
-  );
+  const { data: cases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 10000,
+  });
+  const { data: escalations = [] } = useEscalationEvents({
+    limit: 500,
+    staleTime: 10000,
+  });
 
-  const generate = () => {
-    setReports((current) => [
-      {
-        title: `Ad-hoc operations report #${current.length + 1}`,
-        detail: "Generated from the current shift's live data",
-        status: "Ready",
-      },
-      ...current,
-    ]);
-    toast.success("Report generated");
-  };
+  const resolved = cases.filter((c) =>
+    ["closed", "resolved"].includes((c.status || "").toLowerCase()),
+  ).length;
 
-  const download = (report: {
-    title: string;
-    detail: string;
-    status: string;
-  }) => {
+  const kpis = [
+    {
+      label: "Cases",
+      value: nf.format(cases.length),
+      icon: FileText,
+      tone: "violet",
+    },
+    {
+      label: "Escalations",
+      value: nf.format(escalations.length),
+      icon: Siren,
+      tone: "amber",
+    },
+    {
+      label: "Resolved",
+      value: nf.format(resolved),
+      icon: CheckCircle2,
+      tone: "emerald",
+    },
+    { label: "Datasets", value: "3", icon: Download, tone: "sky" },
+  ];
+
+  const exportCases = () =>
     downloadCsv(
-      `${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`,
-      ["Report", "Detail", "Status"],
-      [[report.title, report.detail, report.status]],
+      "aegis-case-register.csv",
+      ["Case ID", "Status", "Risk", "Priority", "Source", "Created"],
+      cases.map((c) => [
+        c.id,
+        c.status || "",
+        c.riskLevel || "",
+        c.priority || "",
+        c.source || "",
+        c.createdAt || "",
+      ]),
     );
-    toast.success("Report downloaded");
+
+  const exportEscalations = () =>
+    downloadCsv(
+      "aegis-escalation-log.csv",
+      ["Escalation ID", "Type", "Severity", "Status", "Triggered"],
+      escalations.map((e) => [
+        e.id,
+        e.escalationType || "",
+        e.severity || "",
+        e.status || "",
+        e.triggeredAt || "",
+      ]),
+    );
+
+  const exportStatusSummary = () => {
+    const total = cases.length;
+    downloadCsv(
+      "aegis-case-status-summary.csv",
+      ["Status", "Count", "Percent"],
+      POLICE_CASE_STATUS.map((bucket) => {
+        const value = cases.filter((c) =>
+          bucket.match.includes((c.status || "").toLowerCase()),
+        ).length;
+        return [
+          bucket.name,
+          value,
+          total ? `${Math.round((value / total) * 100)}%` : "0%",
+        ];
+      }),
+    );
   };
+
+  const reports = [
+    {
+      key: "cases",
+      title: "Case Register",
+      detail: `${nf.format(cases.length)} cases · all fields`,
+      run: exportCases,
+    },
+    {
+      key: "escalations",
+      title: "Escalation Log",
+      detail: `${nf.format(escalations.length)} escalations · SOS & incidents`,
+      run: exportEscalations,
+    },
+    {
+      key: "status",
+      title: "Case Status Summary",
+      detail: "Counts and percentages by status",
+      run: exportStatusSummary,
+    },
+  ];
 
   return (
     <>
-      <WorkspaceKpis section="reports" />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {kpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={hasSupabase ? k.value : NO_DATA}
+            icon={k.icon}
+            tone={k.tone}
+          />
+        ))}
+      </section>
       <Panel
         title="Reports Workspace"
-        action={
-          <button
-            type="button"
-            onClick={generate}
-            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
-          >
-            <Plus className="h-3.5 w-3.5" /> Generate Report
-          </button>
-        }
+        subtitle="Export court-ready CSVs from live operational data"
         bodyClassName="p-0"
       >
         <div className="divide-y divide-white/5">
           {reports.map((report) => (
             <div
-              key={report.title}
+              key={report.key}
               className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
             >
-              <div className="flex items-center gap-3">
-                <Pill tone={statusTone(report.status)}>{report.status}</Pill>
-                <div>
-                  <p className="text-sm font-bold text-white">{report.title}</p>
-                  <p className="mt-1 text-xs text-slate-300">{report.detail}</p>
-                </div>
+              <div>
+                <p className="text-sm font-bold text-white">{report.title}</p>
+                <p className="mt-1 text-xs text-slate-300">{report.detail}</p>
               </div>
               <button
                 type="button"
-                onClick={() => download(report)}
+                onClick={() => {
+                  report.run();
+                  toast.success(`${report.title} exported`);
+                }}
                 className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
               >
                 <Download className="h-3.5 w-3.5" /> Download CSV
