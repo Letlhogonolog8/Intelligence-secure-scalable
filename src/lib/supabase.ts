@@ -330,6 +330,24 @@ export type Database = {
         created_at: string | null;
         updated_at: string | null;
       }>;
+      responder_settings: TableDefinition<
+        {
+          user_id: string;
+          critical_push: boolean;
+          case_assignment_push: boolean;
+          audit_visibility: boolean;
+          available: boolean;
+          updated_at: string;
+        },
+        {
+          user_id: string;
+          critical_push?: boolean;
+          case_assignment_push?: boolean;
+          audit_visibility?: boolean;
+          available?: boolean;
+          updated_at?: string;
+        }
+      >;
       secure_conversations: TableDefinition<{
         id: string;
         subject: string | null;

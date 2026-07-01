@@ -113,6 +113,12 @@ import {
   useCaseEvidence,
   type CaseEvidenceEntry,
 } from "@/data/caseEvidence";
+import {
+  responderSettingsKey,
+  saveResponderSettings,
+  useResponderSettings,
+} from "@/data/responderSettings";
+import { persistPreferredLanguage } from "@/lib/languageSync";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
@@ -3424,13 +3430,58 @@ const ReportsSection = () => {
   );
 };
 
+const LANGUAGE_OPTIONS: { label: string; code: string }[] = [
+  { label: "English", code: "en" },
+  { label: "isiZulu", code: "zu" },
+  { label: "Afrikaans", code: "af" },
+  { label: "Sesotho", code: "st" },
+];
+
 const SettingsSection = () => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: saved } = useResponderSettings(user?.id);
+
   const [criticalPush, setCriticalPush] = useState(true);
   const [caseAssign, setCaseAssign] = useState(true);
   const [auditVisibility, setAuditVisibility] = useState(true);
   const [available, setAvailable] = useState(true);
-  const [language, setLanguage] = useState("English");
-  const languages = ["English", "isiZulu", "Afrikaans", "Sesotho"];
+  const [languageCode, setLanguageCode] = useState("en");
+  const [saving, setSaving] = useState(false);
+
+  // Adopt persisted values once they load.
+  useEffect(() => {
+    if (!saved) return;
+    setCriticalPush(saved.criticalPush);
+    setCaseAssign(saved.caseAssignmentPush);
+    setAuditVisibility(saved.auditVisibility);
+    setAvailable(saved.available);
+  }, [saved]);
+
+  const save = async () => {
+    if (!user?.id) {
+      toast.error("Sign in to save preferences");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveResponderSettings(user.id, {
+        criticalPush,
+        caseAssignmentPush: caseAssign,
+        auditVisibility,
+        available,
+      });
+      await persistPreferredLanguage(languageCode);
+      void queryClient.invalidateQueries({
+        queryKey: responderSettingsKey(user.id),
+      });
+      toast.success("Preferences saved");
+    } catch {
+      toast.error("Couldn't save preferences — please retry.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -3490,33 +3541,31 @@ const SettingsSection = () => {
                 Portal language
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {languages.map((option) => (
+                {LANGUAGE_OPTIONS.map((option) => (
                   <button
-                    key={option}
+                    key={option.code}
                     type="button"
-                    onClick={() => setLanguage(option)}
+                    onClick={() => setLanguageCode(option.code)}
                     className={cn(
                       "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
-                      language === option
+                      languageCode === option.code
                         ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
                         : "border-white/10 text-slate-300 hover:bg-white/5",
                     )}
                   >
-                    {option}
+                    {option.label}
                   </button>
                 ))}
               </div>
             </div>
             <button
               type="button"
-              onClick={() =>
-                toast.success(
-                  `Preferences saved · ${available ? "Online" : "Offline"} · ${language}`,
-                )
-              }
-              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+              onClick={() => void save()}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
             >
-              <SettingsIcon className="h-3.5 w-3.5" /> Save Preferences
+              <SettingsIcon className="h-3.5 w-3.5" />{" "}
+              {saving ? "Saving…" : "Save Preferences"}
             </button>
           </div>
         </Panel>
