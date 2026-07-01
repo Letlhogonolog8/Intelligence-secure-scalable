@@ -99,6 +99,12 @@ import {
   useSecureMessages,
   type SecureConversation,
 } from "@/data/secureMessages";
+import {
+  acknowledgeEscalation,
+  dispatchEscalation,
+  escalateEscalation,
+  ESCALATION_EVENTS_KEY,
+} from "@/data/escalationActions";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
@@ -2558,6 +2564,7 @@ const IncidentsSection = () => {
 
 type SafetyRow = {
   key: string;
+  escalationId?: string;
   caseLabel: string;
   severity: string;
   statusLabel: string;
@@ -2580,12 +2587,23 @@ const safetyStatusFor = (severity: string): { label: string; tone: string } => {
 
 const SurvivorSafetySection = () => {
   const { navigate } = usePolicePortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data: escalations = [] } = useEscalationEvents({
     limit: 200,
     staleTime: 10000,
     refetchInterval: 30000,
   });
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
+
+  const persistAcknowledge = async (escalationId: string) => {
+    try {
+      await acknowledgeEscalation(escalationId, user?.id ?? "");
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+    } catch {
+      toast.error("Couldn't save acknowledgement — please retry.");
+    }
+  };
 
   const sevRank = (s: string) =>
     s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
@@ -2602,6 +2620,7 @@ const SurvivorSafetySection = () => {
       );
       return {
         key: e.id,
+        escalationId: e.id,
         caseLabel: e.caseId
           ? `AEG-${e.caseId.slice(0, 8).toUpperCase()}`
           : `ESC-${e.id.slice(0, 8).toUpperCase()}`,
@@ -2779,6 +2798,8 @@ const SurvivorSafetySection = () => {
                                   [r.key]: true,
                                 }));
                                 toast.success("Safety escalation acknowledged");
+                                if (r.escalationId)
+                                  void persistAcknowledge(r.escalationId);
                               }}
                               className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/20"
                             >
@@ -4317,6 +4338,8 @@ const OverviewSection = () => {
 
 const QueueSection = () => {
   const { navigate } = usePolicePortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data: escalations = [] } = useEscalationEvents({
     limit: 200,
     staleTime: 10000,
@@ -4372,11 +4395,34 @@ const QueueSection = () => {
             ago: e.triggeredAt ? fmtRelative(e.triggeredAt) : "",
             score: sev === "critical" ? 95 : sev === "high" ? 78 : 55,
             officer: e.assignedTo || "Unassigned",
+            escalationId: e.id as string | undefined,
+            rawStatus: (e.status || "").toLowerCase(),
           };
         })
     : ALLOW_MOCK
-      ? MOCK_QUEUE
+      ? MOCK_QUEUE.map((q) => ({
+          ...q,
+          escalationId: undefined as string | undefined,
+          rawStatus: "",
+        }))
       : [];
+
+  const persistDispatch = async (escalationId: string) => {
+    try {
+      await dispatchEscalation(escalationId, user?.id ?? "");
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+    } catch {
+      toast.error("Couldn't save dispatch — please retry.");
+    }
+  };
+  const persistEscalate = async (escalationId: string) => {
+    try {
+      await escalateEscalation(escalationId);
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+    } catch {
+      toast.error("Couldn't save escalation — please retry.");
+    }
+  };
 
   const queueKpis = MOCK_QUEUE_KPIS.map((k) => {
     if (k.label === "Critical Alerts" && escalations.length)
@@ -4450,103 +4496,113 @@ const QueueSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {queueRows.map((q) => (
-                  <tr key={q.id} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3">
-                      <Pill tone={statusTone(q.priority)}>{q.priority}</Pill>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-mono text-[11px] text-slate-300">
-                        {q.id}
-                      </p>
-                      <p className="text-[10px] text-slate-300">{q.via}</p>
-                    </td>
-                    <td className="px-4 py-3 text-slate-300">{q.type}</td>
-                    <td className="px-4 py-3">
-                      <p
-                        className={cn(
-                          "text-xs font-bold",
-                          q.safety.includes("Danger")
-                            ? "text-rose-400"
-                            : q.safety.includes("Risk")
-                              ? "text-amber-400"
-                              : "text-emerald-400",
-                        )}
-                      >
-                        {q.safety}
-                      </p>
-                      <p className="text-[10px] text-slate-300">
-                        {q.safetySub}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-slate-300">{q.loc}</p>
-                      <p className="text-[10px] text-slate-300">{q.locSub}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <RiskRing score={q.score} />
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-300">
-                      {dispatched[q.id] ? "Unit en route" : q.officer}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex gap-1.5">
-                          {dispatched[q.id] ? (
-                            <span className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
-                              <CheckCircle2 className="h-3 w-3" /> Dispatched
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDispatched((current) => ({
-                                  ...current,
-                                  [q.id]: true,
-                                }));
-                                toast.success(`Unit dispatched to ${q.id}`);
-                              }}
-                              className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
-                            >
-                              Dispatch
-                            </button>
+                {queueRows.map((q) => {
+                  const isDispatched =
+                    dispatched[q.id] || q.rawStatus === "dispatched";
+                  const isEscalated =
+                    escalated[q.id] || q.rawStatus === "escalated";
+                  return (
+                    <tr key={q.id} className="hover:bg-white/[0.02]">
+                      <td className="px-4 py-3">
+                        <Pill tone={statusTone(q.priority)}>{q.priority}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-[11px] text-slate-300">
+                          {q.id}
+                        </p>
+                        <p className="text-[10px] text-slate-300">{q.via}</p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">{q.type}</td>
+                      <td className="px-4 py-3">
+                        <p
+                          className={cn(
+                            "text-xs font-bold",
+                            q.safety.includes("Danger")
+                              ? "text-rose-400"
+                              : q.safety.includes("Risk")
+                                ? "text-amber-400"
+                                : "text-emerald-400",
                           )}
-                          {escalated[q.id] ? (
-                            <span className="flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300">
-                              <ShieldAlert className="h-3 w-3" /> Escalated
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEscalated((current) => ({
-                                  ...current,
-                                  [q.id]: true,
-                                }));
-                                toast.success(
-                                  `${q.id} escalated for senior review`,
-                                );
-                              }}
-                              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300"
-                            >
-                              Escalate
-                            </button>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigate("cases");
-                            toast.info(`Opening ${q.id} in Case Management`);
-                          }}
-                          className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
                         >
-                          View Case
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {q.safety}
+                        </p>
+                        <p className="text-[10px] text-slate-300">
+                          {q.safetySub}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-slate-300">{q.loc}</p>
+                        <p className="text-[10px] text-slate-300">{q.locSub}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <RiskRing score={q.score} />
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-300">
+                        {isDispatched ? "Unit en route" : q.officer}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex gap-1.5">
+                            {isDispatched ? (
+                              <span className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                                <CheckCircle2 className="h-3 w-3" /> Dispatched
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDispatched((current) => ({
+                                    ...current,
+                                    [q.id]: true,
+                                  }));
+                                  toast.success(`Unit dispatched to ${q.id}`);
+                                  if (q.escalationId)
+                                    void persistDispatch(q.escalationId);
+                                }}
+                                className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
+                              >
+                                Dispatch
+                              </button>
+                            )}
+                            {isEscalated ? (
+                              <span className="flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300">
+                                <ShieldAlert className="h-3 w-3" /> Escalated
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEscalated((current) => ({
+                                    ...current,
+                                    [q.id]: true,
+                                  }));
+                                  toast.success(
+                                    `${q.id} escalated for senior review`,
+                                  );
+                                  if (q.escalationId)
+                                    void persistEscalate(q.escalationId);
+                                }}
+                                className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300"
+                              >
+                                Escalate
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate("cases");
+                              toast.info(`Opening ${q.id} in Case Management`);
+                            }}
+                            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
+                          >
+                            View Case
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
