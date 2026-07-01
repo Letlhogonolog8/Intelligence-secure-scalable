@@ -118,6 +118,18 @@ import {
   saveResponderSettings,
   useResponderSettings,
 } from "@/data/responderSettings";
+import {
+  createDispatch,
+  DISPATCHES_KEY,
+  DISPATCH_UNITS_KEY,
+  nextDispatchStatus,
+  setUnitStatus,
+  updateDispatchStatus,
+  useDispatches,
+  useDispatchUnits,
+  type Dispatch,
+  type DispatchUnit,
+} from "@/data/dispatch";
 import { persistPreferredLanguage } from "@/lib/languageSync";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
@@ -858,98 +870,6 @@ const MOCK_HIGH_RISK_SURVIVORS = [
   { name: "Zanele S.", id: "AEGIS-2025-05118", note: "Due in 2 hrs" },
 ];
 
-const MOCK_DISPATCH_KPIS = [
-  {
-    label: "Units Available",
-    value: "48",
-    icon: Car,
-    tone: "violet",
-    delta: "8 from last hour",
-    dir: "up",
-  },
-  {
-    label: "Dispatches In Progress",
-    value: "23",
-    icon: Radio,
-    tone: "sky",
-    delta: "5 from last hour",
-    dir: "up",
-  },
-  {
-    label: "Average Arrival Time",
-    value: "18 min",
-    icon: Clock,
-    tone: "cyan",
-    delta: "3 min from yesterday",
-    dir: "down",
-  },
-  {
-    label: "Partner Safe Spaces Nearby",
-    value: "37",
-    icon: Home,
-    tone: "emerald",
-    note: "Shelters, NGOs & Counselors",
-  },
-] as const;
-
-const MOCK_ASSIGNMENTS = [
-  {
-    id: "SOS-2025-05121-001",
-    loc: "Soweto, Johannesburg",
-    locSub: "Gauteng, South Africa",
-    priority: "Critical",
-    unit: "Unit G47",
-    officers: "2 Officers",
-    eta: "8 min",
-    dist: "3.2 km",
-    status: "En Route",
-  },
-  {
-    id: "SSE-2025-05121-002",
-    loc: "Khayelitsha, Cape Town",
-    locSub: "Western Cape, South Africa",
-    priority: "High",
-    unit: "Unit WC12",
-    officers: "2 Officers",
-    eta: "12 min",
-    dist: "4.8 km",
-    status: "En Route",
-  },
-  {
-    id: "GBV-2025-05121-003",
-    loc: "Lilongwe, Malawi",
-    locSub: "Central Region, Malawi",
-    priority: "High",
-    unit: "Unit MW08",
-    officers: "2 Officers",
-    eta: "15 min",
-    dist: "6.1 km",
-    status: "On Scene",
-  },
-  {
-    id: "SSE-2025-05121-004",
-    loc: "Gaborone, Botswana",
-    locSub: "Gaborone District, Botswana",
-    priority: "Medium",
-    unit: "Unit BW03",
-    officers: "2 Officers",
-    eta: "20 min",
-    dist: "9.7 km",
-    status: "Assigned",
-  },
-  {
-    id: "GBV-2025-05121-005",
-    loc: "Nelspruit, Mpumalanga",
-    locSub: "Mpumalanga, South Africa",
-    priority: "Medium",
-    unit: "Unit MP15",
-    officers: "2 Officers",
-    eta: "22 min",
-    dist: "8.4 km",
-    status: "Dispatched",
-  },
-];
-
 const MOCK_WORKFLOW = [
   {
     n: 1,
@@ -980,41 +900,6 @@ const MOCK_WORKFLOW = [
     title: "Close Dispatch",
     sub: "Complete response, update outcome and handoff if needed.",
     icon: ShieldCheck,
-  },
-];
-
-const MOCK_HANDOFFS = [
-  {
-    title: "Safe Space Referral",
-    org: "Siyakhula Women's Shelter",
-    sub: "Referral initiated for SOS-2025-05121-001",
-    status: "Pending",
-    time: "09:38 AM",
-    icon: Home,
-  },
-  {
-    title: "Counselor Referral",
-    org: "LifeLine Johannesburg",
-    sub: "Counselor assigned for SSE-2025-05121-002",
-    status: "Confirmed",
-    time: "09:35 AM",
-    icon: Users,
-  },
-  {
-    title: "Shelter Handoff",
-    org: "Thuthuzela Care Centre",
-    sub: "Survivor transferred from GBV-2025-05121-003",
-    status: "Completed",
-    time: "09:12 AM",
-    icon: Home,
-  },
-  {
-    title: "Counselor Follow-up",
-    org: "People Opposing Women Abuse (POWA)",
-    sub: "Follow-up scheduled for SSE-2025-05120-098",
-    status: "Scheduled",
-    time: "08:54 AM",
-    icon: Phone,
   },
 ];
 
@@ -5076,21 +4961,288 @@ const CasesSection = ({
 
 /* =============================== Dispatch =============================== */
 
+const DISPATCH_STATUS_TONE: Record<string, string> = {
+  assigned: "amber",
+  en_route: "sky",
+  on_scene: "violet",
+  completed: "emerald",
+  cancelled: "slate",
+};
+
+const UNIT_STATUS_TONE: Record<string, string> = {
+  available: "emerald",
+  en_route: "sky",
+  on_scene: "violet",
+  offline: "slate",
+};
+
+const NewDispatchModal = ({
+  createdBy,
+  units,
+  onClose,
+  onCreated,
+}: {
+  createdBy: string;
+  units: DispatchUnit[];
+  onClose: () => void;
+  onCreated: () => void;
+}) => {
+  const available = units.filter((u) => u.status === "available");
+  const [unitId, setUnitId] = useState(available[0]?.id ?? "");
+  const [caseRef, setCaseRef] = useState("");
+  const [priority, setPriority] = useState("high");
+  const [eta, setEta] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!createdBy) {
+      toast.error("Sign in to dispatch");
+      return;
+    }
+    setBusy(true);
+    try {
+      await createDispatch({
+        createdBy,
+        unitId: unitId || null,
+        caseReference: caseRef,
+        priority,
+        etaMinutes: eta ? Number(eta) : null,
+      });
+      toast.success("Dispatch created");
+      onCreated();
+    } catch {
+      toast.error("Couldn't create dispatch — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="New dispatch"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">New dispatch</h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Assign an available unit to a case.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Unit
+            </p>
+            {available.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No available units. Bring a unit online first.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {available.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setUnitId(u.id)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                      unitId === u.id
+                        ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                        : "border-white/10 text-slate-300 hover:bg-white/5",
+                    )}
+                  >
+                    {u.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <Input
+            value={caseRef}
+            onChange={(event) => setCaseRef(event.target.value)}
+            placeholder="Case reference (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Priority
+            </p>
+            <div className="flex gap-2">
+              {["low", "medium", "high", "critical"].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriority(p)}
+                  className={cn(
+                    "flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-bold capitalize",
+                    priority === p
+                      ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                      : "border-white/10 text-slate-300 hover:bg-white/5",
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Input
+            value={eta}
+            onChange={(event) =>
+              setEta(event.target.value.replace(/[^0-9]/g, ""))
+            }
+            placeholder="ETA in minutes (optional)"
+            inputMode="numeric"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={create}
+            disabled={busy || !unitId}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Dispatching…" : "Dispatch unit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DispatchSection = () => {
-  const { navigate } = usePolicePortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: units = [] } = useDispatchUnits();
+  const { data: dispatches = [] } = useDispatches();
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const channel = supabase
+      .channel("dispatch-feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "dispatches" },
+        () => void queryClient.invalidateQueries({ queryKey: DISPATCHES_KEY }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "dispatch_units" },
+        () =>
+          void queryClient.invalidateQueries({ queryKey: DISPATCH_UNITS_KEY }),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const unitLabel = (id: string | null) =>
+    units.find((u) => u.id === id)?.label ?? "Unassigned";
+
+  const isActive = (s: string) => !["completed", "cancelled"].includes(s);
+  const kpis = [
+    {
+      label: "Units Available",
+      value: nf.format(units.filter((u) => u.status === "available").length),
+      icon: Car,
+      tone: "violet",
+    },
+    {
+      label: "Active Dispatches",
+      value: nf.format(dispatches.filter((d) => isActive(d.status)).length),
+      icon: Radio,
+      tone: "sky",
+    },
+    {
+      label: "On Scene",
+      value: nf.format(
+        dispatches.filter((d) => d.status === "on_scene").length,
+      ),
+      icon: MapPin,
+      tone: "amber",
+    },
+    {
+      label: "Completed",
+      value: nf.format(
+        dispatches.filter((d) => d.status === "completed").length,
+      ),
+      icon: ShieldCheck,
+      tone: "emerald",
+    },
+  ];
+
+  const advance = async (d: Dispatch) => {
+    const next = nextDispatchStatus(d.status);
+    if (!next) return;
+    try {
+      await updateDispatchStatus(d.id, next, d.unitId);
+      void queryClient.invalidateQueries({ queryKey: DISPATCHES_KEY });
+      void queryClient.invalidateQueries({ queryKey: DISPATCH_UNITS_KEY });
+      toast.success(`Dispatch ${next.replace(/_/g, " ")}`);
+    } catch {
+      toast.error("Couldn't update dispatch.");
+    }
+  };
+
+  const toggleUnit = async (u: DispatchUnit) => {
+    const next = u.status === "offline" ? "available" : "offline";
+    try {
+      await setUnitStatus(u.id, next);
+      void queryClient.invalidateQueries({ queryKey: DISPATCH_UNITS_KEY });
+    } catch {
+      toast.error("Couldn't update unit.");
+    }
+  };
+
   return (
     <>
+      {creating && (
+        <NewDispatchModal
+          createdBy={user?.id ?? ""}
+          units={units}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            void queryClient.invalidateQueries({ queryKey: DISPATCHES_KEY });
+            void queryClient.invalidateQueries({
+              queryKey: DISPATCH_UNITS_KEY,
+            });
+          }}
+        />
+      )}
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+        >
+          <Plus className="h-3.5 w-3.5" /> New Dispatch
+        </button>
+      </div>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_DISPATCH_KPIS.map((k) => (
+        {kpis.map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
-            value={k.value}
+            value={hasSupabase ? k.value : NO_DATA}
             icon={k.icon}
             tone={k.tone}
-            delta={"delta" in k ? k.delta : undefined}
-            dir={"dir" in k ? k.dir : undefined}
-            note={"note" in k ? k.note : undefined}
           />
         ))}
       </section>
@@ -5107,67 +5259,129 @@ const DispatchSection = () => {
           >
             <WorldRiskMap
               regions={MOCK_SA_MAP}
-              height={340}
+              height={300}
               center={[-20, 27]}
               zoom={4}
             />
           </Panel>
-          <Panel title="Active Response Assignments" bodyClassName="p-0">
+          <Panel title="Active Dispatches" bodyClassName="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className={tableHead}>
-                    <th className="px-4 py-3">Incident</th>
-                    <th className="px-4 py-3">Location</th>
+                    <th className="px-4 py-3">Case</th>
                     <th className="px-4 py-3">Priority</th>
-                    <th className="px-4 py-3">Assigned Unit</th>
+                    <th className="px-4 py-3">Unit</th>
                     <th className="px-4 py-3">ETA</th>
-                    <th className="px-4 py-3">Response Status</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {MOCK_ASSIGNMENTS.map((a) => (
-                    <tr key={a.id} className="hover:bg-white/[0.02]">
-                      <td className="px-4 py-3 font-mono text-[11px] text-slate-300">
-                        {a.id}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-white">{a.loc}</p>
-                        <p className="text-[10px] text-slate-300">{a.locSub}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Pill tone={statusTone(a.priority)}>{a.priority}</Pill>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs font-medium text-white">
-                          {a.unit}
-                        </p>
-                        <p className="text-[10px] text-slate-300">
-                          {a.officers}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-white">{a.eta}</p>
-                        <p className="text-[10px] text-slate-300">{a.dist}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Pill tone={statusTone(a.status)}>{a.status}</Pill>
+                  {dispatches.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-10 text-center text-xs text-slate-300"
+                      >
+                        No dispatches yet. Use New Dispatch to send a unit.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    dispatches.map((d) => {
+                      const next = nextDispatchStatus(d.status);
+                      return (
+                        <tr key={d.id} className="hover:bg-white/[0.02]">
+                          <td className="px-4 py-3 font-mono text-[11px] text-violet-300">
+                            {d.caseReference ?? "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Pill tone={statusTone(d.priority)}>
+                              {titleCase(d.priority)}
+                            </Pill>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-white">
+                            {unitLabel(d.unitId)}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-300">
+                            {d.etaMinutes != null ? `${d.etaMinutes} min` : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Pill
+                              tone={DISPATCH_STATUS_TONE[d.status] ?? "slate"}
+                            >
+                              {titleCase(d.status.replace(/_/g, " "))}
+                            </Pill>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {next ? (
+                              <button
+                                type="button"
+                                onClick={() => void advance(d)}
+                                className="rounded-md bg-gradient-to-r from-violet-500 to-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
+                              >
+                                Mark {next.replace(/_/g, " ")}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
-            <button
-              type="button"
-              onClick={() => toast.info("Showing all active assignments.")}
-              className="w-full border-t border-white/5 py-3 text-center text-[11px] font-bold text-violet-400 hover:bg-white/[0.02]"
-            >
-              View All Assignments →
-            </button>
           </Panel>
         </div>
         <div className="flex flex-col gap-6">
+          <Panel title="Response Units" bodyClassName="p-0">
+            <div className="divide-y divide-white/5">
+              {units.length === 0 ? (
+                <p className="px-5 py-8 text-center text-xs text-slate-300">
+                  No units configured.
+                </p>
+              ) : (
+                units.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between gap-3 px-5 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-8 w-8 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
+                        <Car className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-white">
+                          {u.label}
+                        </p>
+                        <p className="text-[10px] text-slate-300">
+                          {u.region ?? "—"} · {u.activeOfficers} officers
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Pill tone={UNIT_STATUS_TONE[u.status] ?? "slate"}>
+                        {titleCase(u.status.replace(/_/g, " "))}
+                      </Pill>
+                      <button
+                        type="button"
+                        onClick={() => void toggleUnit(u)}
+                        className="rounded-md border border-white/10 px-2 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
+                      >
+                        {u.status === "offline"
+                          ? "Bring online"
+                          : "Set offline"}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
           <Panel title="Dispatch Workflow">
             <div className="space-y-4">
               {MOCK_WORKFLOW.map((w, i) => {
@@ -5179,62 +5393,16 @@ const DispatchSection = () => {
                         <Icon className="h-4 w-4" />
                       </span>
                       {i < MOCK_WORKFLOW.length - 1 && (
-                        <span className="mt-1 h-5 w-px bg-white/10" />
+                        <span className="my-1 h-6 w-px bg-white/10" />
                       )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-white">
-                        {w.n}. {w.title}
-                      </p>
-                      <p className="text-[10px] text-slate-300">{w.sub}</p>
+                    <div>
+                      <p className="text-sm font-bold text-white">{w.title}</p>
+                      <p className="text-[11px] text-slate-300">{w.sub}</p>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          </Panel>
-          <Panel
-            title="Partner Handoffs"
-            action={<LinkChip label="View All" target="partners" />}
-          >
-            <div className="space-y-2.5">
-              {MOCK_HANDOFFS.map((h, i) => {
-                const Icon = h.icon;
-                return (
-                  <div
-                    key={i}
-                    className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
-                          <Icon className="h-3.5 w-3.5" />
-                        </span>
-                        <div>
-                          <p className="text-xs font-bold text-white">
-                            {h.title}
-                          </p>
-                          <p className="text-[10px] text-slate-300">{h.org}</p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-slate-300">
-                        {h.time}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-between">
-                      <p className="text-[10px] text-slate-300">{h.sub}</p>
-                      <Pill tone={statusTone(h.status)}>{h.status}</Pill>
-                    </div>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => navigate("partners")}
-                className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
-              >
-                Manage Partner Handoffs →
-              </button>
             </div>
           </Panel>
         </div>
@@ -5242,9 +5410,6 @@ const DispatchSection = () => {
       <ActionBar
         items={[
           { label: "Open Emergency Queue", icon: Siren, tone: "violet" },
-          { label: "Unit Status", icon: Car, tone: "sky" },
-          { label: "Assign Unit", icon: Car, tone: "cyan" },
-          { label: "Route Planner", icon: MapPin, tone: "emerald" },
           { label: "Partner Directory", icon: Handshake, tone: "amber" },
           { label: "Contact Survivor", icon: Phone, tone: "violet" },
         ]}

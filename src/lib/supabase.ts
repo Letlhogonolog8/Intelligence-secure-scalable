@@ -330,6 +330,51 @@ export type Database = {
         created_at: string | null;
         updated_at: string | null;
       }>;
+      dispatch_units: TableDefinition<
+        {
+          id: string;
+          unit_code: string;
+          label: string;
+          status: string;
+          region: string | null;
+          active_officers: number;
+          updated_at: string;
+        },
+        {
+          unit_code: string;
+          label: string;
+          status?: string;
+          region?: string | null;
+          active_officers?: number;
+        }
+      >;
+      dispatches: TableDefinition<
+        {
+          id: string;
+          unit_id: string | null;
+          case_reference: string | null;
+          escalation_id: string | null;
+          priority: string;
+          status: string;
+          eta_minutes: number | null;
+          location: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          unit_id?: string | null;
+          case_reference?: string | null;
+          escalation_id?: string | null;
+          priority?: string;
+          status?: string;
+          eta_minutes?: number | null;
+          location?: string | null;
+          notes?: string | null;
+          created_by: string;
+        }
+      >;
       responder_settings: TableDefinition<
         {
           user_id: string;
