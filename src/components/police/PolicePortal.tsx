@@ -76,6 +76,7 @@ import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
+import CoordinationBoard from "@/components/coordination/CoordinationBoard";
 import {
   useAlertsFeed,
   useAuditLogs,
@@ -5383,6 +5384,8 @@ const EvidenceSection = () => (
 /* =============================== Partner Coordination =============================== */
 
 const PartnersSection = () => {
+  const { user } = useAuth();
+  const { data: profile } = useUserProfile(user?.id);
   const tabs = [
     "All",
     "NGOs",
@@ -5425,6 +5428,10 @@ const PartnersSection = () => {
           />
         ))}
       </section>
+      {/* Live: real inter-agency case handoffs (organization_coordination). */}
+      <CoordinationBoard
+        organizationId={profile?.organizationId ?? undefined}
+      />
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <Panel
           title="Partner Coordination Board"
