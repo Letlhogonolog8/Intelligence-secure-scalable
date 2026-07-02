@@ -375,6 +375,20 @@ export type Database = {
           created_by: string;
         }
       >;
+      triage_notes: TableDefinition<
+        {
+          id: string;
+          note: string;
+          author_id: string | null;
+          author_name: string | null;
+          created_at: string;
+        },
+        {
+          note: string;
+          author_id: string;
+          author_name?: string | null;
+        }
+      >;
       responder_settings: TableDefinition<
         {
           user_id: string;

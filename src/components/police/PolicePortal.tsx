@@ -120,6 +120,11 @@ import {
   useResponderSettings,
 } from "@/data/responderSettings";
 import {
+  addTriageNote,
+  TRIAGE_NOTES_KEY,
+  useTriageNotes,
+} from "@/data/triageNotes";
+import {
   createDispatch,
   DISPATCHES_KEY,
   DISPATCH_UNITS_KEY,
@@ -597,24 +602,6 @@ const MOCK_QUEUE = [
     ago: "26 min ago",
     score: 91,
     officer: "Unassigned",
-  },
-];
-
-const MOCK_TRIAGE_NOTES = [
-  {
-    time: "09:41 AM",
-    by: "Triage Officer: Lt. K. Naidoo",
-    note: "Survivor on phone. Perpetrator armed. Children in home. Dispatch priority set to Critical.",
-  },
-  {
-    time: "09:39 AM",
-    by: "Triage Officer: Sgt. Z. Mabaso",
-    note: "Survivor safe with neighbor. Medical attention needed. Ambulance requested.",
-  },
-  {
-    time: "09:36 AM",
-    by: "Triage Officer: Const. P. Mokoena",
-    note: "Community report re: minor missing. Last seen with unknown adult male.",
   },
 ];
 
@@ -4027,14 +4014,13 @@ const QueueSection = () => {
     refetchInterval: 30000,
   });
   const { data: officers = [] } = usePoliceOfficers({ limit: 200 });
+  const { data: alerts = [] } = useAlertsFeed({ limit: 6, staleTime: 30000 });
+  const { data: triageNotes = [] } = useTriageNotes();
   const officerName = (id: string) =>
     !id
       ? "Unassigned"
       : officers.find((o) => o.id === id)?.fullName || id.slice(0, 8);
   const [triageNote, setTriageNote] = useState("");
-  const [localNotes, setLocalNotes] = useState<
-    { time: string; by: string; note: string }[]
-  >([]);
   const [dispatched, setDispatched] = useState<Record<string, boolean>>({});
   const [escalated, setEscalated] = useState<Record<string, boolean>>({});
 
@@ -4127,8 +4113,47 @@ const QueueSection = () => {
         value: nf.format(escalations.filter((e) => !e.assignedTo).length),
         delta: undefined,
       };
+    if (k.label === "Awaiting Dispatch")
+      return {
+        ...k,
+        value: hasSupabase
+          ? nf.format(
+              escalations.filter(
+                (e) => (e.status || "").toLowerCase() === "triggered",
+              ).length,
+            )
+          : NO_DATA,
+        delta: undefined,
+      };
+    // Average Triage Time has no live timing source yet — don't fabricate it.
+    if (k.label === "Average Triage Time")
+      return { ...k, value: NO_DATA, delta: undefined };
     return ALLOW_MOCK ? k : { ...k, value: NO_DATA, delta: undefined };
   });
+
+  const recentAlerts: {
+    key: string;
+    text: string;
+    when: string;
+    tone: string;
+  }[] = alerts.length
+    ? alerts.map((a) => ({
+        key: a.id,
+        text: a.message || titleCase((a.type || "alert").replace(/_/g, " ")),
+        when: a.time ? fmtRelative(a.time) : "",
+        tone: /sos|panic|critical/i.test(`${a.type} ${a.message}`)
+          ? "rose"
+          : "amber",
+      }))
+    : ALLOW_MOCK
+      ? MOCK_RECENT_ALERTS.map((a, i) => ({
+          key: String(i),
+          text: `${a.type} · ${a.loc}`,
+          when: a.time,
+          tone:
+            a.sev === "Critical" ? "rose" : a.sev === "High" ? "amber" : "sky",
+        }))
+      : [];
 
   return (
     <>
@@ -4313,18 +4338,31 @@ const QueueSection = () => {
               />
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const note = triageNote.trim();
                   if (!note) {
                     toast.error("Triage note is empty");
                     return;
                   }
-                  setLocalNotes((current) => [
-                    { time: "Just now", by: "You", note },
-                    ...current,
-                  ]);
+                  if (!user?.id) {
+                    toast.error("Sign in to add a note");
+                    return;
+                  }
                   setTriageNote("");
-                  toast.success("Triage note added");
+                  try {
+                    await addTriageNote({
+                      note,
+                      authorId: user.id,
+                      authorName: officerName(user.id),
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: TRIAGE_NOTES_KEY,
+                    });
+                    toast.success("Triage note added");
+                  } catch {
+                    setTriageNote(note);
+                    toast.error("Couldn't save the note — please retry.");
+                  }
                 }}
                 className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 text-[11px] font-bold text-white"
               >
@@ -4332,17 +4370,26 @@ const QueueSection = () => {
               </button>
             </div>
             <div className="space-y-3">
-              {[...localNotes, ...MOCK_TRIAGE_NOTES].map((n, i) => (
-                <div key={i} className="border-l-2 border-violet-500/40 pl-3">
-                  <div className="flex items-center justify-between">
+              {triageNotes.length === 0 ? (
+                <p className="py-4 text-center text-[11px] text-slate-400">
+                  No triage notes yet.
+                </p>
+              ) : (
+                triageNotes.map((n) => (
+                  <div
+                    key={n.id}
+                    className="border-l-2 border-violet-500/40 pl-3"
+                  >
                     <span className="text-[10px] font-bold text-slate-300">
-                      {n.time}
+                      {fmtRelative(n.createdAt)}
                     </span>
+                    <p className="text-[10px] text-violet-300">
+                      {n.authorName || "Responder"}
+                    </p>
+                    <p className="text-[11px] text-slate-300">{n.note}</p>
                   </div>
-                  <p className="text-[10px] text-violet-300">{n.by}</p>
-                  <p className="text-[11px] text-slate-300">{n.note}</p>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </Panel>
           <Panel
@@ -4374,32 +4421,37 @@ const QueueSection = () => {
               <LinkChip label="View All Recommendations" />
             </div>
           </Panel>
-          <Panel title="Recent Alerts" action={<LinkChip label="View All" />}>
+          <Panel
+            title="Recent Alerts"
+            action={<LinkChip label="View All" target="incidents" />}
+          >
             <div className="space-y-2">
-              {MOCK_RECENT_ALERTS.map((a, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Siren
-                    className={cn(
-                      "h-3.5 w-3.5",
-                      a.sev === "Critical"
-                        ? "text-rose-400"
-                        : a.sev === "High"
-                          ? "text-amber-400"
-                          : "text-yellow-400",
-                    )}
-                  />
-                  <span className="text-[10px] text-slate-300">{a.time}</span>
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[11px] font-medium text-white">
-                      {a.type}
-                    </span>{" "}
-                    <span className="text-[10px] text-slate-300">
-                      • {a.loc}
+              {recentAlerts.length === 0 ? (
+                <p className="py-4 text-center text-[11px] text-slate-400">
+                  No recent alerts.
+                </p>
+              ) : (
+                recentAlerts.map((a) => (
+                  <div key={a.key} className="flex items-center gap-2">
+                    <Siren
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0",
+                        a.tone === "rose"
+                          ? "text-rose-400"
+                          : a.tone === "amber"
+                            ? "text-amber-400"
+                            : "text-sky-400",
+                      )}
+                    />
+                    <span className="shrink-0 text-[10px] text-slate-300">
+                      {a.when}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-white">
+                      {a.text}
                     </span>
                   </div>
-                  <Pill tone={statusTone(a.sev)}>{a.sev}</Pill>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </Panel>
         </div>

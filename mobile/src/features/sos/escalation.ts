@@ -12,15 +12,24 @@ export interface Coords {
   lng: number;
 }
 
-/** Request permission and capture a single fix. Null if unavailable/declined. */
+/** Request permission and capture a fix. Null if unavailable/declined. */
 export async function getLocationSafe(): Promise<Coords | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") return null;
-    const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    try {
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    } catch {
+      // A live fix can fail or hang indoors — fall back to the last known one
+      // so the SOS still carries a location for responders.
+      const last = await Location.getLastKnownPositionAsync();
+      return last
+        ? { lat: last.coords.latitude, lng: last.coords.longitude }
+        : null;
+    }
   } catch {
     return null;
   }
@@ -53,5 +62,8 @@ export async function sendSos(userId: string | undefined): Promise<string> {
 }
 
 export async function acknowledgeSos(id: string): Promise<void> {
-  await supabase.from("escalation_events").update({ status: "acknowledged" }).eq("id", id);
+  await supabase
+    .from("escalation_events")
+    .update({ status: "acknowledged" })
+    .eq("id", id);
 }
