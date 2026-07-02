@@ -1677,6 +1677,7 @@ const ACTION_TARGETS: { match: string; section: SectionKey }[] = [
   { match: "evidence", section: "evidence" },
   { match: "dispatch", section: "dispatch" },
   { match: "unit", section: "dispatch" },
+  { match: "officer", section: "dispatch" },
   { match: "route", section: "dispatch" },
   { match: "ngo", section: "partners" },
   { match: "counselor", section: "partners" },
