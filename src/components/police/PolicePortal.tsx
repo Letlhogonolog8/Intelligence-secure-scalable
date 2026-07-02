@@ -4420,6 +4420,103 @@ const QueueSection = () => {
 
 /* =============================== Cases =============================== */
 
+type CaseRow = {
+  id: string;
+  alias: string;
+  type: string;
+  risk: string;
+  status: string;
+  officer: string;
+  counselor: string;
+  ngo: string;
+  update: string;
+};
+
+const CaseDetailModal = ({
+  row,
+  onClose,
+  onSurvivorSafety,
+}: {
+  row: CaseRow;
+  onClose: () => void;
+  onSurvivorSafety: () => void;
+}) => {
+  const fields: { label: string; value: string }[] = [
+    { label: "Survivor", value: row.alias },
+    { label: "Case Type", value: row.type },
+    { label: "Officer", value: row.officer },
+    { label: "Counselor", value: row.counselor },
+    { label: "NGO Partner", value: row.ngo },
+    { label: "Last Update", value: row.update },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Case ${row.id}`}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="font-mono text-sm font-black text-violet-300">
+              {row.id}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-300">Case details</p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <Pill tone={statusTone(row.status)}>{row.status}</Pill>
+            <Pill tone={statusTone(row.risk)}>{row.risk} risk</Pill>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 px-5 py-5">
+          {fields.map((field) => (
+            <div key={field.label}>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                {field.label}
+              </p>
+              <p className="mt-1 text-sm font-bold text-white">{field.value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              policeAction(
+                "Case export started",
+                `${row.id} prepared for export.`,
+              )()
+            }
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-100 hover:bg-white/5"
+          >
+            Export
+          </button>
+          <button
+            type="button"
+            onClick={onSurvivorSafety}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+          >
+            Survivor Safety
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CasesSection = ({
   query,
   onQueryChange,
@@ -4427,6 +4524,8 @@ const CasesSection = ({
   query: string;
   onQueryChange: (value: string) => void;
 }) => {
+  const { navigate } = usePolicePortal();
+  const [detailRow, setDetailRow] = useState<CaseRow | null>(null);
   const { data: cases = [] } = useCaseReports({
     limit: 1000,
     staleTime: 10000,
@@ -4490,6 +4589,16 @@ const CasesSection = ({
 
   return (
     <>
+      {detailRow && (
+        <CaseDetailModal
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+          onSurvivorSafety={() => {
+            setDetailRow(null);
+            navigate("survivor");
+          }}
+        />
+      )}
       <div className="flex items-center justify-end gap-2">
         <SelectChip label="Filter Cases" />
         <button
@@ -4602,7 +4711,8 @@ const CasesSection = ({
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={policeAction("Case actions opened", c.id)}
+                        onClick={() => setDetailRow(c)}
+                        aria-label={`Open case ${c.id}`}
                         className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
