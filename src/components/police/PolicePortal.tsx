@@ -63,6 +63,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Siren,
+  Trash2,
   Stethoscope,
   Upload,
   Users,
@@ -102,6 +103,8 @@ import {
 } from "@/data/secureMessages";
 import {
   acknowledgeEscalation,
+  clearQueueData,
+  deleteEscalation,
   dispatchEscalation,
   escalateEscalation,
   ESCALATION_EVENTS_KEY,
@@ -3539,6 +3542,32 @@ const PolicePortal: React.FC = () => {
 
 /* =============================== Overview =============================== */
 
+type EscalationLike = {
+  id: string;
+  severity: string;
+  escalationType: string;
+  lat: number | null;
+  lng: number | null;
+};
+
+/** Plot escalations that carry GPS as points on the risk map. */
+const buildEscalationRegions = (escalations: EscalationLike[]): MapRegion[] =>
+  escalations
+    .filter((e) => e.lat != null && e.lng != null)
+    .map((e) => ({
+      id: e.id,
+      name: `SOS-${e.id.slice(0, 8).toUpperCase()}`,
+      country: titleCase((e.escalationType || "Incident").replace(/_/g, " ")),
+      riskLevel: (["critical", "high", "medium", "low"].includes(
+        (e.severity || "").toLowerCase(),
+      )
+        ? (e.severity || "").toLowerCase()
+        : "medium") as MapRegion["riskLevel"],
+      incidents: 1,
+      lat: e.lat as number,
+      lng: e.lng as number,
+    }));
+
 const OverviewSection = () => {
   const { navigate } = usePolicePortal();
   const { data: sm } = useSystemMetrics({
@@ -3614,7 +3643,10 @@ const OverviewSection = () => {
     : ALLOW_MOCK
       ? MOCK_SYSTEM_OPS.map((s) => ({ name: s.name, status: "healthy" }))
       : [];
-  const mapRegions: MapRegion[] = mockList(regions, MOCK_SA_MAP);
+  const locatedRegions = buildEscalationRegions(escalations);
+  const mapRegions: MapRegion[] = locatedRegions.length
+    ? locatedRegions
+    : mockList(regions, MOCK_SA_MAP);
   const activity = audit.length
     ? audit.slice(0, 5).map((a, i) => ({
         key: i,
@@ -4095,6 +4127,34 @@ const QueueSection = () => {
       toast.error("Couldn't save escalation — please retry.");
     }
   };
+  const removeOne = async (escalationId: string) => {
+    try {
+      await deleteEscalation(escalationId);
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+      toast.success("Incident removed");
+    } catch {
+      toast.error("Couldn't remove — you may not have permission.");
+    }
+  };
+  const clearAll = async () => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Delete ALL escalations and alerts from the queue? This cannot be undone.",
+      )
+    )
+      return;
+    try {
+      await clearQueueData();
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+      void queryClient.invalidateQueries({
+        queryKey: ["aegis", "alertsFeed"],
+      });
+      toast.success("Queue cleared");
+    } catch {
+      toast.error("Couldn't clear the queue — police/admin only.");
+    }
+  };
 
   const queueKpis = MOCK_QUEUE_KPIS.map((k) => {
     if (k.label === "Critical Alerts" && escalations.length)
@@ -4176,19 +4236,28 @@ const QueueSection = () => {
           subtitle="Review and take action on pending requests"
           bodyClassName="p-0"
           action={
-            <div className="flex items-center gap-2 text-[10px] font-bold">
-              <span className="flex items-center gap-1 text-rose-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                Critical
-              </span>
-              <span className="flex items-center gap-1 text-amber-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                High
-              </span>
-              <span className="flex items-center gap-1 text-yellow-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-                Medium
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2 text-[10px] font-bold sm:flex">
+                <span className="flex items-center gap-1 text-rose-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                  Critical
+                </span>
+                <span className="flex items-center gap-1 text-amber-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  High
+                </span>
+                <span className="flex items-center gap-1 text-yellow-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                  Medium
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void clearAll()}
+                className="flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20"
+              >
+                <Trash2 className="h-3 w-3" /> Clear queue
+              </button>
             </div>
           }
         >
@@ -4299,16 +4368,30 @@ const QueueSection = () => {
                               </button>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigate("cases");
-                              toast.info(`Opening ${q.id} in Case Management`);
-                            }}
-                            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
-                          >
-                            View Case
-                          </button>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigate("cases");
+                                toast.info(
+                                  `Opening ${q.id} in Case Management`,
+                                );
+                              }}
+                              className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/5"
+                            >
+                              View Case
+                            </button>
+                            {q.escalationId && (
+                              <button
+                                type="button"
+                                onClick={() => void removeOne(q.escalationId!)}
+                                aria-label={`Delete ${q.id}`}
+                                className="grid h-6 w-6 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-rose-500/10 hover:text-rose-300"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -5365,6 +5448,8 @@ const DispatchSection = () => {
   const queryClient = useQueryClient();
   const { data: units = [] } = useDispatchUnits();
   const { data: dispatches = [] } = useDispatches();
+  const { data: escalations = [] } = useEscalationEvents({ limit: 200 });
+  const locatedRegions = buildEscalationRegions(escalations);
   const [creating, setCreating] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
@@ -5513,7 +5598,7 @@ const DispatchSection = () => {
             }
           >
             <WorldRiskMap
-              regions={MOCK_SA_MAP}
+              regions={locatedRegions.length ? locatedRegions : MOCK_SA_MAP}
               height={300}
               center={[-20, 27]}
               zoom={4}

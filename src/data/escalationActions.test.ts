@@ -1,5 +1,6 @@
 import {
   acknowledgeEscalation,
+  deleteEscalation,
   dispatchEscalation,
   escalateEscalation,
   updateEscalationEvent,
@@ -58,5 +59,16 @@ describe("action helpers", () => {
   it("escalate sets only status", async () => {
     await escalateEscalation("esc-4");
     expect(mockUpdate).toHaveBeenCalledWith({ status: "escalated" });
+  });
+});
+
+describe("deleteEscalation", () => {
+  it("deletes the row by id", async () => {
+    const eq = vi.fn(() => Promise.resolve({ error: null }));
+    const del = vi.fn(() => ({ eq }));
+    mockFrom.mockReturnValue({ delete: del });
+    await deleteEscalation("esc-5");
+    expect(mockFrom).toHaveBeenCalledWith("escalation_events");
+    expect(eq).toHaveBeenCalledWith("id", "esc-5");
   });
 });

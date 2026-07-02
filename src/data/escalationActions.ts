@@ -56,3 +56,26 @@ export const dispatchEscalation = (id: string, userId: string) =>
 /** Escalate a queued incident for senior review. */
 export const escalateEscalation = (id: string) =>
   updateEscalationEvent(id, { status: "escalated" });
+
+/** Delete a single escalation (police/admin only, per RLS). */
+export async function deleteEscalation(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("escalation_events")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Clear old queue data: delete every escalation the caller is permitted to
+ * remove, plus the SOS/alerts history. Used by the "Clear queue" cleanup.
+ */
+export async function clearQueueData(): Promise<void> {
+  const escalations = await supabase
+    .from("escalation_events")
+    .delete()
+    .not("id", "is", null);
+  if (escalations.error) throw escalations.error;
+  // Alerts feed is best-effort — don't fail cleanup if it's already empty.
+  await supabase.from("alerts_feed").delete().not("id", "is", null);
+}
