@@ -50,6 +50,7 @@ import {
   LayoutGrid,
   LogOut,
   MapPin,
+  Megaphone,
   MessageSquare,
   Mic,
   MoreHorizontal,
@@ -139,6 +140,12 @@ import {
   type Dispatch,
   type DispatchUnit,
 } from "@/data/dispatch";
+import {
+  COMMUNITY_REPORTS_QUERY_KEY,
+  RELATIONSHIP_LABEL,
+  useCommunityReports,
+  type CommunityReportEntry,
+} from "@/data/communityReports";
 import { persistPreferredLanguage } from "@/lib/languageSync";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
@@ -1822,6 +1829,112 @@ const Toggle = ({
   </button>
 );
 
+/** Icon for a community report's reporter relationship. */
+const communityRelIcon = (rel: CommunityReportEntry["relationship"]) =>
+  rel === "on_behalf"
+    ? Handshake
+    : rel === "witness"
+      ? Eye
+      : rel === "concern"
+        ? AlertTriangle
+        : Megaphone;
+
+/**
+ * Community & witness reports inbox. Surfaces account-free reports filed from
+ * the public web page (community_web) and the mobile app (community_mobile) to
+ * responders, updating live as new reports arrive.
+ */
+const CommunityReportsInbox = () => {
+  const queryClient = useQueryClient();
+  const { data: reports = [], isLoading, isError } = useCommunityReports();
+
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const channel = supabase
+      .channel("police-community-reports")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "case_reports" },
+        () => {
+          void queryClient.invalidateQueries({
+            queryKey: COMMUNITY_REPORTS_QUERY_KEY,
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return (
+    <Panel
+      title="Community & Witness Reports"
+      subtitle="Account-free reports filed on behalf of survivors, by witnesses, or as community safety concerns — from the web page and mobile app"
+      bodyClassName="p-0"
+    >
+      {isLoading ? (
+        <p className="px-5 py-10 text-center text-sm text-slate-300">
+          Loading community reports…
+        </p>
+      ) : isError ? (
+        <p className="px-5 py-10 text-center text-sm text-rose-300">
+          Couldn't load community reports. Please refresh shortly.
+        </p>
+      ) : reports.length === 0 ? (
+        <p className="px-5 py-12 text-center text-sm text-slate-300">
+          No community reports yet. Reports filed from the public Community
+          Reporting page or the mobile app appear here in real time.
+        </p>
+      ) : (
+        <div className="divide-y divide-white/5">
+          {reports.map((r) => {
+            const Icon = communityRelIcon(r.relationship);
+            return (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-start justify-between gap-3 px-5 py-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <Icon className="h-3.5 w-3.5 text-violet-300" />
+                      {r.relationship
+                        ? RELATIONSHIP_LABEL[r.relationship]
+                        : "Community report"}
+                    </span>
+                    {r.reference ? (
+                      <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-violet-300">
+                        {r.reference}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-white">{r.description}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {r.category ?? "Uncategorized"}
+                    {r.locationText ? ` · ${r.locationText}` : ""}
+                    {r.createdAt ? ` · ${fmtRelative(r.createdAt)}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {r.priority ? (
+                    <Pill tone={statusTone(r.priority)}>
+                      {titleCase(r.priority)}
+                    </Pill>
+                  ) : null}
+                  <Pill tone={statusTone(r.status)}>
+                    {titleCase((r.status || "").replace(/_/g, " "))}
+                  </Pill>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+};
+
 const IncidentsSection = () => {
   const { navigate } = usePolicePortal();
   const { user } = useAuth();
@@ -1979,6 +2092,7 @@ const IncidentsSection = () => {
           </div>
         )}
       </Panel>
+      <CommunityReportsInbox />
     </>
   );
 };

@@ -3,11 +3,27 @@ import { supabase } from "@/lib/supabase";
 export type CaseReportPayload = Record<string, unknown> & {
   report_method?: string | null;
   reporter_relationship?: string | null;
+  public_reference?: string | null;
   risk_level?: string | null;
   priority?: string | null;
   category?: string | null;
   location?: unknown;
 };
+
+// Same alphabet/format the web server uses (server/routes/communityRoutes.ts)
+// so community references are consistent across web and mobile: CR-XXXXXXXX,
+// no ambiguous 0/O/1/I characters.
+const REFERENCE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** Human-friendly, unguessable community-report tracking reference. */
+export function generatePublicReference(): string {
+  let ref = "";
+  for (let i = 0; i < 8; i += 1) {
+    ref +=
+      REFERENCE_ALPHABET[Math.floor(Math.random() * REFERENCE_ALPHABET.length)];
+  }
+  return `CR-${ref}`;
+}
 
 const severityFor = (payload: CaseReportPayload) => {
   const raw = String(

@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import * as ImagePicker from "expo-image-picker";
 
 import { Screen, Button, Banner } from "@/components/ui";
 import { Icon, type IconName } from "@/components/Icon";
@@ -15,7 +16,14 @@ import { useAuth } from "@/auth/AuthProvider";
 import i18n from "@/i18n";
 import { saveDraft } from "@/features/offline/draftQueue";
 import { getLocationSafe } from "@/features/sos/escalation";
-import { submitCaseReportWithEscalation } from "@/features/reports/submitCaseReport";
+import {
+  generatePublicReference,
+  submitCaseReportWithEscalation,
+} from "@/features/reports/submitCaseReport";
+import {
+  attachCommunityEvidence,
+  type CommunityEvidenceAsset,
+} from "@/features/reports/communityEvidence";
 import { VoiceCapture } from "@/features/voice/VoiceCapture";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
 
@@ -83,6 +91,7 @@ export default function Report() {
   const [shareLocation, setShareLocation] = useState(false);
   const [anonymous, setAnonymous] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [evidence, setEvidence] = useState<CommunityEvidenceAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
     tone: "success" | "info" | "danger";
@@ -97,12 +106,16 @@ export default function Report() {
     const affectedPrefix = affected.length
       ? `[Affected: ${affected.join(", ")}] `
       : "";
+    const isCommunity = relationship !== "self";
     return {
       survivor_id: null,
       reported_by: anonymous ? null : (user?.id ?? null),
       source: "mobile_app",
-      report_method: relationship === "self" ? "in_app" : "community_mobile",
-      reporter_relationship: relationship === "self" ? null : relationship,
+      report_method: isCommunity ? "community_mobile" : "in_app",
+      reporter_relationship: isCommunity ? relationship : null,
+      // A public tracking reference lets community/witness reporters follow up
+      // by reference — matching the web community page and server tracker.
+      public_reference: isCommunity ? generatePublicReference() : null,
       language: i18n.language,
       status: "new",
       category: cats.length ? cats.join(", ") : null,
@@ -123,6 +136,43 @@ export default function Report() {
     setWhen("");
     setRelationship("self");
     setConsent(false);
+    setEvidence([]);
+  }
+
+  // Evidence can only be attached to a non-anonymous community report: RLS ties
+  // the upload to the reporter's own case (reported_by = auth.uid()).
+  const canAttachEvidence = relationship !== "self" && !anonymous;
+
+  async function pickEvidence() {
+    setResult(null);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setResult({
+        tone: "danger",
+        text: t("report.evidencePermission", {
+          defaultValue: "Photo access is needed to attach evidence.",
+        }),
+      });
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (picked.canceled) return;
+    setEvidence((cur) => [
+      ...cur,
+      ...picked.assets.map((a) => ({
+        uri: a.uri,
+        fileName: a.fileName ?? null,
+        mimeType: a.mimeType ?? null,
+      })),
+    ]);
+  }
+
+  function removeEvidence(index: number) {
+    setEvidence((cur) => cur.filter((_, i) => i !== index));
   }
 
   async function submit() {
@@ -135,8 +185,40 @@ export default function Report() {
     const payload = await buildPayload();
     try {
       const data = await submitCaseReportWithEscalation(payload);
-      const ref = (data.id ?? "submitted").slice(0, 8).toUpperCase();
-      setResult({ tone: "success", text: t("report.submitted", { ref }) });
+      // Community/witness reports get a shareable CR- reference to track later;
+      // a survivor's own report shows a short case reference.
+      const ref =
+        payload.public_reference ??
+        (data.id ?? "submitted").slice(0, 8).toUpperCase();
+
+      // Attach any evidence to the new case so responders see it in their
+      // Case Evidence Register. Best-effort: a failed upload never loses the
+      // report itself.
+      let evidenceNote = "";
+      if (data.id && canAttachEvidence && evidence.length && user?.id) {
+        const { attached, failed } = await attachCommunityEvidence({
+          caseId: data.id,
+          caseReference: payload.public_reference,
+          uploaderId: user.id,
+          assets: evidence,
+        });
+        if (attached)
+          evidenceNote += ` ${t("report.evidenceAttached", {
+            defaultValue: "{{count}} evidence file(s) attached.",
+            count: attached,
+          })}`;
+        if (failed)
+          evidenceNote += ` ${t("report.evidenceFailed", {
+            defaultValue:
+              "{{count}} file(s) couldn't upload — you can add them later.",
+            count: failed,
+          })}`;
+      }
+
+      setResult({
+        tone: "success",
+        text: t("report.submitted", { ref }) + evidenceNote,
+      });
       reset();
     } catch {
       await saveDraft(payload);
@@ -272,6 +354,62 @@ export default function Report() {
         />
       </View>
 
+      {/* Evidence — community/witness reports only */}
+      {relationship !== "self" ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.sectionLabel}>
+            {t("report.evidence", "Attach evidence (optional)")}
+          </Text>
+          {anonymous ? (
+            <Text style={styles.sectionHint}>
+              {t(
+                "report.evidenceAnon",
+                "Turn off anonymous reporting to attach photos or documents.",
+              )}
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.sectionHint}>
+                {t(
+                  "report.evidenceHint",
+                  "Photos or documents are shared securely with the response team.",
+                )}
+              </Text>
+              {evidence.length ? (
+                <View style={{ gap: spacing.xs }}>
+                  {evidence.map((asset, i) => (
+                    <View key={`${asset.uri}-${i}`} style={styles.evidenceRow}>
+                      <Icon name="folder" size={16} color={colors.primary} />
+                      <Text style={styles.evidenceName} numberOfLines={1}>
+                        {asset.fileName ||
+                          asset.uri.split("/").pop() ||
+                          "Evidence"}
+                      </Text>
+                      <Pressable
+                        onPress={() => removeEvidence(i)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={t(
+                          "report.removeEvidence",
+                          "Remove",
+                        )}
+                      >
+                        <Text style={styles.evidenceRemove}>✕</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Button
+                label={t("report.addEvidence", "Add photo / document")}
+                variant="secondary"
+                onPress={pickEvidence}
+              />
+            </>
+          )}
+        </View>
+      ) : null}
+
       {/* When */}
       <View style={{ gap: spacing.sm }}>
         <Text style={styles.sectionLabel}>
@@ -357,7 +495,10 @@ export default function Report() {
             </View>
             <Switch
               value={anonymous}
-              onValueChange={setAnonymous}
+              onValueChange={(v) => {
+                setAnonymous(v);
+                if (v) setEvidence([]); // evidence needs an identified reporter
+              }}
               trackColor={{ true: colors.primary }}
             />
           </View>
@@ -490,6 +631,24 @@ const styles = StyleSheet.create({
     fontSize: font.small,
     lineHeight: 17,
     marginTop: 1,
+  },
+
+  evidenceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.card,
+  },
+  evidenceName: { color: colors.textMuted, fontSize: font.small, flex: 1 },
+  evidenceRemove: {
+    color: colors.danger,
+    fontWeight: "900",
+    fontSize: font.body,
   },
 
   consentRow: { flexDirection: "row", gap: spacing.md, alignItems: "center" },

@@ -159,7 +159,7 @@ export function createCommunityRoutes(
           .from("case_reports")
           .select("public_reference,status,category,created_at,updated_at")
           .eq("public_reference", reference)
-          .eq("report_method", "community_web")
+          .in("report_method", ["community_web", "community_mobile"])
           .maybeSingle();
 
         if (error || !data) {

@@ -36,11 +36,12 @@ async function readLocalFile(uri: string): Promise<Uint8Array | Blob> {
 }
 
 /**
- * Upload a local file into the survivor's private evidence vault with a hard
- * timeout. Throws VaultUploadTimeoutError when the network stalls; rethrows
- * storage errors otherwise.
+ * Upload a local file into a private storage bucket with a hard timeout.
+ * Throws VaultUploadTimeoutError when the network stalls; rethrows storage
+ * errors otherwise.
  */
-export async function uploadToVault(
+export async function uploadToBucket(
+  bucket: string,
   path: string,
   uri: string,
   contentType: string,
@@ -58,7 +59,7 @@ export async function uploadToVault(
   try {
     const { error } = await Promise.race([
       supabase.storage
-        .from(BUCKET)
+        .from(bucket)
         .upload(path, body, { contentType, upsert: false }),
       timeout,
     ]);
@@ -66,4 +67,16 @@ export async function uploadToVault(
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Upload a local file into the survivor's private evidence vault with a hard
+ * timeout.
+ */
+export async function uploadToVault(
+  path: string,
+  uri: string,
+  contentType: string,
+): Promise<void> {
+  return uploadToBucket(BUCKET, path, uri, contentType);
 }
