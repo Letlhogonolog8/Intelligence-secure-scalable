@@ -83,6 +83,7 @@ import {
   useCaseReports,
   useEscalationEvents,
   usePlatformServices,
+  usePoliceOfficers,
   useRegions,
   useSystemMetrics,
   useUserProfile,
@@ -1686,6 +1687,7 @@ const ACTION_TARGETS: { match: string; section: SectionKey }[] = [
   { match: "legal", section: "partners" },
   { match: "partner", section: "partners" },
   { match: "coordination", section: "partners" },
+  { match: "contact survivor", section: "messages" },
   { match: "survivor", section: "survivor" },
   { match: "safety plan", section: "survivor" },
   { match: "welfare", section: "survivor" },
@@ -2023,6 +2025,11 @@ const SurvivorSafetySection = () => {
     staleTime: 10000,
     refetchInterval: 30000,
   });
+  const { data: officers = [] } = usePoliceOfficers({ limit: 200 });
+  const officerName = (id: string) =>
+    !id
+      ? "Unassigned"
+      : officers.find((o) => o.id === id)?.fullName || id.slice(0, 8);
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
   const persistAcknowledge = async (escalationId: string) => {
@@ -2065,7 +2072,7 @@ const SurvivorSafetySection = () => {
             ? `${e.lat.toFixed(3)}, ${e.lng.toFixed(3)}`
             : "Location pending",
         when: e.triggeredAt ? fmtRelative(e.triggeredAt) : "—",
-        officer: e.assignedTo || "Unassigned",
+        officer: officerName(e.assignedTo),
         resolved: closed,
       };
     });
@@ -4019,6 +4026,11 @@ const QueueSection = () => {
     staleTime: 10000,
     refetchInterval: 30000,
   });
+  const { data: officers = [] } = usePoliceOfficers({ limit: 200 });
+  const officerName = (id: string) =>
+    !id
+      ? "Unassigned"
+      : officers.find((o) => o.id === id)?.fullName || id.slice(0, 8);
   const [triageNote, setTriageNote] = useState("");
   const [localNotes, setLocalNotes] = useState<
     { time: string; by: string; note: string }[]
@@ -4068,7 +4080,7 @@ const QueueSection = () => {
             time: e.triggeredAt ? fmtDateTime(e.triggeredAt) : "—",
             ago: e.triggeredAt ? fmtRelative(e.triggeredAt) : "",
             score: sev === "critical" ? 95 : sev === "high" ? 78 : 55,
-            officer: e.assignedTo || "Unassigned",
+            officer: officerName(e.assignedTo),
             escalationId: e.id as string | undefined,
             rawStatus: (e.status || "").toLowerCase(),
           };
@@ -5008,6 +5020,146 @@ const UNIT_STATUS_TONE: Record<string, string> = {
   offline: "slate",
 };
 
+const AssignOfficerModal = ({
+  onClose,
+  onAssigned,
+}: {
+  onClose: () => void;
+  onAssigned: () => void;
+}) => {
+  const { data: officers = [] } = usePoliceOfficers({ limit: 200 });
+  const { data: escalations = [] } = useEscalationEvents({ limit: 200 });
+  const openIncidents = escalations.filter(
+    (e) => !["resolved", "closed"].includes((e.status || "").toLowerCase()),
+  );
+  const [incidentId, setIncidentId] = useState(openIncidents[0]?.id ?? "");
+  const [officerId, setOfficerId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const assign = async () => {
+    if (!incidentId || !officerId) {
+      toast.error("Pick an incident and an officer");
+      return;
+    }
+    setBusy(true);
+    try {
+      await acknowledgeEscalation(incidentId, officerId);
+      const officer = officers.find((o) => o.id === officerId);
+      toast.success(
+        `Assigned ${officer?.fullName || "officer"} to the incident`,
+      );
+      onAssigned();
+    } catch {
+      toast.error("Couldn't assign the officer — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const incidentLabel = (e: (typeof escalations)[number]) =>
+    `${titleCase((e.escalationType || "Incident").replace(/_/g, " "))} · ${titleCase(
+      e.severity || "medium",
+    )}`;
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Assign officer"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">Assign officer</h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Assign a responding officer to an open incident.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Incident
+            </p>
+            {openIncidents.length === 0 ? (
+              <p className="text-xs text-slate-400">No open incidents.</p>
+            ) : (
+              <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-white/10 p-1">
+                {openIncidents.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => setIncidentId(e.id)}
+                    className={cn(
+                      "block w-full rounded-md px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
+                      incidentId === e.id
+                        ? "bg-violet-500/15 text-violet-200"
+                        : "text-slate-300",
+                    )}
+                  >
+                    {incidentLabel(e)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Officer
+            </p>
+            {officers.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No officers available. Approve police accounts first.
+              </p>
+            ) : (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-white/10 p-1">
+                {officers.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setOfficerId(o.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
+                      officerId === o.id
+                        ? "bg-violet-500/15 text-violet-200"
+                        : "text-slate-300",
+                    )}
+                  >
+                    <span>{o.fullName || o.email || "Officer"}</span>
+                    {officerId === o.id && (
+                      <CheckCircle2 className="h-4 w-4 text-violet-300" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={assign}
+            disabled={busy || !incidentId || !officerId}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Assigning…" : "Assign officer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const NewDispatchModal = ({
   createdBy,
   units,
@@ -5162,6 +5314,7 @@ const DispatchSection = () => {
   const { data: units = [] } = useDispatchUnits();
   const { data: dispatches = [] } = useDispatches();
   const [creating, setCreating] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     if (!hasSupabase) return;
@@ -5258,7 +5411,25 @@ const DispatchSection = () => {
           }}
         />
       )}
-      <div className="flex items-center justify-end">
+      {assigning && (
+        <AssignOfficerModal
+          onClose={() => setAssigning(false)}
+          onAssigned={() => {
+            setAssigning(false);
+            void queryClient.invalidateQueries({
+              queryKey: ESCALATION_EVENTS_KEY,
+            });
+          }}
+        />
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setAssigning(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-white hover:bg-white/5"
+        >
+          <Users className="h-3.5 w-3.5" /> Assign Officer
+        </button>
         <button
           type="button"
           onClick={() => setCreating(true)}
