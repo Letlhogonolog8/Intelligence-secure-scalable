@@ -1490,13 +1490,46 @@ const chartTooltip = {
   },
 } as const;
 
-const SelectChip = ({ label }: { label: string }) => {
+/**
+ * A compact dropdown chip. Pass `options`/`value`/`onChange` to drive a real
+ * filter; without them it falls back to a self-contained selection so the
+ * control still reflects the user's choice instead of doing nothing.
+ */
+const SelectChip = ({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options?: string[];
+  value?: string;
+  onChange?: (value: string) => void;
+}) => {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(label);
-  const options = [label, "Critical only", "High priority"];
+  const [internal, setInternal] = useState(value ?? label);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = value ?? internal;
+  const items = options ?? [label, "Critical only", "High priority"];
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const choose = (option: string) => {
+    if (onChange) onChange(option);
+    else setInternal(option);
+    setOpen(false);
+  };
 
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -1513,14 +1546,11 @@ const SelectChip = ({ label }: { label: string }) => {
       </button>
       {open && (
         <div className="absolute right-0 z-40 mt-2 w-40 overflow-hidden rounded-lg border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40">
-          {options.map((option) => (
+          {items.map((option) => (
             <button
               key={option}
               type="button"
-              onClick={() => {
-                setSelected(option);
-                setOpen(false);
-              }}
+              onClick={() => choose(option)}
               className={cn(
                 "block w-full px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
                 selected === option ? "text-violet-300" : "text-slate-300",
@@ -3724,7 +3754,10 @@ const OverviewSection = () => {
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
                 Live
               </span>
-              <SelectChip label="Last 24 Hours" />
+              <SelectChip
+                label="Last 24 Hours"
+                options={["Last 24 Hours", "Last 7 Days", "Last 30 Days"]}
+              />
             </div>
           }
         >
@@ -4821,6 +4854,7 @@ const CasesSection = ({
   const queryClient = useQueryClient();
   const [detailRow, setDetailRow] = useState<CaseRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [riskFilter, setRiskFilter] = useState("All Risks");
   const { data: cases = [] } = useCaseReports({
     limit: 1000,
     staleTime: 10000,
@@ -4873,14 +4907,51 @@ const CasesSection = ({
       : [];
 
   const normalizedQuery = query.trim().toLowerCase();
+  const byRisk =
+    riskFilter === "All Risks"
+      ? caseRows
+      : caseRows.filter((c) => c.risk === riskFilter);
   const visibleCaseRows = normalizedQuery
-    ? caseRows.filter((c) =>
+    ? byRisk.filter((c) =>
         [c.id, c.alias, c.type, c.risk, c.status, c.officer, c.counselor, c.ngo]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery),
       )
-    : caseRows;
+    : byRisk;
+
+  const exportCases = () => {
+    if (visibleCaseRows.length === 0) {
+      toast.error("No cases to export");
+      return;
+    }
+    downloadCsv(
+      "aegis-police-cases.csv",
+      [
+        "Case ID",
+        "Survivor",
+        "Type",
+        "Risk",
+        "Status",
+        "Officer",
+        "Counselor",
+        "NGO",
+        "Updated",
+      ],
+      visibleCaseRows.map((c) => [
+        c.id,
+        c.alias,
+        c.type,
+        c.risk,
+        c.status,
+        c.officer,
+        c.counselor,
+        c.ngo,
+        c.update,
+      ]),
+    );
+    toast.success("Cases exported");
+  };
 
   return (
     <>
@@ -4907,7 +4978,12 @@ const CasesSection = ({
         />
       )}
       <div className="flex items-center justify-end gap-2">
-        <SelectChip label="Filter Cases" />
+        <SelectChip
+          label="All Risks"
+          options={["All Risks", "Critical", "High", "Medium", "Low"]}
+          value={riskFilter}
+          onChange={setRiskFilter}
+        />
         <button
           type="button"
           onClick={() => setCreating(true)}
@@ -4944,7 +5020,13 @@ const CasesSection = ({
                   className="h-8 w-56 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
                 />
               </div>
-              <SelectChip label="Export" />
+              <button
+                type="button"
+                onClick={exportCases}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+              >
+                <Download className="h-3.5 w-3.5" /> Export
+              </button>
             </div>
           }
         >
@@ -6125,6 +6207,7 @@ const PartnersSection = () => {
     "Legal Support",
   ];
   const [activeTab, setActiveTab] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All Status");
   const ptypeTone: Record<string, string> = {
     NGO: "violet",
     Counselor: "sky",
@@ -6139,10 +6222,46 @@ const PartnersSection = () => {
     Hospitals: "Hospital",
     "Legal Support": "Legal",
   };
-  const visiblePartners =
+  const byType =
     activeTab === "All"
       ? MOCK_PARTNER_BOARD
       : MOCK_PARTNER_BOARD.filter((p) => p.ptype === TAB_PTYPE[activeTab]);
+  const visiblePartners =
+    statusFilter === "All Status"
+      ? byType
+      : byType.filter((p) => p.status === statusFilter);
+
+  const exportPartners = () => {
+    if (visiblePartners.length === 0) {
+      toast.error("No referrals to export");
+      return;
+    }
+    downloadCsv(
+      "aegis-partner-referrals.csv",
+      [
+        "Case ID",
+        "Partner Type",
+        "Organization",
+        "Contact Lead",
+        "Phone",
+        "Service Requested",
+        "Status",
+        "Response Time",
+      ],
+      visiblePartners.map((p) => [
+        p.id,
+        p.ptype,
+        p.org,
+        p.lead,
+        p.phone,
+        p.service,
+        p.status,
+        p.rt,
+      ]),
+    );
+    toast.success("Referrals exported");
+  };
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -6168,8 +6287,19 @@ const PartnersSection = () => {
           bodyClassName="p-0"
           action={
             <div className="flex items-center gap-2">
-              <SelectChip label="All Status" />
-              <SelectChip label="Export" />
+              <SelectChip
+                label="All Status"
+                options={["All Status", "Accepted", "In Progress", "Pending"]}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <button
+                type="button"
+                onClick={exportPartners}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+              >
+                <Download className="h-3.5 w-3.5" /> Export
+              </button>
             </div>
           }
         >
