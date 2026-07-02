@@ -1771,103 +1771,6 @@ const SectionTitle = ({
   </div>
 );
 
-const WORKSPACE_CONTENT: Record<
-  "incidents" | "settings",
-  {
-    cards: {
-      label: string;
-      value: string;
-      icon: ComponentType<{ className?: string }>;
-      tone: string;
-      note: string;
-    }[];
-    rows: { title: string; detail: string; status: string }[];
-  }
-> = {
-  incidents: {
-    cards: [
-      {
-        label: "Open Incidents",
-        value: "84",
-        icon: AlertTriangle,
-        tone: "rose",
-        note: "Live triage",
-      },
-      {
-        label: "Critical",
-        value: "18",
-        icon: Siren,
-        tone: "amber",
-        note: "Immediate action",
-      },
-      {
-        label: "Verified",
-        value: "52",
-        icon: CheckCircle2,
-        tone: "emerald",
-        note: "Responder confirmed",
-      },
-      {
-        label: "Awaiting Unit",
-        value: "14",
-        icon: Clock,
-        tone: "sky",
-        note: "Dispatch pending",
-      },
-    ],
-    rows: [
-      {
-        title: "Community mobile report escalated",
-        detail: "Soweto · witness report · high priority",
-        status: "Dispatch",
-      },
-      {
-        title: "Silent SOS received",
-        detail: "Johannesburg CBD · GPS captured",
-        status: "Critical",
-      },
-      {
-        title: "Evidence-backed incident update",
-        detail: "Voice note translated and attached",
-        status: "Review",
-      },
-    ],
-  },
-  settings: {
-    cards: [
-      {
-        label: "Notifications",
-        value: "On",
-        icon: Bell,
-        tone: "violet",
-        note: "Critical alerts",
-      },
-      {
-        label: "Language",
-        value: "EN",
-        icon: Globe,
-        tone: "sky",
-        note: "Portal default",
-      },
-      {
-        label: "Security",
-        value: "MFA",
-        icon: Shield,
-        tone: "emerald",
-        note: "Enforced",
-      },
-      {
-        label: "Availability",
-        value: "Live",
-        icon: Radio,
-        tone: "amber",
-        note: "Responder online",
-      },
-    ],
-    rows: [],
-  },
-};
-
 /** Download an array of rows as a CSV file (browser only). */
 const downloadCsv = (
   filename: string,
@@ -1890,21 +1793,6 @@ const downloadCsv = (
   anchor.click();
   URL.revokeObjectURL(url);
 };
-
-const WorkspaceKpis = ({ section }: { section: "incidents" | "settings" }) => (
-  <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-    {WORKSPACE_CONTENT[section].cards.map((card) => (
-      <KpiCard
-        key={card.label}
-        label={card.label}
-        value={card.value}
-        icon={card.icon}
-        tone={card.tone}
-        note={card.note}
-      />
-    ))}
-  </section>
-);
 
 const Toggle = ({
   on,
@@ -1948,65 +1836,160 @@ const Toggle = ({
 
 const IncidentsSection = () => {
   const { navigate } = usePolicePortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: escalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
   const [handled, setHandled] = useState<Record<string, boolean>>({});
+
+  const isOpen = (s: string) =>
+    !["resolved", "closed", "acknowledged"].includes(s.toLowerCase());
+  const sevRank = (s: string) =>
+    s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
+  const rows = [...escalations].sort(
+    (a, b) =>
+      sevRank((a.severity || "").toLowerCase()) -
+      sevRank((b.severity || "").toLowerCase()),
+  );
+
+  const kpis = [
+    {
+      label: "Open Incidents",
+      value: nf.format(
+        escalations.filter((e) => isOpen(e.status || "")).length,
+      ),
+      icon: AlertTriangle,
+      tone: "rose",
+      note: "Live triage",
+    },
+    {
+      label: "Critical",
+      value: nf.format(
+        escalations.filter(
+          (e) => (e.severity || "").toLowerCase() === "critical",
+        ).length,
+      ),
+      icon: Siren,
+      tone: "amber",
+      note: "Immediate action",
+    },
+    {
+      label: "Acknowledged",
+      value: nf.format(
+        escalations.filter((e) => !isOpen(e.status || "")).length,
+      ),
+      icon: CheckCircle2,
+      tone: "emerald",
+      note: "Responder confirmed",
+    },
+    {
+      label: "Total Tracked",
+      value: nf.format(escalations.length),
+      icon: Clock,
+      tone: "sky",
+      note: "All incidents",
+    },
+  ];
+
+  const acknowledge = async (id: string) => {
+    setHandled((current) => ({ ...current, [id]: true }));
+    toast.success("Incident acknowledged");
+    try {
+      await acknowledgeEscalation(id, user?.id ?? "");
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+    } catch {
+      toast.error("Couldn't save acknowledgement.");
+    }
+  };
 
   return (
     <>
-      <WorkspaceKpis section="incidents" />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {kpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={hasSupabase ? k.value : NO_DATA}
+            icon={k.icon}
+            tone={k.tone}
+            note={k.note}
+          />
+        ))}
+      </section>
       <Panel
         title="Active Incidents"
-        subtitle="Live triage queue — acknowledge or route to dispatch"
+        subtitle="Live incidents from SOS alerts and survivor/community reports — acknowledge or route to dispatch"
         bodyClassName="p-0"
       >
-        <div className="divide-y divide-white/5">
-          {WORKSPACE_CONTENT.incidents.rows.map((row) => {
-            const done = handled[row.title];
-            return (
-              <div
-                key={row.title}
-                className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
-              >
-                <div className="flex items-center gap-3">
-                  <Pill tone={statusTone(row.status)}>{row.status}</Pill>
-                  <div>
-                    <p className="text-sm font-bold text-white">{row.title}</p>
-                    <p className="mt-1 text-xs text-slate-300">{row.detail}</p>
+        {rows.length === 0 ? (
+          <p className="px-5 py-12 text-center text-sm text-slate-300">
+            No live incidents right now. New SOS alerts and reports appear here
+            in real time.
+          </p>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {rows.map((e) => {
+              const done = handled[e.id] || !isOpen(e.status || "");
+              return (
+                <div
+                  key={e.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <Pill
+                      tone={statusTone((e.severity || "medium").toLowerCase())}
+                    >
+                      {titleCase(e.severity || "medium")}
+                    </Pill>
+                    <div>
+                      <p className="text-sm font-bold text-white">
+                        {titleCase(
+                          (e.escalationType || "Incident").replace(/_/g, " "),
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        {e.reason || "—"}
+                        {e.lat != null && e.lng != null
+                          ? ` · ${e.lat.toFixed(3)}, ${e.lng.toFixed(3)}`
+                          : ""}
+                        {e.triggeredAt
+                          ? ` · ${fmtRelative(e.triggeredAt)}`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {done ? (
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledged
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void acknowledge(e.id)}
+                          className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
+                        >
+                          Acknowledge
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate("dispatch")}
+                          className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
+                        >
+                          Dispatch
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {done ? (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledged
-                    </span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHandled((current) => ({
-                            ...current,
-                            [row.title]: true,
-                          }));
-                          toast.success(`Acknowledged: ${row.title}`);
-                        }}
-                        className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-white/5"
-                      >
-                        Acknowledge
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate("dispatch")}
-                        className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
-                      >
-                        Dispatch
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </Panel>
     </>
   );
@@ -3110,7 +3093,47 @@ const SettingsSection = () => {
 
   return (
     <>
-      <WorkspaceKpis section="settings" />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {[
+          {
+            label: "Notifications",
+            value: criticalPush ? "On" : "Off",
+            icon: Bell,
+            tone: "violet",
+            note: "Critical alerts",
+          },
+          {
+            label: "Language",
+            value: languageCode.toUpperCase(),
+            icon: Globe,
+            tone: "sky",
+            note: "Portal default",
+          },
+          {
+            label: "Security",
+            value: "MFA",
+            icon: Shield,
+            tone: "emerald",
+            note: "Enforced",
+          },
+          {
+            label: "Availability",
+            value: available ? "Online" : "Offline",
+            icon: Radio,
+            tone: "amber",
+            note: available ? "Responder online" : "Responder offline",
+          },
+        ].map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            note={k.note}
+          />
+        ))}
+      </section>
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Panel title="Notifications" bodyClassName="p-0">
           <div className="divide-y divide-white/5">
@@ -4262,9 +4285,8 @@ const QueueSection = () => {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
             <span className="text-[11px] text-slate-300">
-              Showing 1 to 8 of 84 results
+              {queueRows.length} in queue
             </span>
-            <Pagination pages={["1", "2", "3", "…", "11"]} />
           </div>
         </Panel>
 
@@ -5666,9 +5688,9 @@ const PartnersSection = () => {
           </div>
           <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
             <span className="text-[11px] text-slate-300">
-              Showing 1 to 8 of 128 entries
+              {visiblePartners.length} referral
+              {visiblePartners.length === 1 ? "" : "s"}
             </span>
-            <Pagination pages={["1", "2", "3", "4", "5", "…", "16"]} />
           </div>
         </Panel>
         <div className="flex flex-col gap-6">
