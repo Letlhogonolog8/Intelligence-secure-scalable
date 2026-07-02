@@ -136,6 +136,22 @@ export async function sendMessage(input: {
   if (error) throw error;
 }
 
+/**
+ * Survivor opens a conversation with their case team (responders who have
+ * engaged their incidents). Participant seeding happens server-side in the
+ * start_survivor_case_team_conversation RPC.
+ */
+export async function startCaseTeamConversation(
+  subject?: string,
+): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "start_survivor_case_team_conversation",
+    { p_subject: subject ?? null },
+  );
+  if (error) throw error;
+  return data as string;
+}
+
 export async function markRead(
   conversationId: string,
   userId: string,

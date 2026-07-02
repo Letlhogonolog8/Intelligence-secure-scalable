@@ -21,6 +21,7 @@ import {
   secureMessagesKey,
   SECURE_CONVERSATIONS_KEY,
   sendMessage,
+  startCaseTeamConversation,
   useSecureConversations,
   useSecureMessages,
   type SecureConversation,
@@ -65,9 +66,26 @@ export function CaseTeamMessages() {
   const { data: messages = [] } = useSecureMessages(activeId);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const activeConversation =
     conversations.find((c) => c.id === activeId) ?? null;
+
+  const startTeam = async () => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const id = await startCaseTeamConversation();
+      await queryClient.invalidateQueries({
+        queryKey: SECURE_CONVERSATIONS_KEY,
+      });
+      setActiveId(id);
+    } catch {
+      // Best-effort; the survivor can retry.
+    } finally {
+      setStarting(false);
+    }
+  };
 
   useEffect(() => {
     const channel = supabase
@@ -216,17 +234,33 @@ export function CaseTeamMessages() {
   }
 
   // Conversation list
+  const startButton = (
+    <Pressable
+      onPress={() => void startTeam()}
+      style={styles.startBtn}
+      accessibilityRole="button"
+      disabled={starting}
+    >
+      <Text style={styles.startBtnText}>
+        {starting ? "Starting…" : "＋ Message my case team"}
+      </Text>
+    </Pressable>
+  );
+
   return (
     <FlatList
       data={conversations}
       keyExtractor={(c) => c.id}
       contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
+      ListHeaderComponent={conversations.length > 0 ? startButton : null}
       ListEmptyComponent={
         <View style={styles.center}>
           <Text style={styles.empty}>
-            No messages from your case team yet. When a responder reaches out,
-            their conversation appears here.
+            No messages from your case team yet. Start a conversation, or wait
+            for a responder to reach out.
           </Text>
+          <View style={{ height: spacing.md }} />
+          {startButton}
         </View>
       }
       renderItem={({ item }) => {
@@ -266,6 +300,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing.lg,
   },
+  startBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: TOUCH_MIN,
+    marginBottom: spacing.sm,
+  },
+  startBtnText: { color: "#fff", fontSize: font.small, fontWeight: "800" },
   empty: {
     color: colors.textFaint,
     fontSize: font.small,
