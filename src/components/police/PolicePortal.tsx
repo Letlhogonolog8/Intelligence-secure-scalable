@@ -154,10 +154,6 @@ const fmtDateTime = (t: string) => {
   const d = new Date(t);
   return Number.isNaN(d.getTime()) ? t : d.toLocaleString();
 };
-/** Lightweight confirmation for actions that don't yet have a live backend. */
-const policeAction = (label: string, description?: string) => () => {
-  toast(label, description ? { description } : undefined);
-};
 
 /** Canonical case-status buckets for the donut, from raw case_reports.status. */
 const POLICE_CASE_STATUS: { name: string; match: string[]; color: string }[] = [
@@ -1533,7 +1529,6 @@ const SelectChip = ({ label }: { label: string }) => {
               onClick={() => {
                 setSelected(option);
                 setOpen(false);
-                policeAction("Filter updated", option)();
               }}
               className={cn(
                 "block w-full px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
@@ -3550,6 +3545,7 @@ const PolicePortal: React.FC = () => {
 /* =============================== Overview =============================== */
 
 const OverviewSection = () => {
+  const { navigate } = usePolicePortal();
   const { data: sm } = useSystemMetrics({
     staleTime: 10000,
     refetchInterval: 30000,
@@ -3842,7 +3838,7 @@ const OverviewSection = () => {
             )}
             <button
               type="button"
-              onClick={policeAction("System status opened")}
+              onClick={() => navigate("analytics")}
               className="mt-1 w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
             >
               View System Status
@@ -4494,12 +4490,36 @@ const CaseDetailModal = ({
           </button>
           <button
             type="button"
-            onClick={() =>
-              policeAction(
-                "Case export started",
-                `${row.id} prepared for export.`,
-              )()
-            }
+            onClick={() => {
+              downloadCsv(
+                `${row.id.toLowerCase()}.csv`,
+                [
+                  "Case ID",
+                  "Survivor",
+                  "Type",
+                  "Risk",
+                  "Status",
+                  "Officer",
+                  "Counselor",
+                  "NGO",
+                  "Updated",
+                ],
+                [
+                  [
+                    row.id,
+                    row.alias,
+                    row.type,
+                    row.risk,
+                    row.status,
+                    row.officer,
+                    row.counselor,
+                    row.ngo,
+                    row.update,
+                  ],
+                ],
+              );
+              toast.success("Case exported");
+            }}
             className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-100 hover:bg-white/5"
           >
             Export
@@ -4517,6 +4537,130 @@ const CaseDetailModal = ({
   );
 };
 
+const NewCaseModal = ({
+  createdBy,
+  onClose,
+  onCreated,
+}: {
+  createdBy: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) => {
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [risk, setRisk] = useState("high");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!description.trim()) {
+      toast.error("Add a short description");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("case_reports").insert({
+        reported_by: createdBy || null,
+        source: "police_portal",
+        report_method: "in_app",
+        status: "new",
+        risk_level: risk,
+        priority:
+          risk === "critical"
+            ? "critical"
+            : risk === "high"
+              ? "high"
+              : "medium",
+        category: category.trim() || null,
+        description: description.trim(),
+        is_anonymous: false,
+      });
+      if (error) throw error;
+      toast.success("Case created");
+      onCreated();
+    } catch {
+      toast.error("Couldn't create the case — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="New case"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">New case</h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Log a case from a walk-in report or officer intake.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Describe the incident…"
+            rows={3}
+            className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder:text-slate-400"
+          />
+          <Input
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            placeholder="Category, e.g. Domestic Violence (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Risk level
+            </p>
+            <div className="flex gap-2">
+              {["low", "medium", "high", "critical"].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRisk(r)}
+                  className={cn(
+                    "flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-bold capitalize",
+                    risk === r
+                      ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                      : "border-white/10 text-slate-300 hover:bg-white/5",
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={create}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Creating…" : "Create case"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CasesSection = ({
   query,
   onQueryChange,
@@ -4525,7 +4669,10 @@ const CasesSection = ({
   onQueryChange: (value: string) => void;
 }) => {
   const { navigate } = usePolicePortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [detailRow, setDetailRow] = useState<CaseRow | null>(null);
+  const [creating, setCreating] = useState(false);
   const { data: cases = [] } = useCaseReports({
     limit: 1000,
     staleTime: 10000,
@@ -4599,11 +4746,23 @@ const CasesSection = ({
           }}
         />
       )}
+      {creating && (
+        <NewCaseModal
+          createdBy={user?.id ?? ""}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            void queryClient.invalidateQueries({
+              queryKey: ["aegis", "caseReports"],
+            });
+          }}
+        />
+      )}
       <div className="flex items-center justify-end gap-2">
         <SelectChip label="Filter Cases" />
         <button
           type="button"
-          onClick={policeAction("New case workflow opened")}
+          onClick={() => setCreating(true)}
           className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
         >
           <Plus className="h-3.5 w-3.5" /> New Case
@@ -4772,7 +4931,7 @@ const CasesSection = ({
               })}
               <button
                 type="button"
-                onClick={policeAction("Full case timeline opened")}
+                onClick={() => navigate("incidents")}
                 className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
               >
                 View Full Case Timeline →
@@ -4808,7 +4967,7 @@ const CasesSection = ({
               ))}
               <button
                 type="button"
-                onClick={policeAction("High-risk cases opened")}
+                onClick={() => navigate("survivor")}
                 className="w-full rounded-lg border border-white/10 py-2 text-[11px] font-bold text-violet-400 hover:bg-white/5"
               >
                 View All High-Risk Cases
@@ -5645,6 +5804,7 @@ const EvidenceSection = () => (
 /* =============================== Partner Coordination =============================== */
 
 const PartnersSection = () => {
+  const { navigate } = usePolicePortal();
   const { user } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
   const tabs = [
@@ -5774,17 +5934,16 @@ const PartnersSection = () => {
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
-                          onClick={policeAction(
-                            "Partner message opened",
-                            p.org,
-                          )}
+                          onClick={() => navigate("messages")}
+                          aria-label={`Message ${p.org}`}
                           className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          onClick={policeAction("Partner handoff opened", p.id)}
+                          onClick={() => navigate("messages")}
+                          aria-label={`Open ${p.org} coordination`}
                           className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-300 hover:bg-white/5"
                         >
                           <Eye className="h-3.5 w-3.5" />
