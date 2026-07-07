@@ -36,7 +36,8 @@
     "db:migrate": "echo 'Run migration in Supabase Dashboard or use supabase CLI'",
     "db:status": "echo 'Check Supabase Dashboard for database status'",
     "deploy:function": "echo 'Run: supabase functions deploy aegis-survivor-chat'",
-    "setup": "npm install && echo 'Next: Configure .env and run database migrations'"
+    "setup": "npm install && echo 'Next: Configure .env and run database migrations'",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",

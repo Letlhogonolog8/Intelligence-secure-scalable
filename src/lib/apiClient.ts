@@ -6,13 +6,14 @@
  * Handles authentication, request/response interceptors, and error handling.
  */
 
-import axios, { AxiosInstance, AxiosError } from 'axios';
-import { supabase } from '@/lib/supabase';
+import axios, { AxiosInstance, AxiosError } from "axios";
+import { supabase } from "@/lib/supabase";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api";
 
 function generateCorrelationId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
 
@@ -40,8 +41,8 @@ export class APIClient {
       baseURL: API_BASE_URL,
       timeout: 30000,
       headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Version': import.meta.env.VITE_DATADOG_VERSION || '1.0.0',
+        "Content-Type": "application/json",
+        "X-Client-Version": import.meta.env.VITE_DATADOG_VERSION || "1.0.0",
       },
     });
 
@@ -52,14 +53,14 @@ export class APIClient {
     // Request interceptor: Add auth token + per-request correlation ID
     this.client.interceptors.request.use(async (config) => {
       config.headers = config.headers ?? {};
-      config.headers['X-Correlation-ID'] = generateCorrelationId();
+      config.headers["X-Correlation-ID"] = generateCorrelationId();
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.access_token) {
           config.headers.Authorization = `Bearer ${data.session.access_token}`;
         }
       } catch (_error) {
-        console.debug('No active session');
+        console.debug("No active session");
       }
       return config;
     });
@@ -70,7 +71,7 @@ export class APIClient {
       (error: AxiosError<{ error: APIError }>) => {
         this.handleError(error);
         throw error;
-      }
+      },
     );
   }
 
@@ -80,24 +81,25 @@ export class APIClient {
 
     // Handle specific status codes
     if (status === 401) {
-      // Unauthorized - redirect to login
-      window.location.assign('/auth/login');
+      // Unauthorized - redirect to role selection / sign-in ("/auth/login" is
+      // not a registered route and lands on the 404 page)
+      window.location.assign("/auth");
     } else if (status === 403) {
       // Forbidden - insufficient permissions
-      console.error('Access denied:', message);
+      console.error("Access denied:", message);
     } else if (status === 429) {
       // Too many requests - rate limited
-      console.warn('Rate limit exceeded');
+      console.warn("Rate limit exceeded");
     } else if (status && status >= 500) {
       // Server error
-      console.error('Server error:', message);
+      console.error("Server error:", message);
     }
   }
 
   // Generic request methods
   async get<T>(
     url: string,
-    config?: { params?: Record<string, unknown>; [key: string]: unknown }
+    config?: { params?: Record<string, unknown>; [key: string]: unknown },
   ): Promise<APIResponse<T>> {
     const response = await this.client.get<T>(url, config);
     return {
@@ -110,7 +112,7 @@ export class APIClient {
   async post<T>(
     url: string,
     data?: unknown,
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>,
   ): Promise<APIResponse<T>> {
     const response = await this.client.post<T>(url, data, config);
     return {
@@ -123,7 +125,7 @@ export class APIClient {
   async put<T>(
     url: string,
     data?: unknown,
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>,
   ): Promise<APIResponse<T>> {
     const response = await this.client.put<T>(url, data, config);
     return {
@@ -136,7 +138,7 @@ export class APIClient {
   async patch<T>(
     url: string,
     data?: unknown,
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>,
   ): Promise<APIResponse<T>> {
     const response = await this.client.patch<T>(url, data, config);
     return {
@@ -148,7 +150,7 @@ export class APIClient {
 
   async delete<T>(
     url: string,
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>,
   ): Promise<APIResponse<T>> {
     const response = await this.client.delete<T>(url, config);
     return {

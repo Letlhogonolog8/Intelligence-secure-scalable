@@ -9,13 +9,21 @@ import { RoleAuthPolicy, UserRole } from "@/types/auth";
  * Role-based authentication and authorization policies
  * Defines who can register, what authentication methods are allowed, and session constraints
  */
-export const SELF_SERVICE_APPROVAL_ROLES: UserRole[] = ["ngo", "police", "analyst"];
+export const SELF_SERVICE_APPROVAL_ROLES: UserRole[] = [
+  "ngo",
+  "police",
+  "analyst",
+];
 
 const isLocalHost = () =>
-  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 export const requiresMfaForRole = (role: UserRole): boolean => {
-  if (role === "admin" && isLocalHost()) {
+  // Local development exemption (previously admin-only, now that police also
+  // enforce MFA): TOTP enrollment against a localhost stack blocks every dev
+  // sign-in. Deployed hostnames always enforce the role policy.
+  if (isLocalHost()) {
     return false;
   }
 
@@ -69,7 +77,10 @@ export const ROLE_AUTH_POLICIES: Record<UserRole, RoleAuthPolicy> = {
     restrictedCredentials: ["ngo_director", "coordinator", "system.admin"],
     sessionTimeout: 240, // 4 hours
     maxConcurrentSessions: 1,
-    requiresMFA: false,
+    // Officers handle live survivor data and dispatch powers; a stolen
+    // password alone must not be enough. Enrollment/verification flows
+    // already exist in AuthenticationFlow (mfa-setup / mfa-verify).
+    requiresMFA: true,
     requiresBiometric: false,
   },
 
@@ -154,4 +165,3 @@ export function isRestrictedCredential(
     username.toLowerCase().includes(restricted.toLowerCase()),
   );
 }
-

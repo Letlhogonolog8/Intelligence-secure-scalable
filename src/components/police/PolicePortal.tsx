@@ -70,7 +70,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -146,12 +146,20 @@ import {
   useCommunityReports,
   type CommunityReportEntry,
 } from "@/data/communityReports";
+import {
+  createPartnerReferral,
+  PARTNER_REFERRALS_KEY,
+  updateReferralStatus,
+  usePartnerReferrals,
+  type PartnerType,
+  type ReferralStatus,
+} from "@/data/partnerReferrals";
 import { persistPreferredLanguage } from "@/lib/languageSync";
 import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
-import { ALLOW_MOCK, NO_DATA, mockList } from "@/lib/mockData";
+import { ALLOW_MOCK, NO_DATA, gateKpis, mockList } from "@/lib/mockData";
 
 const nf = new Intl.NumberFormat("en-US");
 const titleCase = (s: string) =>
@@ -1176,7 +1184,7 @@ const NAV: {
   { key: "dispatch", label: "Dispatch", icon: Radio },
   { key: "evidence", label: "Evidence", icon: FileCheck },
   { key: "survivor", label: "Survivor Safety", icon: ShieldCheck },
-  { key: "messages", label: "Messages", icon: MessageSquare, badge: 12 },
+  { key: "messages", label: "Messages", icon: MessageSquare },
   { key: "partners", label: "Partner Coordination", icon: Handshake },
   { key: "analytics", label: "Analytics", icon: BarChart3 },
   { key: "reports", label: "Reports", icon: FileText },
@@ -1708,16 +1716,21 @@ const ActionBar = ({
     label: string;
     icon: ComponentType<{ className?: string }>;
     tone: string;
+    onClick?: () => void;
   }[];
 }) => {
   const { section, navigate } = usePolicePortal();
 
-  const handleAction = (label: string) => {
-    const target = sectionForAction(label);
+  const handleAction = (item: { label: string; onClick?: () => void }) => {
+    if (item.onClick) {
+      item.onClick();
+      return;
+    }
+    const target = sectionForAction(item.label);
     if (target && target !== section) {
       navigate(target);
     } else {
-      toast.success(label);
+      toast.success(item.label);
     }
   };
 
@@ -1729,7 +1742,7 @@ const ActionBar = ({
           <button
             key={a.label}
             type="button"
-            onClick={() => handleAction(a.label)}
+            onClick={() => handleAction(a)}
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-left text-[11px] font-bold text-white transition-colors hover:border-white/20"
           >
             <span
@@ -3354,6 +3367,79 @@ const OperationalWorkspaceSection = ({
 
 /* ================================ PORTAL ================================ */
 
+/**
+ * Header status pill backed by real checks (was a hardcoded "LIVE · System
+ * Operational" badge): browser connectivity + a lightweight Supabase probe
+ * every 30s. Degrades honestly instead of claiming "operational" during an
+ * outage.
+ */
+const SystemStatusPill = () => {
+  const [browserOnline, setBrowserOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine,
+  );
+  useEffect(() => {
+    const goOnline = () => setBrowserOnline(true);
+    const goOffline = () => setBrowserOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  const { isError, isSuccess } = useQuery({
+    queryKey: ["aegis", "systemHealth"],
+    queryFn: async () => {
+      const { error } = await supabase
+        .from("platform_services")
+        .select("id", { head: true, count: "exact" })
+        .limit(1);
+      if (error) throw error;
+      return true;
+    },
+    enabled: hasSupabase && browserOnline,
+    refetchInterval: 30000,
+    retry: false,
+    staleTime: 25000,
+  });
+
+  const status = !browserOnline
+    ? { label: "OFFLINE", note: "No Connection", tone: "rose" }
+    : isError
+      ? { label: "DEGRADED", note: "Connection Issues", tone: "amber" }
+      : isSuccess
+        ? { label: "LIVE", note: "System Operational", tone: "emerald" }
+        : { label: "CHECKING", note: "Verifying Status", tone: "slate" };
+
+  const toneClasses: Record<string, string> = {
+    emerald: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
+    amber: "border-amber-500/20 bg-amber-500/10 text-amber-300",
+    rose: "border-rose-500/20 bg-rose-500/10 text-rose-300",
+    slate: "border-white/10 bg-white/5 text-slate-300",
+  };
+  const dotClasses: Record<string, string> = {
+    emerald: "bg-emerald-400 animate-pulse",
+    amber: "bg-amber-400",
+    rose: "bg-rose-400",
+    slate: "bg-slate-400",
+  };
+
+  return (
+    <span
+      className={cn(
+        "hidden items-center gap-2 rounded-lg border px-2.5 py-1 text-[10px] font-black md:flex",
+        toneClasses[status.tone],
+      )}
+    >
+      <span
+        className={cn("h-1.5 w-1.5 rounded-full", dotClasses[status.tone])}
+      />{" "}
+      {status.label} <span className="text-slate-300">{status.note}</span>
+    </span>
+  );
+};
+
 const PolicePortal: React.FC = () => {
   const [section, setSection] = useState<SectionKey>("overview");
   const [caseQuery, setCaseQuery] = useState("");
@@ -3372,6 +3458,28 @@ const PolicePortal: React.FC = () => {
 
   const { user, signOut } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
+
+  // Live header counts (previously hardcoded sample numbers): unread secure
+  // conversations for the Messages nav badge, unattended escalations for the
+  // notification bell.
+  const { data: headerConversations = [] } = useSecureConversations({
+    enabled: Boolean(user),
+  });
+  const unreadMessages = user
+    ? headerConversations.filter((c) => isConversationUnread(c, user.id)).length
+    : 0;
+  const { data: headerEscalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const pendingAlerts = headerEscalations.filter(
+    (e) =>
+      !["acknowledged", "dispatched", "resolved", "closed"].includes(
+        (e.status || "").toLowerCase(),
+      ),
+  ).length;
+
   const account = {
     name: profile?.fullName || MOCK_USER.name,
     role: profile?.role
@@ -3433,6 +3541,10 @@ const PolicePortal: React.FC = () => {
             {NAV.map((item) => {
               const Icon = item.icon;
               const active = section === item.key;
+              const badge =
+                item.key === "messages"
+                  ? unreadMessages || undefined
+                  : item.badge;
               return (
                 <button
                   key={item.label}
@@ -3452,9 +3564,9 @@ const PolicePortal: React.FC = () => {
                     )}
                   />
                   <span className="flex-1 text-left">{item.label}</span>
-                  {item.badge ? (
+                  {badge ? (
                     <span className="grid h-5 min-w-5 place-items-center rounded-full bg-violet-500/20 px-1 text-[10px] font-black text-violet-300">
-                      {item.badge}
+                      {badge}
                     </span>
                   ) : null}
                 </button>
@@ -3496,11 +3608,7 @@ const PolicePortal: React.FC = () => {
               </span>
             </div>
             <div className="ml-auto flex items-center gap-2 sm:gap-3">
-              <span className="hidden items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 md:flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-                LIVE <span className="text-slate-300">System Operational</span>{" "}
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </span>
+              <SystemStatusPill />
               <button
                 type="button"
                 onClick={() => setSection("queue")}
@@ -3508,9 +3616,11 @@ const PolicePortal: React.FC = () => {
                 aria-label="Notifications"
               >
                 <Bell className="h-5 w-5" />
-                <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                  7
-                </span>
+                {pendingAlerts > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
+                    {pendingAlerts > 9 ? "9+" : pendingAlerts}
+                  </span>
+                )}
               </button>
               <div className="hidden text-right leading-tight sm:block">
                 <p className="text-xs font-bold text-white">
@@ -6226,10 +6336,71 @@ const EvidenceSection = () => (
 
 /* =============================== Partner Coordination =============================== */
 
+/** Display labels/icons per partner type and the referral status lifecycle. */
+const PARTNER_TYPE_LABEL: Record<PartnerType, string> = {
+  ngo: "NGO",
+  counselor: "Counselor",
+  shelter: "Shelter",
+  hospital: "Hospital",
+  legal: "Legal",
+};
+const PARTNER_TYPE_ICON: Record<
+  PartnerType,
+  ComponentType<{ className?: string }>
+> = {
+  ngo: Handshake,
+  counselor: Users,
+  shelter: Home,
+  hospital: Stethoscope,
+  legal: Scale,
+};
+const REFERRAL_STATUS_LABEL: Record<ReferralStatus, string> = {
+  pending: "Pending",
+  accepted: "Accepted",
+  in_progress: "In Progress",
+  completed: "Completed",
+  declined: "Declined",
+};
+const REFERRAL_STATUS_FLOW: ReferralStatus[] = [
+  "pending",
+  "accepted",
+  "in_progress",
+  "completed",
+];
+const nextReferralStatus = (status: ReferralStatus): ReferralStatus | null => {
+  const idx = REFERRAL_STATUS_FLOW.indexOf(status);
+  if (idx < 0 || idx >= REFERRAL_STATUS_FLOW.length - 1) return null;
+  return REFERRAL_STATUS_FLOW[idx + 1];
+};
+
+/** "1h 12m" / "28m" for elapsed or remaining durations. */
+const fmtDuration = (ms: number): string => {
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${String(mins % 60).padStart(2, "0")}m`;
+  return `${Math.floor(hrs / 24)}d ${hrs % 24}h`;
+};
+
+const dueIn = (dueAt: string | null): string => {
+  if (!dueAt) return "—";
+  const ms = new Date(dueAt).getTime() - Date.now();
+  if (Number.isNaN(ms)) return "—";
+  return ms <= 0 ? "Overdue" : fmtDuration(ms);
+};
+
 const PartnersSection = () => {
   const { navigate } = usePolicePortal();
   const { user } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
+  const queryClient = useQueryClient();
+  const { data: referrals = [] } = usePartnerReferrals();
+  const { data: partnerConversations = [] } = useSecureConversations({
+    enabled: Boolean(user),
+  });
+  const [newReferralType, setNewReferralType] = useState<PartnerType | null>(
+    null,
+  );
   const tabs = [
     "All",
     "NGOs",
@@ -6253,22 +6424,169 @@ const PartnersSection = () => {
     Hospitals: "Hospital",
     "Legal Support": "Legal",
   };
+
+  type BoardRow = {
+    id: string;
+    ptype: string;
+    org: string;
+    lead: string;
+    phone: string;
+    service: string;
+    status: string;
+    rt: string;
+    referralId?: string;
+    rawStatus?: ReferralStatus;
+  };
+
+  // Live referrals when present; sample rows only in dev/demo (mockList).
+  const boardRows: BoardRow[] = mockList(
+    referrals.map((r) => ({
+      id: r.caseReference || `REF-${r.id.slice(0, 8).toUpperCase()}`,
+      ptype: PARTNER_TYPE_LABEL[r.partnerType],
+      org: r.organizationName,
+      lead: r.contactName || "—",
+      phone: r.contactPhone || "",
+      service: r.serviceRequested,
+      status: REFERRAL_STATUS_LABEL[r.status],
+      rt: r.respondedAt
+        ? fmtDuration(
+            new Date(r.respondedAt).getTime() - new Date(r.createdAt).getTime(),
+          )
+        : "–",
+      referralId: r.id,
+      rawStatus: r.status,
+    })),
+    MOCK_PARTNER_BOARD,
+  );
   const visiblePartners =
     activeTab === "All"
-      ? MOCK_PARTNER_BOARD
-      : MOCK_PARTNER_BOARD.filter((p) => p.ptype === TAB_PTYPE[activeTab]);
+      ? boardRows
+      : boardRows.filter((p) => p.ptype === TAB_PTYPE[activeTab]);
+
+  // KPI strip: live counts when referral data exists; otherwise the sample
+  // strip (values blanked to NO_DATA in production by gateKpis).
+  const activeStatuses: ReferralStatus[] = [
+    "pending",
+    "accepted",
+    "in_progress",
+  ];
+  const countBy = (type: PartnerType, statuses?: ReferralStatus[]) =>
+    referrals.filter(
+      (r) =>
+        r.partnerType === type && (!statuses || statuses.includes(r.status)),
+    ).length;
+  const partnerKpis = referrals.length
+    ? [
+        {
+          label: "Active NGO Referrals",
+          value: nf.format(countBy("ngo", activeStatuses)),
+          icon: Handshake,
+          tone: "violet",
+        },
+        {
+          label: "Counselors Linked",
+          value: nf.format(countBy("counselor")),
+          icon: Users,
+          tone: "sky",
+        },
+        {
+          label: "Shelter Placements",
+          value: nf.format(
+            countBy("shelter", ["accepted", "in_progress", "completed"]),
+          ),
+          icon: Home,
+          tone: "emerald",
+        },
+        {
+          label: "Hospital Escalations",
+          value: nf.format(countBy("hospital")),
+          icon: Stethoscope,
+          tone: "rose",
+        },
+      ]
+    : gateKpis(MOCK_PARTNER_KPIS);
+
+  // Shared case threads: real secure conversations linked to a case.
+  const liveThreads = partnerConversations
+    .filter((c) => c.caseId)
+    .slice(0, 4)
+    .map((c) => {
+      const partnerRole = c.participants.find(
+        (p) => p.userId !== user?.id && p.role && p.role !== "police",
+      )?.role;
+      return {
+        org: c.subject || `Case thread ${c.caseId}`,
+        ptype: partnerRole ? titleCase(partnerRole) : "Responder",
+        caseId: c.caseId as string,
+        msg: `Last activity ${fmtRelative(c.lastMessageAt)}`,
+        time: fmtRelative(c.lastMessageAt),
+        count: user && isConversationUnread(c, user.id) ? 1 : 0,
+        icon:
+          partnerRole === "ngo"
+            ? Handshake
+            : partnerRole === "counselor"
+              ? Users
+              : MessageSquare,
+      };
+    });
+  const sharedThreads = mockList(liveThreads, MOCK_SHARED_THREADS);
+
+  // Pending partner actions: open referrals with a next step or deadline.
+  const livePending = referrals
+    .filter(
+      (r) => activeStatuses.includes(r.status) && (r.nextAction || r.dueAt),
+    )
+    .slice(0, 4)
+    .map((r) => ({
+      org: r.organizationName,
+      caseId: r.caseReference || `REF-${r.id.slice(0, 8).toUpperCase()}`,
+      task: r.nextAction || r.serviceRequested,
+      due: dueIn(r.dueAt),
+      icon: PARTNER_TYPE_ICON[r.partnerType],
+    }));
+  const pendingActions = mockList(livePending, MOCK_PENDING_ACTIONS);
+
+  const advanceReferral = async (row: BoardRow) => {
+    if (!row.referralId || !row.rawStatus) return;
+    const next = nextReferralStatus(row.rawStatus);
+    if (!next) return;
+    try {
+      await updateReferralStatus(row.referralId, next);
+      void queryClient.invalidateQueries({ queryKey: PARTNER_REFERRALS_KEY });
+      toast.success(
+        `${row.org} referral moved to ${REFERRAL_STATUS_LABEL[next]}`,
+      );
+    } catch {
+      toast.error("Couldn't update the referral — please retry.");
+    }
+  };
+
+  const partnerActions = MOCK_PARTNER_ACTIONS.map((a) => ({
+    ...a,
+    onClick: () => {
+      const preset: Record<string, PartnerType> = {
+        "Refer to NGO": "ngo",
+        "Assign Counselor": "counselor",
+        "Request Shelter": "shelter",
+        "Escalate to Hospital": "hospital",
+        "Request Legal Support": "legal",
+      };
+      setNewReferralType(preset[a.label] ?? "ngo");
+    },
+  }));
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {MOCK_PARTNER_KPIS.map((k) => (
+        {partnerKpis.map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
             value={k.value}
             icon={k.icon}
             tone={k.tone}
-            delta={k.delta}
-            dir={k.dir}
+            delta={"delta" in k ? k.delta : undefined}
+            dir={"dir" in k ? k.dir : undefined}
           />
         ))}
       </section>
@@ -6355,6 +6673,23 @@ const PartnersSection = () => {
                     <td className="px-4 py-3 text-xs text-slate-300">{p.rt}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        {p.referralId &&
+                          p.rawStatus &&
+                          nextReferralStatus(p.rawStatus) && (
+                            <button
+                              type="button"
+                              onClick={() => void advanceReferral(p)}
+                              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-bold text-violet-200 hover:bg-violet-500/20"
+                            >
+                              {
+                                REFERRAL_STATUS_LABEL[
+                                  nextReferralStatus(
+                                    p.rawStatus,
+                                  ) as ReferralStatus
+                                ]
+                              }
+                            </button>
+                          )}
                         <button
                           type="button"
                           onClick={() => navigate("messages")}
@@ -6391,7 +6726,13 @@ const PartnersSection = () => {
             action={<LinkChip label="View All" />}
           >
             <div className="space-y-2.5">
-              {MOCK_SHARED_THREADS.map((t, i) => {
+              {sharedThreads.length === 0 && (
+                <p className="px-1 py-4 text-xs text-slate-400">
+                  No shared case threads yet — start one from Messages with a
+                  case reference.
+                </p>
+              )}
+              {sharedThreads.map((t, i) => {
                 const Icon = t.icon;
                 return (
                   <div
@@ -6422,9 +6763,11 @@ const PartnersSection = () => {
                         <span className="text-[10px] text-slate-300">
                           {t.time}
                         </span>
-                        <span className="grid h-4 w-4 place-items-center rounded-full bg-violet-500 text-[9px] font-black text-white">
-                          {t.count}
-                        </span>
+                        {t.count > 0 && (
+                          <span className="grid h-4 w-4 place-items-center rounded-full bg-violet-500 text-[9px] font-black text-white">
+                            {t.count}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6438,7 +6781,12 @@ const PartnersSection = () => {
             action={<LinkChip label="View All" />}
           >
             <div className="space-y-2.5">
-              {MOCK_PENDING_ACTIONS.map((a, i) => {
+              {pendingActions.length === 0 && (
+                <p className="px-1 py-4 text-xs text-slate-400">
+                  No pending partner actions.
+                </p>
+              )}
+              {pendingActions.map((a, i) => {
                 const Icon = a.icon;
                 return (
                   <div
@@ -6473,8 +6821,183 @@ const PartnersSection = () => {
           </Panel>
         </div>
       </section>
-      <ActionBar items={[...MOCK_PARTNER_ACTIONS]} />
+      <ActionBar items={partnerActions} />
+      {newReferralType && user && (
+        <NewReferralModal
+          presetType={newReferralType}
+          userId={user.id}
+          onClose={() => setNewReferralType(null)}
+        />
+      )}
     </>
+  );
+};
+
+/** Create a real partner referral (persists to partner_referrals). */
+const NewReferralModal = ({
+  presetType,
+  userId,
+  onClose,
+}: {
+  presetType: PartnerType;
+  userId: string;
+  onClose: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const [partnerType, setPartnerType] = useState<PartnerType>(presetType);
+  const [organizationName, setOrganizationName] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [service, setService] = useState("");
+  const [caseReference, setCaseReference] = useState("");
+  const [nextAction, setNextAction] = useState("");
+  const [dueHours, setDueHours] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!organizationName.trim() || !service.trim()) {
+      toast.error("Organization and service are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const hours = Number(dueHours);
+      await createPartnerReferral({
+        requestedBy: userId,
+        partnerType,
+        organizationName,
+        serviceRequested: service,
+        caseReference: caseReference || null,
+        contactName: contactName || null,
+        contactPhone: contactPhone || null,
+        nextAction: nextAction || null,
+        dueAt:
+          dueHours && Number.isFinite(hours) && hours > 0
+            ? new Date(Date.now() + hours * 3_600_000).toISOString()
+            : null,
+      });
+      void queryClient.invalidateQueries({ queryKey: PARTNER_REFERRALS_KEY });
+      toast.success(`Referral sent to ${organizationName.trim()}`);
+      onClose();
+    } catch {
+      toast.error("Couldn't create the referral — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="New partner referral"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">
+            New partner referral
+          </h2>
+          <p className="mt-0.5 text-[11px] text-slate-300">
+            Request a service from a partner organization for a survivor case.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Partner type
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(PARTNER_TYPE_LABEL) as PartnerType[]).map(
+                (type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setPartnerType(type)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                      partnerType === type
+                        ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                        : "border-white/10 text-slate-300 hover:bg-white/5",
+                    )}
+                  >
+                    {PARTNER_TYPE_LABEL[type]}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+          <Input
+            value={organizationName}
+            onChange={(event) => setOrganizationName(event.target.value)}
+            placeholder="Organization name"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+              placeholder="Contact lead (optional)"
+              className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+            />
+            <Input
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              placeholder="Contact phone (optional)"
+              className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+            />
+          </div>
+          <Input
+            value={service}
+            onChange={(event) => setService(event.target.value)}
+            placeholder="Service requested, e.g. Emergency shelter + safety planning"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              value={caseReference}
+              onChange={(event) => setCaseReference(event.target.value)}
+              placeholder="Case reference (optional)"
+              className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+            />
+            <Input
+              value={dueHours}
+              onChange={(event) => setDueHours(event.target.value)}
+              placeholder="Due in hours (optional)"
+              inputMode="numeric"
+              className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+            />
+          </div>
+          <Input
+            value={nextAction}
+            onChange={(event) => setNextAction(event.target.value)}
+            placeholder="Next action for the partner (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void create()}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Sending…" : "Send referral"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

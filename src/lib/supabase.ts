@@ -375,6 +375,36 @@ export type Database = {
           created_by: string;
         }
       >;
+      partner_referrals: TableDefinition<
+        {
+          id: string;
+          case_reference: string | null;
+          partner_type: string;
+          organization_name: string;
+          contact_name: string | null;
+          contact_phone: string | null;
+          service_requested: string;
+          status: string;
+          next_action: string | null;
+          due_at: string | null;
+          requested_by: string | null;
+          responded_at: string | null;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          case_reference?: string | null;
+          partner_type: string;
+          organization_name: string;
+          contact_name?: string | null;
+          contact_phone?: string | null;
+          service_requested: string;
+          status?: string;
+          next_action?: string | null;
+          due_at?: string | null;
+          requested_by: string;
+        }
+      >;
       triage_notes: TableDefinition<
         {
           id: string;
