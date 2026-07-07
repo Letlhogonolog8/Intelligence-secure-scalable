@@ -375,6 +375,31 @@ export type Database = {
           created_by: string;
         }
       >;
+      analyst_reports: TableDefinition<
+        {
+          id: string;
+          name: string;
+          type: string;
+          region: string | null;
+          status: string;
+          owner: string | null;
+          scheduled: boolean;
+          frequency: string | null;
+          recipients: number | null;
+          generated_at: string;
+          next_delivery: string | null;
+        },
+        {
+          name: string;
+          type: string;
+          region?: string | null;
+          status?: string;
+          owner?: string | null;
+          scheduled?: boolean;
+          frequency?: string | null;
+          recipients?: number | null;
+        }
+      >;
       partner_referrals: TableDefinition<
         {
           id: string;

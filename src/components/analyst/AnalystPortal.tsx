@@ -5,12 +5,16 @@
  * wired to a live AEGIS data source later without touching the layout.
  */
 import {
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -44,7 +48,6 @@ import {
   Download,
   Eye,
   FileText,
-  Filter,
   GitBranch,
   Globe,
   HelpCircle,
@@ -96,6 +99,7 @@ import {
   useReportingChannels,
 } from "@/data/analyticsData";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/lib/supabase";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
 import { ALLOW_MOCK, NO_DATA, sample } from "@/lib/mockData";
 import { toast } from "sonner";
@@ -1209,6 +1213,65 @@ const riskTone = (s: string) => {
   return "sky";
 };
 
+/* ============================ PORTAL CONTEXT ============================ */
+
+type AnalystPortalContextValue = {
+  section: SectionKey;
+  navigate: (section: SectionKey) => void;
+};
+
+const AnalystPortalContext = createContext<AnalystPortalContextValue | null>(
+  null,
+);
+
+const useAnalystPortal = (): AnalystPortalContextValue => {
+  const ctx = useContext(AnalystPortalContext);
+  if (!ctx)
+    throw new Error("useAnalystPortal must be used within AnalystPortal");
+  return ctx;
+};
+
+/** Route a quick-action label to the section that owns that capability. */
+const ACTION_TARGETS: { match: string; section: SectionKey }[] = [
+  { match: "hotspot", section: "hotspots" },
+  { match: "map", section: "hotspots" },
+  { match: "forecast", section: "forecasting" },
+  { match: "compare", section: "forecasting" },
+  { match: "report", section: "reports" },
+  { match: "dataset", section: "datasets" },
+  { match: "csv", section: "datasets" },
+  { match: "export", section: "datasets" },
+  { match: "quality", section: "datasets" },
+  { match: "anomal", section: "analytics" },
+  { match: "analytic", section: "analytics" },
+];
+
+const sectionForAction = (label: string): SectionKey | undefined =>
+  ACTION_TARGETS.find((entry) => label.toLowerCase().includes(entry.match))
+    ?.section;
+
+/** Client-side CSV download of live rows (quotes and escapes cell values). */
+const downloadCsv = (
+  filename: string,
+  rows: Record<string, unknown>[],
+): boolean => {
+  if (!rows.length) return false;
+  const headers = Object.keys(rows[0]);
+  const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => cell(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  return true;
+};
+
 const Pill = ({ tone, children }: { tone: string; children: ReactNode }) => (
   <span
     className={cn(
@@ -1241,6 +1304,7 @@ const Delta = ({
   </p>
 );
 const Panel = ({
+  id,
   title,
   info,
   action,
@@ -1248,6 +1312,7 @@ const Panel = ({
   bodyClassName,
   children,
 }: {
+  id?: string;
   title?: string;
   info?: boolean;
   action?: ReactNode;
@@ -1256,6 +1321,7 @@ const Panel = ({
   children: ReactNode;
 }) => (
   <div
+    id={id}
     className={cn(
       "overflow-hidden rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md",
       className,
@@ -1382,54 +1448,137 @@ const chartTooltip = {
     fontSize: 12,
   },
 } as const;
-const SelectChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-  >
-    {label}
-    <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-  </button>
-);
-const LinkChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
-  >
-    {label}
-    <ChevronRight className="h-3 w-3" />
-  </button>
-);
-const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => (
-  <div className="flex items-center gap-1">
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronLeft className="h-3.5 w-3.5" />
-    </button>
-    {pages.map((p, i) => (
+/** Dropdown filter chip: selecting an option updates the chip label. */
+const SelectChip = ({
+  label,
+  options,
+  onSelect,
+}: {
+  label: string;
+  options?: string[];
+  onSelect?: (option: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(label);
+  const choices = options ?? [label];
+
+  return (
+    <div className="relative">
       <button
-        key={`${p}-${i}`}
         type="button"
-        className={cn(
-          "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold",
-          i === 0
-            ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-            : "border border-white/10 text-slate-400 hover:bg-white/5",
-        )}
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
       >
-        {p}
+        {selected}
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-slate-500 transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
-    ))}
+      {open && (
+        <div className="absolute right-0 z-40 mt-2 w-44 overflow-hidden rounded-lg border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40">
+          {choices.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setSelected(option);
+                setOpen(false);
+                onSelect?.(option);
+              }}
+              className={cn(
+                "block w-full px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
+                selected === option ? "text-violet-300" : "text-slate-300",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * A "View all" affordance. When `target` points to another section it
+ * navigates there; when the full list already renders in the current section
+ * it confirms that rather than opening a dead-end popover.
+ */
+const LinkChip = ({
+  label,
+  target,
+}: {
+  label: string;
+  target?: SectionKey;
+}) => {
+  const { section, navigate } = useAnalystPortal();
+
+  const handleClick = () => {
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.info("Showing the full list below.");
+    }
+  };
+
+  return (
     <button
       type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      onClick={handleClick}
+      className="flex items-center gap-1 text-[11px] font-bold text-violet-400 hover:text-violet-300"
     >
-      <ChevronRight className="h-3.5 w-3.5" />
+      {label}
+      <ChevronRight className="h-3 w-3" />
     </button>
-  </div>
-);
+  );
+};
+
+const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => {
+  const [active, setActive] = useState(pages[0] ?? "1");
+  const activeIndex = Math.max(0, pages.indexOf(active));
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        aria-label="Previous page"
+        onClick={() => setActive(pages[Math.max(0, activeIndex - 1)])}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+      </button>
+      {pages.map((p, i) => (
+        <button
+          key={`${p}-${i}`}
+          type="button"
+          onClick={() => setActive(p)}
+          className={cn(
+            "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold",
+            p === active
+              ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+              : "border border-white/10 text-slate-400 hover:bg-white/5",
+          )}
+        >
+          {p}
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-label="Next page"
+        onClick={() =>
+          setActive(pages[Math.min(pages.length - 1, activeIndex + 1)])
+        }
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+};
 const ActionBar = ({
   items,
 }: {
@@ -1438,40 +1587,59 @@ const ActionBar = ({
     desc: string;
     icon: ComponentType<{ className?: string }>;
     tone: string;
+    onClick?: () => void;
   }[];
-}) => (
-  <div
-    className={cn(
-      "grid grid-cols-1 gap-3",
-      items.length >= 5 ? "sm:grid-cols-3 xl:grid-cols-5" : "sm:grid-cols-3",
-    )}
-  >
-    {items.map((a) => {
-      const Icon = a.icon;
-      return (
-        <button
-          key={a.label}
-          type="button"
-          className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/50 p-4 text-left transition-colors hover:border-white/20"
-        >
-          <span
-            className={cn(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-xl border",
-              ICON_TONES[a.tone],
-            )}
+}) => {
+  const { section, navigate } = useAnalystPortal();
+
+  const handleAction = (item: { label: string; onClick?: () => void }) => {
+    if (item.onClick) {
+      item.onClick();
+      return;
+    }
+    const target = sectionForAction(item.label);
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.success(item.label);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3",
+        items.length >= 5 ? "sm:grid-cols-3 xl:grid-cols-5" : "sm:grid-cols-3",
+      )}
+    >
+      {items.map((a) => {
+        const Icon = a.icon;
+        return (
+          <button
+            key={a.label}
+            type="button"
+            onClick={() => handleAction(a)}
+            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/50 p-4 text-left transition-colors hover:border-white/20"
           >
-            <Icon className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-black text-white">{a.label}</p>
-            <p className="truncate text-[11px] text-slate-500">{a.desc}</p>
-          </div>
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
-        </button>
-      );
-    })}
-  </div>
-);
+            <span
+              className={cn(
+                "grid h-10 w-10 shrink-0 place-items-center rounded-xl border",
+                ICON_TONES[a.tone],
+              )}
+            >
+              <Icon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-white">{a.label}</p>
+              <p className="truncate text-[11px] text-slate-500">{a.desc}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 const Sparkline = ({ color }: { color: string }) => (
   <ResponsiveContainer width="100%" height={36}>
     <LineChart data={spark()}>
@@ -1493,6 +1661,12 @@ const AnalystPortal: React.FC = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const meta = SECTION_META[section];
+  const queryClient = useQueryClient();
+
+  const portalContext = useMemo<AnalystPortalContextValue>(
+    () => ({ section, navigate: setSection }),
+    [section],
+  );
 
   const { user, signOut } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
@@ -1502,6 +1676,73 @@ const AnalystPortal: React.FC = () => {
       ? (ROLE_DEFINITIONS[profile.role as UserRole]?.label ??
         titleCase(profile.role))
       : MOCK_USER.role,
+  };
+
+  // Live data behind the header actions (react-query dedupes with the
+  // section-level hooks, so these add no extra requests).
+  const { data: timeSeries = [] } = useIncidentTimeSeries();
+  const { data: categories = [] } = useCaseCategories();
+  const { data: scenarios = [] } = useForecastScenarios();
+  const { data: anomalies = [] } = useAnomalyAlerts({ limit: 10 });
+
+  const exportAnalysis = () => {
+    const rows = [
+      ...timeSeries.map((r) => ({ kind: "timeseries", ...r })),
+      ...categories.map((r) => ({ kind: "category", ...r })),
+    ];
+    if (downloadCsv("aegis-incident-analysis.csv", rows)) {
+      toast.success("Analysis exported as CSV");
+    } else {
+      toast.info("No live analysis data to export yet.");
+    }
+  };
+
+  const downloadScenarios = () => {
+    if (
+      downloadCsv(
+        "aegis-forecast-scenarios.csv",
+        scenarios as unknown as Record<string, unknown>[],
+      )
+    ) {
+      toast.success("Forecast scenarios exported as CSV");
+    } else {
+      toast.info("No forecast scenarios to export yet.");
+    }
+  };
+
+  const refreshAnalytics = (message: string) => {
+    void queryClient.invalidateQueries({ queryKey: ["aegis"] });
+    toast.success(message);
+  };
+
+  const generateReport = async (kind: "report" | "template") => {
+    if (!user?.id) {
+      toast.error("Sign in to generate reports");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const { error } = await supabase.from("analyst_reports").insert({
+      name:
+        kind === "template"
+          ? `Custom template — ${stamp}`
+          : `Custom analytics report — ${stamp}`,
+      type: kind === "template" ? "Template" : "Custom",
+      region: "All regions",
+      status: kind === "template" ? "Draft" : "Completed",
+      owner: profile?.fullName ?? "Analyst",
+      scheduled: false,
+    });
+    if (error) {
+      toast.error("Couldn't create the report — please retry.");
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ["aegis", "analytics"] });
+    toast.success(
+      kind === "template"
+        ? "Template saved to the report library"
+        : "Report generated — see the report library",
+    );
+    setSection("reports");
   };
 
   useEffect(() => {
@@ -1515,286 +1756,330 @@ const AnalystPortal: React.FC = () => {
   }, [menuOpen]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
-        <div className="flex items-center gap-3 px-5 py-5">
-          <svg
-            viewBox="0 0 40 40"
-            className="h-9 w-9 shrink-0"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="aegis-analyst" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#a78bfa" />
-                <stop offset="100%" stopColor="#6d28d9" />
-              </linearGradient>
-            </defs>
-            <path d="M20 2 L36 11 L20 38 L4 11 Z" fill="url(#aegis-analyst)" />
-            <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
-            <path
-              d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
-              fill="#ffffff"
-            />
-          </svg>
-          <div className="leading-tight">
-            <p className="text-base font-black tracking-tight text-white">
-              AEGIS-AI
-            </p>
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
-              Data Analyst Portal
-            </p>
+    <AnalystPortalContext.Provider value={portalContext}>
+      <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
+          <div className="flex items-center gap-3 px-5 py-5">
+            <svg
+              viewBox="0 0 40 40"
+              className="h-9 w-9 shrink-0"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="aegis-analyst" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#a78bfa" />
+                  <stop offset="100%" stopColor="#6d28d9" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M20 2 L36 11 L20 38 L4 11 Z"
+                fill="url(#aegis-analyst)"
+              />
+              <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
+              <path
+                d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
+                fill="#ffffff"
+              />
+            </svg>
+            <div className="leading-tight">
+              <p className="text-base font-black tracking-tight text-white">
+                AEGIS-AI
+              </p>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
+                Data Analyst Portal
+              </p>
+            </div>
           </div>
-        </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            const active = section === item.key;
-            return (
+          <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              const active = section === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setSection(item.key)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all",
+                    active
+                      ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                      : "text-slate-400 hover:bg-white/5 hover:text-white",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-[18px] w-[18px] shrink-0",
+                      active ? "text-white" : "text-slate-500",
+                    )}
+                  />
+                  <span className="flex-1 text-left">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="px-4 pb-5">
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-violet-500/10 to-transparent p-4">
+              <Shield className="mb-2 h-7 w-7 text-violet-300" />
+              <p className="text-xs font-black text-white">GBV Intelligence.</p>
+              <p className="text-xs font-black text-white">Safer Futures.</p>
+              <p className="text-xs font-black text-violet-300">
+                Stronger Communities.
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
+            <div className="relative hidden max-w-lg flex-1 lg:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Input
+                placeholder="Search datasets, reports, regions, indicators..."
+                className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-500"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-500">
+                ⌘K
+              </span>
+            </div>
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
+              <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 sm:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                LIVE
+              </span>
               <button
-                key={item.key}
                 type="button"
-                onClick={() => setSection(item.key)}
+                onClick={() => setSection("analytics")}
+                className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {anomalies.length > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-violet-500 text-[9px] font-black text-white">
+                    {anomalies.length > 9 ? "9+" : anomalies.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open("/info/how-it-works", "_blank")}
+                className="hidden h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white sm:grid"
+                aria-label="Help"
+              >
+                <HelpCircle className="h-5 w-5" />
+              </button>
+              <div
+                ref={menuRef}
+                className="relative border-l border-white/10 pl-2 sm:pl-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-black text-white">
+                    {initialsOf(account.name)}
+                  </div>
+                  <div className="hidden text-left leading-tight lg:block">
+                    <p className="text-sm font-bold text-white">
+                      {account.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500">{account.role}</p>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "hidden h-4 w-4 text-slate-500 transition-transform lg:block",
+                      menuOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void signOut();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                    >
+                      <LogOut className="h-4 w-4" /> Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+          <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {NAV.map((n) => (
+              <button
+                key={n.key}
+                type="button"
+                onClick={() => setSection(n.key)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all",
-                  active
-                    ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white",
+                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors",
+                  section === n.key
+                    ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+                    : "text-slate-400 hover:text-white",
                 )}
               >
-                <Icon
-                  className={cn(
-                    "h-[18px] w-[18px] shrink-0",
-                    active ? "text-white" : "text-slate-500",
-                  )}
-                />
-                <span className="flex-1 text-left">{item.label}</span>
+                {n.label}
               </button>
-            );
-          })}
-        </nav>
-        <div className="px-4 pb-5">
-          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-violet-500/10 to-transparent p-4">
-            <Shield className="mb-2 h-7 w-7 text-violet-300" />
-            <p className="text-xs font-black text-white">GBV Intelligence.</p>
-            <p className="text-xs font-black text-white">Safer Futures.</p>
-            <p className="text-xs font-black text-violet-300">
-              Stronger Communities.
-            </p>
-          </div>
-        </div>
-      </aside>
+            ))}
+          </nav>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
-          <div className="relative hidden max-w-lg flex-1 lg:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-            <Input
-              placeholder="Search datasets, reports, regions, indicators..."
-              className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-500"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-500">
-              ⌘K
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-              LIVE
-            </span>
-            <button
-              type="button"
-              className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white"
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-violet-500 text-[9px] font-black text-white">
-                7
-              </span>
-            </button>
-            <button
-              type="button"
-              className="hidden h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white sm:grid"
-              aria-label="Help"
-            >
-              <HelpCircle className="h-5 w-5" />
-            </button>
-            <div
-              ref={menuRef}
-              className="relative border-l border-white/10 pl-2 sm:pl-3"
-            >
-              <button
-                type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="flex items-center gap-2"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-              >
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-black text-white">
-                  {initialsOf(account.name)}
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight text-white md:text-3xl">
+                    {meta.greeting ? `Welcome, ${account.name}` : meta.title}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">{meta.subtitle}</p>
                 </div>
-                <div className="hidden text-left leading-tight lg:block">
-                  <p className="text-sm font-bold text-white">{account.name}</p>
-                  <p className="text-[10px] text-slate-500">{account.role}</p>
-                </div>
-                <ChevronDown
-                  className={cn(
-                    "hidden h-4 w-4 text-slate-500 transition-transform lg:block",
-                    menuOpen && "rotate-180",
-                  )}
-                />
-              </button>
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void signOut();
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
-                  >
-                    <LogOut className="h-4 w-4" /> Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-        <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((n) => (
-            <button
-              key={n.key}
-              type="button"
-              onClick={() => setSection(n.key)}
-              className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors",
-                section === n.key
-                  ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white",
-              )}
-            >
-              {n.label}
-            </button>
-          ))}
-        </nav>
-
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-black tracking-tight text-white md:text-3xl">
-                  {meta.greeting ? `Welcome, ${account.name}` : meta.title}
-                </h2>
-                <p className="mt-1 text-sm text-slate-400">{meta.subtitle}</p>
+                {section === "analytics" && (
+                  <div className="flex items-center gap-2">
+                    <SelectChip
+                      label="Filter"
+                      options={[
+                        "All severities",
+                        "Critical only",
+                        "High priority",
+                      ]}
+                      onSelect={(option) => toast.success(`Filter: ${option}`)}
+                    />
+                    <SelectChip
+                      label="Compare Periods"
+                      options={[
+                        "vs previous 30 days",
+                        "vs previous quarter",
+                        "vs last year",
+                      ]}
+                      onSelect={(option) =>
+                        toast.success(`Comparing ${option}`)
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={exportAnalysis}
+                      className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Export Analysis
+                    </button>
+                  </div>
+                )}
+                {section === "forecasting" && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        refreshAnalytics(
+                          "Forecast re-run with the latest live data",
+                        )
+                      }
+                      className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+                    >
+                      <Activity className="h-3.5 w-3.5" /> Run Forecast
+                    </button>
+                    <SelectChip
+                      label="Compare Models"
+                      options={["Baseline v2", "Seasonal v1", "Ensemble"]}
+                      onSelect={(option) => toast.success(`Model: ${option}`)}
+                    />
+                    <button
+                      type="button"
+                      onClick={downloadScenarios}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Download Scenario
+                    </button>
+                  </div>
+                )}
+                {section === "reports" && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void generateReport("report")}
+                      className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Generate Report
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void generateReport("template")}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Create Template
+                    </button>
+                    <SelectChip
+                      label="Schedule Delivery"
+                      options={["Daily", "Weekly", "Monthly"]}
+                      onSelect={(option) =>
+                        toast.success(`Delivery cadence set to ${option}`)
+                      }
+                    />
+                  </div>
+                )}
+                {section === "datasets" && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toast.info(
+                          "New sources are connected by an administrator from the Admin console.",
+                        )
+                      }
+                      className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Dataset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        refreshAnalytics(
+                          "All datasets re-checked for freshness",
+                        )
+                      }
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Refresh All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(
+                          "data-quality-alerts",
+                        );
+                        el?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" /> Review Quality
+                    </button>
+                  </div>
+                )}
               </div>
-              {section === "analytics" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <Filter className="h-3.5 w-3.5" /> Filter
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <Calendar className="h-3.5 w-3.5" /> Compare Periods
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
-                  >
-                    <Download className="h-3.5 w-3.5" /> Export Analysis
-                  </button>
-                </div>
-              )}
-              {section === "forecasting" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
-                  >
-                    <Activity className="h-3.5 w-3.5" /> Run Forecast
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" /> Compare Models
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <Download className="h-3.5 w-3.5" /> Download Scenario
-                  </button>
-                </div>
-              )}
-              {section === "reports" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Generate Report
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Create Template
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <Calendar className="h-3.5 w-3.5" /> Schedule Delivery
-                  </button>
-                </div>
-              )}
-              {section === "datasets" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Add Dataset
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" /> Refresh All
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-                  >
-                    <ShieldCheck className="h-3.5 w-3.5" /> Review Quality
-                  </button>
-                </div>
-              )}
+              {section === "overview" && <OverviewSection />}
+              {section === "analytics" && <AnalyticsSection />}
+              {section === "hotspots" && <HotspotsSection />}
+              {section === "forecasting" && <ForecastingSection />}
+              {section === "reports" && <ReportsSection />}
+              {section === "datasets" && <DatasetsSection />}
+              {section === "settings" && <SettingsSection />}
+              <footer className="mt-2 border-t border-white/5 pt-5 text-center text-[11px] text-slate-600">
+                GBV intelligence for survivor protection and policy action.
+                Handle data responsibly and follow privacy best practices.
+              </footer>
             </div>
-            {section === "overview" && <OverviewSection />}
-            {section === "analytics" && <AnalyticsSection />}
-            {section === "hotspots" && <HotspotsSection />}
-            {section === "forecasting" && <ForecastingSection />}
-            {section === "reports" && <ReportsSection />}
-            {section === "datasets" && <DatasetsSection />}
-            {section === "settings" && <SettingsSection />}
-            <footer className="mt-2 border-t border-white/5 pt-5 text-center text-[11px] text-slate-600">
-              GBV intelligence for survivor protection and policy action. Handle
-              data responsibly and follow privacy best practices.
-            </footer>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </AnalystPortalContext.Provider>
   );
 };
 
@@ -1849,16 +2134,14 @@ const OverviewSection = () => {
       ? ageGroups.map((a) => ({ name: a.label, value: a.value }))
       : sample(MOCK_AGE_GROUPS);
   const activity = audit.length
-    ? audit
-        .slice(0, 4)
-        .map((a, i) => ({
-          key: i,
-          icon: a.severity === "critical" ? AlertTriangle : FileText,
-          tone: a.severity === "critical" ? "amber" : "violet",
-          title: a.action,
-          by: `by ${a.user || "system"}`,
-          time: fmtTime(a.time),
-        }))
+    ? audit.slice(0, 4).map((a, i) => ({
+        key: i,
+        icon: a.severity === "critical" ? AlertTriangle : FileText,
+        tone: a.severity === "critical" ? "amber" : "violet",
+        title: a.action,
+        by: `by ${a.user || "system"}`,
+        time: fmtTime(a.time),
+      }))
     : sample(MOCK_RECENT_ACTIVITY).map((a, i) => ({ key: i, ...a }));
 
   return (
@@ -2134,14 +2417,12 @@ const AnalyticsSection = () => {
       }))
     : sample(MOCK_TRENDS);
   const anomalyRows = anomalies.length
-    ? anomalies
-        .slice(0, 3)
-        .map((a) => ({
-          text: a.type,
-          bold: a.region,
-          note: a.severity,
-          time: fmtTime(a.time),
-        }))
+    ? anomalies.slice(0, 3).map((a) => ({
+        text: a.type,
+        bold: a.region,
+        note: a.severity,
+        time: fmtTime(a.time),
+      }))
     : sample(MOCK_ANOMALIES);
   const channels = live(channelData, MOCK_CHANNELS);
 
@@ -2417,16 +2698,14 @@ const HotspotsSection = () => {
     : sample(MOCK_AFRICA_MAP);
   const ranked = [...regions].sort((a, b) => b.incidents - a.incidents);
   const topCities = ranked.length
-    ? ranked
-        .slice(0, 5)
-        .map((r, i) => ({
-          rank: i + 1,
-          city: r.name,
-          country: r.country,
-          risk: riskLabel(r.riskLevel),
-          trend: `${r.trendPercent}%`,
-          incidents: nf.format(r.incidents),
-        }))
+    ? ranked.slice(0, 5).map((r, i) => ({
+        rank: i + 1,
+        city: r.name,
+        country: r.country,
+        risk: riskLabel(r.riskLevel),
+        trend: `${r.trendPercent}%`,
+        incidents: nf.format(r.incidents),
+      }))
     : sample(MOCK_TOP_CITIES);
   const severity = (() => {
     if (!regions.length) return MOCK_SEVERITY;
@@ -3157,10 +3436,31 @@ const ReportsSection = () => {
                         <span className="rounded border border-rose-500/30 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">
                           PDF
                         </span>
-                        <span className="rounded border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            downloadCsv(
+                              `${r.name.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                              [r as unknown as Record<string, unknown>],
+                            );
+                            toast.success(`${r.name} exported`);
+                          }}
+                          className="rounded border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300 hover:bg-emerald-500/10"
+                        >
                           CSV
-                        </span>
-                        <button type="button" className="text-slate-500">
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Export ${r.name}`}
+                          onClick={() => {
+                            downloadCsv(
+                              `${r.name.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                              [r as unknown as Record<string, unknown>],
+                            );
+                            toast.success(`${r.name} exported`);
+                          }}
+                          className="text-slate-500 hover:text-white"
+                        >
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -3196,7 +3496,18 @@ const ReportsSection = () => {
                 <span className="text-[10px] text-slate-500">
                   {r.updated.split(" ").slice(-2).join(" ")}
                 </span>
-                <button type="button" className="text-slate-500">
+                <button
+                  type="button"
+                  aria-label={`Download ${r.name}`}
+                  onClick={() => {
+                    downloadCsv(
+                      `${r.name.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                      [r as unknown as Record<string, unknown>],
+                    );
+                    toast.success(`${r.name} exported`);
+                  }}
+                  className="text-slate-500 hover:text-white"
+                >
                   <Download className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -3291,6 +3602,7 @@ const ReportsSection = () => {
 /* =============================== Datasets =============================== */
 
 const DatasetsSection = () => {
+  const queryClient = useQueryClient();
   const { data: datasets = [] } = useDatasetCatalog();
   const { data: dq } = useDataQualityAlerts();
   const rows = datasets.length
@@ -3443,18 +3755,39 @@ const DatasetsSection = () => {
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
+                        aria-label={`Inspect ${d.name}`}
+                        onClick={() =>
+                          toast.info(
+                            `${d.name} — ${d.desc} · Source: ${d.source} · ${d.records} records · ${d.fresh}`,
+                          )
+                        }
                         className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
+                        aria-label={`Refresh ${d.name}`}
+                        onClick={() => {
+                          void queryClient.invalidateQueries({
+                            queryKey: ["aegis", "analytics"],
+                          });
+                          toast.success(`${d.name} re-checked`);
+                        }}
                         className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
+                        aria-label={`Export ${d.name} metadata`}
+                        onClick={() => {
+                          downloadCsv(
+                            `${d.name.replace(/\s+/g, "-").toLowerCase()}-metadata.csv`,
+                            [d as unknown as Record<string, unknown>],
+                          );
+                          toast.success(`${d.name} metadata exported`);
+                        }}
                         className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
@@ -3534,6 +3867,7 @@ const DatasetsSection = () => {
           </div>
         </Panel>
         <Panel
+          id="data-quality-alerts"
           title="Data Quality Alerts"
           action={<LinkChip label="View all" />}
         >
@@ -3884,6 +4218,11 @@ const SettingsSection = () => {
             ))}
             <button
               type="button"
+              onClick={() =>
+                toast.info(
+                  "The full audit trail is retained in the immutable audit log; exports are restricted to administrators.",
+                )
+              }
               className="mt-1 flex w-full items-center justify-center gap-1 text-[11px] font-bold text-violet-400"
             >
               View Audit Log <Maximize2 className="h-3 w-3" />
