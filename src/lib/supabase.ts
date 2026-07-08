@@ -375,6 +375,33 @@ export type Database = {
           created_by: string;
         }
       >;
+      counseling_sessions: TableDefinition<
+        {
+          id: string;
+          counselor_id: string | null;
+          case_reference: string | null;
+          survivor_alias: string | null;
+          session_type: string;
+          mode: string;
+          status: string;
+          scheduled_at: string;
+          duration_minutes: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          counselor_id: string;
+          scheduled_at: string;
+          case_reference?: string | null;
+          survivor_alias?: string | null;
+          session_type?: string;
+          mode?: string;
+          status?: string;
+          duration_minutes?: number;
+          notes?: string | null;
+        }
+      >;
       analyst_reports: TableDefinition<
         {
           id: string;

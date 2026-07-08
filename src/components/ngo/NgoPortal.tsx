@@ -51,6 +51,7 @@ import {
   Filter,
   FolderOpen,
   GraduationCap,
+  Handshake,
   Heart,
   HelpCircle,
   Home,
@@ -85,10 +86,20 @@ import {
   useShelters,
   useUserProfile,
 } from "@/data/aegisData";
+import {
+  createPartnerReferral,
+  PARTNER_REFERRALS_KEY,
+  usePartnerReferrals,
+  type PartnerType,
+  type ReferralStatus,
+} from "@/data/partnerReferrals";
+import { acknowledgeEscalation } from "@/data/escalationActions";
+import { ESCALATION_EVENTS_KEY } from "@/data/escalationActions";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
-import { ALLOW_MOCK, NO_DATA, gateKpis } from "@/lib/mockData";
+import { ALLOW_MOCK, NO_DATA, gateKpis, sample } from "@/lib/mockData";
 
 const nf = new Intl.NumberFormat("en-US");
 const fmtRelative = (t: string) => {
@@ -3361,334 +3372,713 @@ const SurvivorsSection = () => (
 
 /* =============================== Referrals =============================== */
 
-const ReferralsSection = () => (
-  <>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_REFERRAL_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-        />
-      ))}
-    </section>
+const REFERRAL_STATUS_LABEL: Record<ReferralStatus, string> = {
+  pending: "Pending",
+  accepted: "Accepted",
+  in_progress: "In Progress",
+  completed: "Completed",
+  declined: "Declined",
+};
 
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Referral Pipeline"
-          action={<SelectChip label="Last 7 Days" />}
-        >
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {MOCK_PIPELINE.map((p) => (
-              <div
-                key={p.n}
-                className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center"
+/** Create a real partner referral (persists to partner_referrals). */
+const NewReferralModal = ({
+  userId,
+  onClose,
+}: {
+  userId: string;
+  onClose: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const [partnerType, setPartnerType] = useState<PartnerType>("ngo");
+  const [organizationName, setOrganizationName] = useState("");
+  const [service, setService] = useState("");
+  const [caseReference, setCaseReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const TYPES: PartnerType[] = [
+    "ngo",
+    "counselor",
+    "shelter",
+    "hospital",
+    "legal",
+  ];
+
+  const create = async () => {
+    if (!organizationName.trim() || !service.trim()) {
+      toast.error("Organization and service are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      await createPartnerReferral({
+        requestedBy: userId,
+        partnerType,
+        organizationName,
+        serviceRequested: service,
+        caseReference: caseReference || null,
+      });
+      void queryClient.invalidateQueries({ queryKey: PARTNER_REFERRALS_KEY });
+      toast.success(`Referral sent to ${organizationName.trim()}`);
+      onClose();
+    } catch {
+      toast.error("Couldn't create the referral — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create referral"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">Create referral</h2>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Refer a survivor case to a partner service — visible to every
+            responder in real time.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <div className="flex flex-wrap gap-2">
+            {TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setPartnerType(type)}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                  partnerType === type
+                    ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                    : "border-white/10 text-slate-300 hover:bg-white/5",
+                )}
               >
-                <span
-                  className="mx-auto mb-2 grid h-7 w-7 place-items-center rounded-full text-[11px] font-black text-white"
-                  style={{ background: p.color }}
-                >
-                  {p.n}
-                </span>
-                <p className="text-[10px] font-bold text-slate-400">
-                  {p.label}
-                </p>
-                <p className="text-xl font-black text-white">{p.value}</p>
-              </div>
+                {type === "ngo" ? "NGO" : titleCase(type)}
+              </button>
             ))}
           </div>
-        </Panel>
-
-        <Panel
-          title="All Referrals"
-          bodyClassName="p-0"
-          action={
-            <div className="flex items-center gap-2">
-              <SelectChip label="Filter" />
-              <SelectChip label="Export" />
-            </div>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className={tableHead}>
-                  <th className="px-5 py-3">Referral ID</th>
-                  <th className="px-5 py-3">Survivor</th>
-                  <th className="px-5 py-3">Service Type</th>
-                  <th className="px-5 py-3">Referred To</th>
-                  <th className="px-5 py-3">Priority</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Date Sent</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {MOCK_REFERRALS.map((r) => (
-                  <tr key={r.id} className="hover:bg-white/[0.02]">
-                    <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
-                      {r.id}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={r.name} />
-                        <div>
-                          <p className="font-bold text-white">{r.name}</p>
-                          <p className="text-[10px] text-slate-500">
-                            Case {r.caseId}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-slate-300">{r.service}</td>
-                    <td className="px-5 py-3">
-                      <p className="font-medium text-white">{r.to}</p>
-                      <p className="text-[10px] text-slate-500">{r.loc}</p>
-                    </td>
-                    <td className="px-5 py-3">
-                      <Pill tone={statusTone(r.priority)}>{r.priority}</Pill>
-                    </td>
-                    <td className="px-5 py-3">
-                      <Pill tone={statusTone(r.status)}>{r.status}</Pill>
-                    </td>
-                    <td className="px-5 py-3 text-slate-400">
-                      <p>{r.date}</p>
-                      <p className="text-[10px] text-slate-500">{r.time}</p>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
-              Showing 1 to 8 of 96 referrals
-            </span>
-            <Pagination pages={["1", "2", "3", "4", "5"]} />
-          </div>
-        </Panel>
-      </div>
-
-      <div className="flex flex-col gap-6">
-        <Panel title="Urgent Referrals" action={<LinkChip label="View all" />}>
-          <div className="space-y-2.5">
-            {MOCK_URGENT_REFERRALS.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-              >
-                <Pill tone={statusTone(r.tag)}>{r.tag}</Pill>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-white">
-                    {r.id}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">{r.sub}</p>
-                </div>
-                <span className="text-[10px] text-slate-500">{r.time}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Quick Actions">
-          <QuickActionGrid
-            cols=""
-            items={[
-              {
-                label: "Create Referral",
-                desc: "Refer a survivor to a service or partner",
-                icon: Plus,
-              },
-              {
-                label: "Track Referral",
-                desc: "Check the status of a referral",
-                icon: Search,
-              },
-              {
-                label: "Contact Partner",
-                desc: "Reach out to partner organizations",
-                icon: Phone,
-              },
-              {
-                label: "View Partner Directory",
-                desc: "Browse partner organizations",
-                icon: FolderOpen,
-              },
-              {
-                label: "Referral Report",
-                desc: "Download referral summary",
-                icon: Download,
-              },
-            ]}
+          <Input
+            value={organizationName}
+            onChange={(event) => setOrganizationName(event.target.value)}
+            placeholder="Organization name"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
           />
-        </Panel>
+          <Input
+            value={service}
+            onChange={(event) => setService(event.target.value)}
+            placeholder="Service requested"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <Input
+            value={caseReference}
+            onChange={(event) => setCaseReference(event.target.value)}
+            placeholder="Case reference (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void create()}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Sending…" : "Send referral"}
+          </button>
+        </div>
       </div>
-    </section>
-  </>
-);
+    </div>
+  );
+};
+
+const ReferralsSection = () => {
+  const { user } = useAuth();
+  const { data: referrals = [] } = usePartnerReferrals();
+  const [showNewReferral, setShowNewReferral] = useState(false);
+
+  const PIPELINE_COLORS: Record<ReferralStatus, string> = {
+    pending: "#f59e0b",
+    accepted: "#3b82f6",
+    in_progress: "#8b5cf6",
+    completed: "#10b981",
+    declined: "#64748b",
+  };
+  const pipeline = referrals.length
+    ? (Object.keys(REFERRAL_STATUS_LABEL) as ReferralStatus[]).map(
+        (status, i) => ({
+          n: i + 1,
+          label: REFERRAL_STATUS_LABEL[status],
+          value: referrals.filter((r) => r.status === status).length,
+          color: PIPELINE_COLORS[status],
+        }),
+      )
+    : sample(MOCK_PIPELINE);
+
+  const isUrgent = (dueAt: string | null) =>
+    Boolean(dueAt && new Date(dueAt).getTime() - Date.now() < 24 * 3600_000);
+  const referralRows = referrals.length
+    ? referrals.map((r) => ({
+        id: r.caseReference || `REF-${r.id.slice(0, 8).toUpperCase()}`,
+        name: "Protected",
+        caseId: r.caseReference || r.id.slice(0, 8).toUpperCase(),
+        service: r.serviceRequested,
+        to: r.organizationName,
+        loc: r.contactName || "—",
+        priority: isUrgent(r.dueAt) ? "Urgent" : "Standard",
+        status: REFERRAL_STATUS_LABEL[r.status],
+        date: new Date(r.createdAt).toLocaleDateString(),
+        time: new Date(r.createdAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }))
+    : sample(MOCK_REFERRALS);
+
+  const urgentReferrals = referrals.length
+    ? referrals
+        .filter(
+          (r) =>
+            ["pending", "accepted"].includes(r.status) &&
+            (isUrgent(r.dueAt) || r.status === "pending"),
+        )
+        .slice(0, 4)
+        .map((r) => ({
+          id: r.organizationName,
+          tag: isUrgent(r.dueAt) ? "Urgent" : "Pending",
+          sub: r.serviceRequested,
+          time: fmtRelative(r.createdAt),
+        }))
+    : sample(MOCK_URGENT_REFERRALS);
+
+  const referralKpis = referrals.length
+    ? [
+        {
+          label: "Active Referrals",
+          value: nf.format(
+            referrals.filter((r) =>
+              ["pending", "accepted", "in_progress"].includes(r.status),
+            ).length,
+          ),
+          icon: Send,
+          tone: "violet",
+        },
+        {
+          label: "Awaiting Response",
+          value: nf.format(
+            referrals.filter((r) => r.status === "pending").length,
+          ),
+          icon: Clock,
+          tone: "amber",
+        },
+        {
+          label: "Completed",
+          value: nf.format(
+            referrals.filter((r) => r.status === "completed").length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+        {
+          label: "Partner Organizations",
+          value: nf.format(
+            new Set(referrals.map((r) => r.organizationName)).size,
+          ),
+          icon: Handshake,
+          tone: "sky",
+        },
+      ]
+    : gateKpis(MOCK_REFERRAL_KPIS);
+
+  return (
+    <>
+      {showNewReferral && user && (
+        <NewReferralModal
+          userId={user.id}
+          onClose={() => setShowNewReferral(false)}
+        />
+      )}
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {referralKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+          />
+        ))}
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Referral Pipeline"
+            action={
+              <button
+                type="button"
+                onClick={() => setShowNewReferral(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
+              >
+                <Plus className="h-3.5 w-3.5" /> Create Referral
+              </button>
+            }
+          >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {pipeline.map((p) => (
+                <div
+                  key={p.n}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center"
+                >
+                  <span
+                    className="mx-auto mb-2 grid h-7 w-7 place-items-center rounded-full text-[11px] font-black text-white"
+                    style={{ background: p.color }}
+                  >
+                    {p.n}
+                  </span>
+                  <p className="text-[10px] font-bold text-slate-400">
+                    {p.label}
+                  </p>
+                  <p className="text-xl font-black text-white">{p.value}</p>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel
+            title="All Referrals"
+            bodyClassName="p-0"
+            action={
+              <div className="flex items-center gap-2">
+                <SelectChip label="Filter" />
+                <SelectChip label="Export" />
+              </div>
+            }
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="px-5 py-3">Referral ID</th>
+                    <th className="px-5 py-3">Survivor</th>
+                    <th className="px-5 py-3">Service Type</th>
+                    <th className="px-5 py-3">Referred To</th>
+                    <th className="px-5 py-3">Priority</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Date Sent</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {referralRows.map((r) => (
+                    <tr key={r.id} className="hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
+                        {r.id}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={r.name} />
+                          <div>
+                            <p className="font-bold text-white">{r.name}</p>
+                            <p className="text-[10px] text-slate-500">
+                              Case {r.caseId}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-slate-300">{r.service}</td>
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-white">{r.to}</p>
+                        <p className="text-[10px] text-slate-500">{r.loc}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={statusTone(r.priority)}>{r.priority}</Pill>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={statusTone(r.status)}>{r.status}</Pill>
+                      </td>
+                      <td className="px-5 py-3 text-slate-400">
+                        <p>{r.date}</p>
+                        <p className="text-[10px] text-slate-500">{r.time}</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+              <span className="text-[11px] text-slate-500">
+                Showing {referralRows.length ? 1 : 0} to {referralRows.length}{" "}
+                of {nf.format(referralRows.length)} referrals
+              </span>
+              <Pagination />
+            </div>
+          </Panel>
+        </div>
+
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Urgent Referrals"
+            action={<LinkChip label="View all" />}
+          >
+            <div className="space-y-2.5">
+              {urgentReferrals.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+                >
+                  <Pill tone={statusTone(r.tag)}>{r.tag}</Pill>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-white">
+                      {r.id}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      {r.sub}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-slate-500">{r.time}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Quick Actions">
+            <QuickActionGrid
+              cols=""
+              items={[
+                {
+                  label: "Create Referral",
+                  desc: "Refer a survivor to a service or partner",
+                  icon: Plus,
+                },
+                {
+                  label: "Track Referral",
+                  desc: "Check the status of a referral",
+                  icon: Search,
+                },
+                {
+                  label: "Contact Partner",
+                  desc: "Reach out to partner organizations",
+                  icon: Phone,
+                },
+                {
+                  label: "View Partner Directory",
+                  desc: "Browse partner organizations",
+                  icon: FolderOpen,
+                },
+                {
+                  label: "Referral Report",
+                  desc: "Download referral summary",
+                  icon: Download,
+                },
+              ]}
+            />
+          </Panel>
+        </div>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Follow-ups =============================== */
 
-const FollowupsSection = () => (
-  <>
-    <SectionTitle meta={SECTION_META.followups} />
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_FOLLOWUP_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-          sub={"sub" in k ? k.sub : undefined}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Upcoming Follow-ups"
-          action={<LinkChip label="View Calendar" />}
-        >
-          <div className="grid grid-cols-7 gap-2">
-            {MOCK_WEEK.map((d) => (
-              <div
-                key={d.day}
-                className={cn(
-                  "rounded-xl border p-3 text-center",
-                  d.active
-                    ? "border-violet-500/40 bg-violet-500/10"
-                    : "border-white/10 bg-white/[0.02]",
-                )}
-              >
-                <p className="text-[10px] font-bold text-slate-400">{d.day}</p>
-                <p className="text-[9px] text-slate-500">{d.date}</p>
-                <p className="mt-1 text-lg font-black text-white">{d.count}</p>
-                <div className="mt-1 flex justify-center gap-0.5">
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="h-1 w-1 rounded-full bg-violet-400"
-                    />
-                  ))}
+const FollowupsSection = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { data: followEscalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+
+  const openEscalations = followEscalations.filter(
+    (e) => !["resolved", "closed"].includes((e.status || "").toLowerCase()),
+  );
+  const followupRows = followEscalations.length
+    ? openEscalations.map((e) => {
+        const d = new Date(e.triggeredAt || Date.now());
+        const status = (e.status || "").toLowerCase();
+        return {
+          key: e.id,
+          escalationId: e.id as string | undefined,
+          rawStatus: status,
+          date: d.toLocaleDateString(),
+          time: d.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          name: "Protected",
+          caseId: `SOS-${e.id.slice(0, 8).toUpperCase()}`,
+          worker:
+            status === "acknowledged" || status === "dispatched"
+              ? "Assigned"
+              : "Unassigned",
+          type: titleCase(
+            (e.escalationType || "escalation").replace(/_/g, " "),
+          ),
+          status: titleCase(status.replace(/_/g, " ") || "pending"),
+          notes: e.reason || "—",
+        };
+      })
+    : ALLOW_MOCK
+      ? MOCK_FOLLOWUPS.map((f, i) => ({
+          ...f,
+          key: String(i),
+          escalationId: undefined as string | undefined,
+          rawStatus: "",
+        }))
+      : [];
+
+  const acknowledge = async (row: { escalationId?: string }) => {
+    if (!row.escalationId || !user?.id) return;
+    try {
+      await acknowledgeEscalation(row.escalationId, user.id);
+      void queryClient.invalidateQueries({ queryKey: ESCALATION_EVENTS_KEY });
+      toast.success("Follow-up acknowledged");
+    } catch {
+      toast.error("Couldn't acknowledge — please retry.");
+    }
+  };
+
+  const followupKpis = followEscalations.length
+    ? [
+        {
+          label: "Open Follow-ups",
+          value: nf.format(openEscalations.length),
+          icon: RefreshCw,
+          tone: "violet",
+        },
+        {
+          label: "Unacknowledged",
+          value: nf.format(
+            openEscalations.filter(
+              (e) =>
+                !["acknowledged", "dispatched"].includes(
+                  (e.status || "").toLowerCase(),
+                ),
+            ).length,
+          ),
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+        {
+          label: "Being Handled",
+          value: nf.format(
+            openEscalations.filter((e) =>
+              ["acknowledged", "dispatched"].includes(
+                (e.status || "").toLowerCase(),
+              ),
+            ).length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+        {
+          label: "Critical",
+          value: nf.format(
+            openEscalations.filter(
+              (e) => (e.severity || "").toLowerCase() === "critical",
+            ).length,
+          ),
+          icon: Bell,
+          tone: "amber",
+        },
+      ]
+    : gateKpis(MOCK_FOLLOWUP_KPIS);
+
+  return (
+    <>
+      <SectionTitle meta={SECTION_META.followups} />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {followupKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+            sub={"sub" in k ? k.sub : undefined}
+          />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Upcoming Follow-ups"
+            action={<LinkChip label="View Calendar" />}
+          >
+            <div className="grid grid-cols-7 gap-2">
+              {MOCK_WEEK.map((d) => (
+                <div
+                  key={d.day}
+                  className={cn(
+                    "rounded-xl border p-3 text-center",
+                    d.active
+                      ? "border-violet-500/40 bg-violet-500/10"
+                      : "border-white/10 bg-white/[0.02]",
+                  )}
+                >
+                  <p className="text-[10px] font-bold text-slate-400">
+                    {d.day}
+                  </p>
+                  <p className="text-[9px] text-slate-500">{d.date}</p>
+                  <p className="mt-1 text-lg font-black text-white">
+                    {d.count}
+                  </p>
+                  <div className="mt-1 flex justify-center gap-0.5">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="h-1 w-1 rounded-full bg-violet-400"
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-400">
-            {[
-              ["Counseling", "#a855f7"],
-              ["Legal", "#3b82f6"],
-              ["Shelter", "#10b981"],
-              ["Medical", "#f59e0b"],
-              ["Other", "#64748b"],
-            ].map(([l, c]) => (
-              <span key={l} className="flex items-center gap-1.5">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: c }}
-                />
-                {l}
-              </span>
-            ))}
-          </div>
-        </Panel>
-        <Panel
-          title="Follow-up List"
-          bodyClassName="p-0"
-          action={
-            <div className="flex items-center gap-2">
-              <SelectChip label="Filters" />
-              <SelectChip label="Export" />
+              ))}
             </div>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className={tableHead}>
-                  <th className="px-5 py-3">Date</th>
-                  <th className="px-5 py-3">Survivor</th>
-                  <th className="px-5 py-3">Case ID</th>
-                  <th className="px-5 py-3">Assigned Worker</th>
-                  <th className="px-5 py-3">Follow-up Type</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Notes</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {MOCK_FOLLOWUPS.map((f, i) => (
-                  <tr key={i} className="hover:bg-white/[0.02]">
-                    <td className="px-5 py-3 text-slate-400">
-                      <p>{f.date}</p>
-                      <p className="text-[10px] text-slate-500">{f.time}</p>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={f.name} />
-                        {f.name}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
-                      {f.caseId}
-                    </td>
-                    <td className="px-5 py-3 text-slate-300">{f.worker}</td>
-                    <td className="px-5 py-3 text-slate-300">{f.type}</td>
-                    <td className="px-5 py-3">
-                      <Pill tone={statusTone(f.status)}>{f.status}</Pill>
-                    </td>
-                    <td className="px-5 py-3 text-slate-400">{f.notes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
-              Showing 1 to 8 of 94 follow-ups
-            </span>
-            <Pagination pages={["1", "2", "3", "…", "12"]} />
-          </div>
-        </Panel>
-      </div>
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Overdue Follow-ups"
-          action={<LinkChip label="View all" />}
-        >
-          <div className="space-y-2.5">
-            {MOCK_OVERDUE.map((o, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-              >
-                <Avatar name={o.name} tone="rose" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-white">
-                    {o.name}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">{o.sub}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-rose-400">
-                    {o.time}
-                  </p>
-                  <Pill tone="rose">Overdue</Pill>
-                </div>
+            <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-400">
+              {[
+                ["Counseling", "#a855f7"],
+                ["Legal", "#3b82f6"],
+                ["Shelter", "#10b981"],
+                ["Medical", "#f59e0b"],
+                ["Other", "#64748b"],
+              ].map(([l, c]) => (
+                <span key={l} className="flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: c }}
+                  />
+                  {l}
+                </span>
+              ))}
+            </div>
+          </Panel>
+          <Panel
+            title="Follow-up List"
+            bodyClassName="p-0"
+            action={
+              <div className="flex items-center gap-2">
+                <SelectChip label="Filters" />
+                <SelectChip label="Export" />
               </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Quick Actions">
-          <QuickActionGrid items={MOCK_FOLLOWUP_QUICK} />
-        </Panel>
-      </div>
-    </section>
-  </>
-);
+            }
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="px-5 py-3">Date</th>
+                    <th className="px-5 py-3">Survivor</th>
+                    <th className="px-5 py-3">Case ID</th>
+                    <th className="px-5 py-3">Assigned Worker</th>
+                    <th className="px-5 py-3">Follow-up Type</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {followupRows.map((f) => (
+                    <tr key={f.key} className="hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 text-slate-400">
+                        <p>{f.date}</p>
+                        <p className="text-[10px] text-slate-500">{f.time}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={f.name} />
+                          {f.name}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
+                        {f.caseId}
+                      </td>
+                      <td className="px-5 py-3 text-slate-300">{f.worker}</td>
+                      <td className="px-5 py-3 text-slate-300">{f.type}</td>
+                      <td className="px-5 py-3">
+                        <Pill tone={statusTone(f.status)}>{f.status}</Pill>
+                      </td>
+                      <td className="px-5 py-3 text-slate-400">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">{f.notes}</span>
+                          {f.escalationId &&
+                            !["acknowledged", "dispatched"].includes(
+                              f.rawStatus,
+                            ) && (
+                              <button
+                                type="button"
+                                onClick={() => void acknowledge(f)}
+                                className="shrink-0 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-bold text-violet-200 hover:bg-violet-500/20"
+                              >
+                                Acknowledge
+                              </button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+              <span className="text-[11px] text-slate-500">
+                Showing {followupRows.length ? 1 : 0} to {followupRows.length}{" "}
+                of {nf.format(followupRows.length)} follow-ups
+              </span>
+              <Pagination />
+            </div>
+          </Panel>
+        </div>
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Overdue Follow-ups"
+            action={<LinkChip label="View all" />}
+          >
+            <div className="space-y-2.5">
+              {MOCK_OVERDUE.map((o, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+                >
+                  <Avatar name={o.name} tone="rose" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-white">
+                      {o.name}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      {o.sub}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-rose-400">
+                      {o.time}
+                    </p>
+                    <Pill tone="rose">Overdue</Pill>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Quick Actions">
+            <QuickActionGrid items={MOCK_FOLLOWUP_QUICK} />
+          </Panel>
+        </div>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Counseling =============================== */
 

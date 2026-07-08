@@ -78,6 +78,16 @@ import {
   useUserProfile,
 } from "@/data/aegisData";
 import { useCaseCategories } from "@/data/analyticsData";
+import { useLiveResources } from "@/data/liveDashboardData";
+import {
+  scheduleSession,
+  updateSessionStatus,
+  useCounselingSessions,
+  COUNSELING_SESSIONS_KEY,
+  type SessionMode,
+  type SessionType,
+} from "@/data/counselingSessions";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
 import { ALLOW_MOCK, NO_DATA, gateKpis } from "@/lib/mockData";
@@ -3023,32 +3033,303 @@ const SurvivorsSection = () => {
 
 /* =============================== Sessions =============================== */
 
+/** Schedule a real counseling session (persists to counseling_sessions). */
+const ScheduleSessionModal = ({
+  userId,
+  onClose,
+}: {
+  userId: string;
+  onClose: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const [alias, setAlias] = useState("");
+  const [caseReference, setCaseReference] = useState("");
+  const [sessionType, setSessionType] = useState<SessionType>("individual");
+  const [mode, setMode] = useState<SessionMode>("virtual");
+  const [when, setWhen] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    const scheduledAt = when ? new Date(when) : null;
+    if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+      toast.error("Pick a date and time for the session");
+      return;
+    }
+    setBusy(true);
+    try {
+      await scheduleSession({
+        counselorId: userId,
+        scheduledAt: scheduledAt.toISOString(),
+        survivorAlias: alias || null,
+        caseReference: caseReference || null,
+        sessionType,
+        mode,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: COUNSELING_SESSIONS_KEY,
+      });
+      toast.success("Session scheduled");
+      onClose();
+    } catch {
+      toast.error("Couldn't schedule the session — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Schedule session"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-black text-white">Schedule session</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            Book a counseling session — it appears on every responder calendar
+            in real time.
+          </p>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <Input
+            value={alias}
+            onChange={(event) => setAlias(event.target.value)}
+            placeholder="Survivor alias (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <Input
+            value={caseReference}
+            onChange={(event) => setCaseReference(event.target.value)}
+            placeholder="Case reference (optional)"
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <Input
+            type="datetime-local"
+            value={when}
+            onChange={(event) => setWhen(event.target.value)}
+            className="h-9 border-white/10 bg-slate-900/60 text-sm text-white"
+          />
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                "individual",
+                "group",
+                "family",
+                "crisis",
+                "follow_up",
+              ] as SessionType[]
+            ).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setSessionType(t)}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                  sessionType === t
+                    ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                    : "border-white/10 text-slate-300 hover:bg-white/5",
+                )}
+              >
+                {titleCase(t.replace("_", " "))}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {(["virtual", "in_person", "phone"] as SessionMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={cn(
+                  "flex-1 rounded-lg border px-3 py-1.5 text-[11px] font-bold",
+                  mode === m
+                    ? "border-violet-400/50 bg-violet-500/20 text-violet-200"
+                    : "border-white/10 text-slate-300 hover:bg-white/5",
+                )}
+              >
+                {titleCase(m.replace("_", " "))}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void create()}
+            disabled={busy}
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {busy ? "Scheduling…" : "Schedule"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SESSION_STATUS_LABEL: Record<string, string> = {
+  scheduled: "Scheduled",
+  in_progress: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  no_show: "No Show",
+};
+
 const SessionsSection = () => {
   const { navigate } = useCounselorPortal();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: sessions = [] } = useCounselingSessions();
+  const [showSchedule, setShowSchedule] = useState(false);
+
+  const scheduleRows = sessions.length
+    ? sessions.slice(0, 8).map((s) => {
+        const d = new Date(s.scheduledAt);
+        return {
+          key: s.id,
+          sessionId: s.id,
+          rawStatus: s.status,
+          time: d.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          name: s.survivorAlias || s.caseReference || "Survivor (protected)",
+          type: `${titleCase(s.sessionType.replace("_", " "))} · ${d.toLocaleDateString()}`,
+          mode: s.mode === "in_person" ? "In-Person" : titleCase(s.mode),
+          status: SESSION_STATUS_LABEL[s.status] ?? titleCase(s.status),
+        };
+      })
+    : ALLOW_MOCK
+      ? MOCK_SESSION_SCHEDULE.map((s) => ({
+          ...s,
+          key: s.time,
+          sessionId: undefined as string | undefined,
+          rawStatus: "" as string,
+        }))
+      : [];
+
+  const todayCount = sessions.filter(
+    (s) => new Date(s.scheduledAt).toDateString() === new Date().toDateString(),
+  ).length;
+  const sessionKpis = sessions.length
+    ? [
+        {
+          label: "Today's Sessions",
+          value: String(todayCount),
+          icon: Calendar,
+          tone: "sky",
+        },
+        {
+          label: "Completed Sessions",
+          value: String(
+            sessions.filter((s) => s.status === "completed").length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+        {
+          label: "Upcoming",
+          value: String(
+            sessions.filter(
+              (s) =>
+                s.status === "scheduled" &&
+                new Date(s.scheduledAt).getTime() > Date.now(),
+            ).length,
+          ),
+          icon: Clock,
+          tone: "violet",
+        },
+        {
+          label: "Cancellations",
+          value: String(
+            sessions.filter((s) => ["cancelled", "no_show"].includes(s.status))
+              .length,
+          ),
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+      ]
+    : gateKpis(MOCK_SESSION_KPIS);
+
+  const advanceSession = async (row: {
+    sessionId?: string;
+    rawStatus: string;
+  }) => {
+    if (!row.sessionId) return;
+    const next =
+      row.rawStatus === "scheduled"
+        ? "in_progress"
+        : row.rawStatus === "in_progress"
+          ? "completed"
+          : null;
+    if (!next) return;
+    try {
+      await updateSessionStatus(row.sessionId, next);
+      void queryClient.invalidateQueries({
+        queryKey: COUNSELING_SESSIONS_KEY,
+      });
+      toast.success(`Session ${SESSION_STATUS_LABEL[next].toLowerCase()}`);
+    } catch {
+      toast.error("Couldn't update the session — please retry.");
+    }
+  };
+
   return (
     <>
+      {showSchedule && user && (
+        <ScheduleSessionModal
+          userId={user.id}
+          onClose={() => setShowSchedule(false)}
+        />
+      )}
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {gateKpis(MOCK_SESSION_KPIS).map((k) => (
+        {sessionKpis.map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
             value={k.value}
             icon={k.icon}
             tone={k.tone}
-            delta={k.delta}
-            sub={k.sub}
+            delta={"delta" in k ? k.delta : undefined}
+            sub={"sub" in k ? k.sub : undefined}
           />
         ))}
       </section>
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel
           title="Session Schedule"
-          action={<SelectChip label="Today, May 16, 2024" />}
+          action={
+            <button
+              type="button"
+              onClick={() => setShowSchedule(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Session
+            </button>
+          }
         >
           <div className="space-y-2">
-            {MOCK_SESSION_SCHEDULE.map((s) => (
+            {scheduleRows.length === 0 && (
+              <p className="px-1 py-6 text-center text-xs text-slate-500">
+                No sessions scheduled yet — use "New Session" to book one.
+              </p>
+            )}
+            {scheduleRows.map((s) => (
               <div
-                key={s.time}
+                key={s.key}
                 className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-2.5"
               >
                 <div className="w-16 text-center">
@@ -3076,6 +3357,16 @@ const SessionsSection = () => {
                   {s.mode}
                 </span>
                 <Pill tone={statusTone(s.status)}>{s.status}</Pill>
+                {s.sessionId &&
+                  ["scheduled", "in_progress"].includes(s.rawStatus) && (
+                    <button
+                      type="button"
+                      onClick={() => void advanceSession(s)}
+                      className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-bold text-violet-200 hover:bg-violet-500/20"
+                    >
+                      {s.rawStatus === "scheduled" ? "Start" : "Complete"}
+                    </button>
+                  )}
               </div>
             ))}
             <button
@@ -3482,7 +3773,18 @@ const MessagesSection = () => <SecureMessagesWorkspace />;
 
 /* =============================== Resources =============================== */
 
+const RESOURCE_TYPE_TONE: Record<string, string> = {
+  shelter: "emerald",
+  hotline: "violet",
+  legal: "amber",
+  medical: "rose",
+  counseling: "sky",
+};
+
 const ResourcesSection = () => {
+  const { data: liveResources = [] } = useLiveResources({ limit: 200 });
+  const [query, setQuery] = useState("");
+  const [activeCat, setActiveCat] = useState("All Categories");
   const cats = [
     "All Categories",
     "Shelters",
@@ -3492,10 +3794,93 @@ const ResourcesSection = () => {
     "Child Protection",
     "Safety Tools",
   ];
+  const CAT_MATCH: Record<string, string> = {
+    Shelters: "shelter",
+    Legal: "legal",
+    Medical: "medical",
+    Counseling: "counsel",
+    "Child Protection": "child",
+    "Safety Tools": "safety",
+  };
+
+  type ResourceRow = {
+    key: string;
+    org: string;
+    desc: string;
+    cat: string;
+    rawType: string;
+    color: string;
+    loc: string;
+    avail: string;
+    contact: string;
+  };
+  const allRows: ResourceRow[] = liveResources.length
+    ? liveResources.map((r) => ({
+        key: r.id,
+        org: r.name,
+        desc: r.description ?? "",
+        cat: titleCase(r.resourceType),
+        rawType: r.resourceType.toLowerCase(),
+        color: RESOURCE_TYPE_TONE[r.resourceType.toLowerCase()] ?? "violet",
+        loc: r.languages.slice(0, 2).join(", ") || "—",
+        avail: r.available247 ? "24/7" : "Business hours",
+        contact: r.contactInfo ?? "—",
+      }))
+    : ALLOW_MOCK
+      ? MOCK_RESOURCES.map((r) => ({ ...r, key: r.org, rawType: "" }))
+      : [];
+  const resourceRows = allRows.filter((r) => {
+    const q = query.trim().toLowerCase();
+    const matchesQuery =
+      !q || `${r.org} ${r.desc} ${r.cat}`.toLowerCase().includes(q);
+    const matchesCat =
+      activeCat === "All Categories" ||
+      r.rawType.includes(CAT_MATCH[activeCat] ?? "") ||
+      r.cat.toLowerCase().includes((CAT_MATCH[activeCat] ?? "").toLowerCase());
+    return matchesQuery && matchesCat;
+  });
+
+  const resKpis = liveResources.length
+    ? [
+        {
+          label: "Available Resources",
+          value: nf.format(liveResources.length),
+          icon: BookOpen,
+          tone: "violet",
+          note: "In the live directory",
+        },
+        {
+          label: "Shelter Partners",
+          value: nf.format(
+            liveResources.filter((r) => r.resourceType === "shelter").length,
+          ),
+          icon: Home,
+          tone: "emerald",
+          note: "Placement ready",
+        },
+        {
+          label: "24/7 Services",
+          value: nf.format(liveResources.filter((r) => r.available247).length),
+          icon: Clock,
+          tone: "sky",
+          note: "Always reachable",
+        },
+        {
+          label: "Hotlines",
+          value: nf.format(
+            liveResources.filter((r) => r.resourceType === "hotline").length,
+          ),
+          icon: Bell,
+          tone: "rose",
+          note: "Crisis lines",
+        },
+      ]
+    : gateKpis(MOCK_RES_KPIS);
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {gateKpis(MOCK_RES_KPIS).map((k) => (
+        {resKpis.map((k) => (
           <KpiCard
             key={k.label}
             label={k.label}
@@ -3514,6 +3899,8 @@ const ResourcesSection = () => {
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
               <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search resources..."
                 className="h-8 w-56 border-white/10 bg-slate-900/60 pl-8 text-xs text-white"
               />
@@ -3521,14 +3908,14 @@ const ResourcesSection = () => {
           }
         >
           <div className="flex flex-wrap gap-1.5 border-b border-white/5 p-3">
-            {cats.map((c, i) => (
+            {cats.map((c) => (
               <button
                 key={c}
                 type="button"
-                onClick={() => toast.info(`Filtering resources: ${c}`)}
+                onClick={() => setActiveCat(c)}
                 className={cn(
                   "rounded-lg px-2.5 py-1 text-[11px] font-bold",
-                  i === 0
+                  c === activeCat
                     ? "bg-violet-500/20 text-violet-300"
                     : "border border-white/10 text-slate-400 hover:text-white",
                 )}
@@ -3550,8 +3937,18 @@ const ResourcesSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MOCK_RESOURCES.map((r) => (
-                  <tr key={r.org} className="hover:bg-white/[0.02]">
+                {resourceRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-10 text-center text-xs text-slate-500"
+                    >
+                      No resources match the current filters.
+                    </td>
+                  </tr>
+                )}
+                {resourceRows.map((r) => (
+                  <tr key={r.key} className="hover:bg-white/[0.02]">
                     <td className="px-4 py-3">
                       <p className="font-bold text-white">{r.org}</p>
                       <p className="text-[10px] text-slate-500">{r.desc}</p>
@@ -3572,9 +3969,10 @@ const ResourcesSection = () => {
           </div>
           <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
             <span className="text-[11px] text-slate-500">
-              Showing 1 to 6 of 142 resources
+              Showing {resourceRows.length ? 1 : 0} to {resourceRows.length} of{" "}
+              {nf.format(allRows.length)} resources
             </span>
-            <Pagination pages={["1", "2", "3", "…", "24"]} />
+            <Pagination />
           </div>
         </Panel>
         <div className="flex flex-col gap-6">
@@ -3583,9 +3981,9 @@ const ResourcesSection = () => {
             action={<LinkChip label="View all" />}
           >
             <div className="space-y-2">
-              {MOCK_RESOURCES.slice(0, 4).map((r) => (
+              {allRows.slice(0, 4).map((r) => (
                 <div
-                  key={r.org}
+                  key={r.key}
                   className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
                 >
                   <span
@@ -3614,7 +4012,7 @@ const ResourcesSection = () => {
             action={<LinkChip label="View all" />}
           >
             <div className="space-y-2">
-              {MOCK_RESOURCES.slice(0, 4).map((r, i) => (
+              {allRows.slice(0, 4).map((r, i) => (
                 <div
                   key={r.org}
                   className="flex items-center gap-2.5 text-[11px]"
