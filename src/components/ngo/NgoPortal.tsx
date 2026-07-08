@@ -3914,6 +3914,8 @@ const ShelterSection = () => {
 
   const shelterRows = shelters.length
     ? shelters.map((s) => ({
+        // Live shelter names repeat across regions ("… - Unit 1"); key by id.
+        key: s.id,
         name: s.name,
         loc: s.region || "—",
         cap: "—",
@@ -3924,6 +3926,7 @@ const ShelterSection = () => {
     : ALLOW_MOCK
       ? MOCK_SHELTERS.map((s) => ({
           ...s,
+          key: s.name,
           cap: String(s.cap),
           beds: String(s.beds),
         }))
@@ -3981,7 +3984,7 @@ const ShelterSection = () => {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {shelterRows.map((s) => (
-                    <tr key={s.name} className="hover:bg-white/[0.02]">
+                    <tr key={s.key} className="hover:bg-white/[0.02]">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="grid h-8 w-8 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
