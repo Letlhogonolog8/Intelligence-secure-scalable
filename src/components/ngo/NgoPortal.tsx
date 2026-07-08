@@ -5,12 +5,16 @@
  * wired to a live AEGIS data source later without touching the layout.
  */
 import {
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import {
   Bar,
   BarChart,
@@ -75,7 +79,12 @@ import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
 import SecureMessagesWorkspace from "@/components/messaging/SecureMessagesWorkspace";
-import { useCaseReports, useShelters, useUserProfile } from "@/data/aegisData";
+import {
+  useCaseReports,
+  useEscalationEvents,
+  useShelters,
+  useUserProfile,
+} from "@/data/aegisData";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
@@ -2129,72 +2138,241 @@ const chartTooltip = {
   },
 } as const;
 
-const SelectChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-  >
-    {label}
-    <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-  </button>
-);
+/* ============================ PORTAL CONTEXT ============================ */
 
-const LinkChip = ({ label }: { label: string }) => (
-  <button
-    type="button"
-    className="text-[11px] font-bold text-violet-400 hover:text-violet-300"
-  >
-    {label}
-  </button>
-);
+type NgoPortalContextValue = {
+  section: SectionKey;
+  navigate: (section: SectionKey) => void;
+};
 
-const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => (
-  <div className="flex items-center gap-1">
-    <button
-      type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
-    >
-      <ChevronLeft className="h-3.5 w-3.5" />
-    </button>
-    {pages.map((p, i) => (
+const NgoPortalContext = createContext<NgoPortalContextValue | null>(null);
+
+const useNgoPortal = (): NgoPortalContextValue => {
+  const ctx = useContext(NgoPortalContext);
+  if (!ctx) throw new Error("useNgoPortal must be used within NgoPortal");
+  return ctx;
+};
+
+/** Route a quick-action label to the section that owns that capability. */
+const ACTION_TARGETS: { match: string; section: SectionKey }[] = [
+  { match: "case", section: "cases" },
+  { match: "survivor", section: "survivors" },
+  { match: "referral", section: "referrals" },
+  { match: "refer", section: "referrals" },
+  { match: "follow", section: "followups" },
+  { match: "counsel", section: "counseling" },
+  { match: "session", section: "counseling" },
+  { match: "shelter", section: "shelter" },
+  { match: "bed", section: "shelter" },
+  { match: "legal", section: "legalaid" },
+  { match: "medical", section: "medical" },
+  { match: "facility", section: "medical" },
+  { match: "report", section: "reports" },
+  { match: "analytic", section: "analytics" },
+  { match: "message", section: "messages" },
+  { match: "contact", section: "messages" },
+];
+
+const sectionForAction = (label: string): SectionKey | undefined =>
+  ACTION_TARGETS.find((entry) => label.toLowerCase().includes(entry.match))
+    ?.section;
+
+/** Client-side CSV download of live rows (quotes and escapes cell values). */
+const downloadCsv = (
+  filename: string,
+  rows: Record<string, unknown>[],
+): boolean => {
+  if (!rows.length) return false;
+  const headers = Object.keys(rows[0]);
+  const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => cell(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  return true;
+};
+
+/** Dropdown filter chip: selecting an option updates the chip label. */
+const SelectChip = ({
+  label,
+  options,
+  onSelect,
+}: {
+  label: string;
+  options?: string[];
+  onSelect?: (option: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(label);
+  const choices = options ?? [label];
+
+  return (
+    <div className="relative">
       <button
-        key={`${p}-${i}`}
         type="button"
-        className={cn(
-          "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold",
-          i === 0
-            ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-            : "border border-white/10 text-slate-400 hover:bg-white/5",
-        )}
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
       >
-        {p}
+        {selected}
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-slate-500 transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
-    ))}
+      {open && (
+        <div className="absolute right-0 z-40 mt-2 w-44 overflow-hidden rounded-lg border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40">
+          {choices.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setSelected(option);
+                setOpen(false);
+                onSelect?.(option);
+              }}
+              className={cn(
+                "block w-full px-3 py-2 text-left text-[11px] font-bold hover:bg-white/5",
+                selected === option ? "text-violet-300" : "text-slate-300",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * A "View all" affordance. When `target` points to another section it
+ * navigates there; when the full list already renders in the current section
+ * it confirms that rather than opening a dead-end popover.
+ */
+const LinkChip = ({
+  label,
+  target,
+}: {
+  label: string;
+  target?: SectionKey;
+}) => {
+  const { section, navigate } = useNgoPortal();
+
+  const handleClick = () => {
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.info("Showing the full list below.");
+    }
+  };
+
+  return (
     <button
       type="button"
-      className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      onClick={handleClick}
+      className="text-[11px] font-bold text-violet-400 hover:text-violet-300"
     >
-      <ChevronRight className="h-3.5 w-3.5" />
+      {label}
     </button>
-  </div>
-);
+  );
+};
 
-const RowActions = () => (
+const Pagination = ({ pages = ["1"] }: { pages?: string[] }) => {
+  const [active, setActive] = useState(pages[0] ?? "1");
+  const activeIndex = Math.max(0, pages.indexOf(active));
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        aria-label="Previous page"
+        onClick={() => setActive(pages[Math.max(0, activeIndex - 1)])}
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+      </button>
+      {pages.map((p, i) => (
+        <button
+          key={`${p}-${i}`}
+          type="button"
+          onClick={() => setActive(p)}
+          className={cn(
+            "grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-bold",
+            p === active
+              ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+              : "border border-white/10 text-slate-400 hover:bg-white/5",
+          )}
+        >
+          {p}
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-label="Next page"
+        onClick={() =>
+          setActive(pages[Math.min(pages.length - 1, activeIndex + 1)])
+        }
+        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5"
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+};
+
+/**
+ * Row-level actions. `subject` names the row for the confirmation/detail
+ * toasts; `detail` (when provided) is shown by the view action; `onExport`
+ * (when provided) replaces the default "more" behaviour with a CSV export.
+ */
+const RowActions = ({
+  subject,
+  detail,
+  onExport,
+}: {
+  subject?: string;
+  detail?: string;
+  onExport?: () => void;
+}) => (
   <div className="flex items-center justify-end gap-1.5">
     <button
       type="button"
+      aria-label={subject ? `View ${subject}` : "View details"}
+      onClick={() =>
+        toast.info(detail ?? `${subject ?? "Record"} — full detail below.`)
+      }
       className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
     >
       <Eye className="h-3.5 w-3.5" />
     </button>
     <button
       type="button"
+      aria-label={subject ? `Edit ${subject}` : "Edit"}
+      onClick={() =>
+        toast.info(
+          "Editing is coordinated with the case team — use Secure Messages to request changes.",
+        )
+      }
       className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
     >
       <Pencil className="h-3.5 w-3.5" />
     </button>
     <button
       type="button"
+      aria-label={subject ? `Export ${subject}` : "More actions"}
+      onClick={() =>
+        onExport ? onExport() : toast.info(`${subject ?? "Record"} noted.`)
+      }
       className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
     >
       <MoreHorizontal className="h-3.5 w-3.5" />
@@ -2228,28 +2406,42 @@ const QuickActionGrid = ({
     icon: ComponentType<{ className?: string }>;
   }[];
   cols?: string;
-}) => (
-  <div className={cn("grid grid-cols-1 gap-3", cols)}>
-    {items.map((a) => {
-      const Icon = a.icon;
-      return (
-        <button
-          key={a.label}
-          type="button"
-          className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-left transition-colors hover:border-white/20"
-        >
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
-            <Icon className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-white">{a.label}</p>
-            <p className="text-[10px] text-slate-500">{a.desc}</p>
-          </div>
-        </button>
-      );
-    })}
-  </div>
-);
+}) => {
+  const { section, navigate } = useNgoPortal();
+
+  const handleAction = (label: string) => {
+    const target = sectionForAction(label);
+    if (target && target !== section) {
+      navigate(target);
+    } else {
+      toast.success(label);
+    }
+  };
+
+  return (
+    <div className={cn("grid grid-cols-1 gap-3", cols)}>
+      {items.map((a) => {
+        const Icon = a.icon;
+        return (
+          <button
+            key={a.label}
+            type="button"
+            onClick={() => handleAction(a.label)}
+            className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-left transition-colors hover:border-white/20"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
+              <Icon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white">{a.label}</p>
+              <p className="text-[10px] text-slate-500">{a.desc}</p>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 /* ================================ PORTAL ================================ */
 
@@ -2257,7 +2449,20 @@ const NgoPortal: React.FC = () => {
   const [section, setSection] = useState<SectionKey>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const meta = SECTION_META[section] ?? { title: "Section", subtitle: "" };
+  // Placeholder sections take their title from the nav label rather than a
+  // generic "Section" heading.
+  const navLabel = NAV_GROUPS.flatMap((group) => group.items).find(
+    (item) => item.key === section,
+  )?.label;
+  const meta = SECTION_META[section] ?? {
+    title: navLabel ?? "Section",
+    subtitle: "This workspace is being connected to live AEGIS data.",
+  };
+
+  const portalContext = useMemo<NgoPortalContextValue>(
+    () => ({ section, navigate: setSection }),
+    [section],
+  );
 
   const { user, signOut } = useAuth();
   const { data: profile } = useUserProfile(user?.id);
@@ -2271,6 +2476,19 @@ const NgoPortal: React.FC = () => {
       : MOCK_ORG.role,
   };
 
+  // Live bell count: escalations not yet attended by a responder.
+  const { data: headerEscalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const pendingAlerts = headerEscalations.filter(
+    (e) =>
+      !["acknowledged", "dispatched", "resolved", "closed"].includes(
+        (e.status || "").toLowerCase(),
+      ),
+  ).length;
+
   useEffect(() => {
     if (!menuOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -2282,239 +2500,254 @@ const NgoPortal: React.FC = () => {
   }, [menuOpen]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
-      {/* Sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
-        <div className="flex items-center justify-between px-5 py-5">
-          <div className="flex items-center gap-3">
-            <svg
-              viewBox="0 0 40 40"
-              className="h-9 w-9 shrink-0"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="aegis-ngo" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#a78bfa" />
-                  <stop offset="100%" stopColor="#6d28d9" />
-                </linearGradient>
-              </defs>
-              <path d="M20 2 L36 11 L20 38 L4 11 Z" fill="url(#aegis-ngo)" />
-              <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
-              <path
-                d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
-                fill="#ffffff"
-              />
-            </svg>
-            <div className="leading-tight">
-              <p className="text-base font-black tracking-tight text-white">
-                AEGIS-AI
-              </p>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">
-                NGO Portal
-              </p>
-            </div>
-          </div>
-          <ChevronDown className="h-4 w-4 text-slate-600" />
-        </div>
-
-        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV_GROUPS.map((group, gi) => (
-            <div key={group.heading ?? `g-${gi}`}>
-              {group.heading && (
-                <p className="px-3 pb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600">
-                  {group.heading}
+    <NgoPortalContext.Provider value={portalContext}>
+      <div className="flex h-screen w-screen overflow-hidden bg-[#070b18] text-slate-50">
+        {/* Sidebar */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0f1f] lg:flex">
+          <div className="flex items-center justify-between px-5 py-5">
+            <div className="flex items-center gap-3">
+              <svg
+                viewBox="0 0 40 40"
+                className="h-9 w-9 shrink-0"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="aegis-ngo" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#a78bfa" />
+                    <stop offset="100%" stopColor="#6d28d9" />
+                  </linearGradient>
+                </defs>
+                <path d="M20 2 L36 11 L20 38 L4 11 Z" fill="url(#aegis-ngo)" />
+                <path d="M20 2 L20 38 L4 11 Z" fill="#ffffff" opacity="0.14" />
+                <path
+                  d="M20 11 L27 27 H23.5 L20 19 L16.5 27 H13 Z"
+                  fill="#ffffff"
+                />
+              </svg>
+              <div className="leading-tight">
+                <p className="text-base font-black tracking-tight text-white">
+                  AEGIS-AI
                 </p>
-              )}
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = section === item.key;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => setSection(item.key as SectionKey)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all",
-                        active
-                          ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                          : "text-slate-400 hover:bg-white/5 hover:text-white",
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "h-[18px] w-[18px] shrink-0",
-                          active ? "text-white" : "text-slate-500",
-                        )}
-                      />
-                      <span className="flex-1 text-left">{item.label}</span>
-                    </button>
-                  );
-                })}
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">
+                  NGO Portal
+                </p>
               </div>
             </div>
-          ))}
-        </nav>
-
-        <div className="border-t border-white/10 px-4 py-4">
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-            Organization Status
-          </p>
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{" "}
-            Verified NGO
-          </p>
-          <div className="mt-2 space-y-1 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Partnership Level</span>
-              <span className="font-bold text-amber-400">Gold</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Member Since</span>
-              <span className="text-slate-300">Jan 2024</span>
-            </div>
+            <ChevronDown className="h-4 w-4 text-slate-600" />
           </div>
-          <button
-            type="button"
-            className="mt-3 w-full rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 py-2 text-[11px] font-bold text-white"
-          >
-            View Organization Profile
-          </button>
-        </div>
-      </aside>
 
-      {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-1.5 truncate text-base font-black tracking-tight text-white md:text-lg">
-              {meta.greeting ? `Welcome, ${orgName}` : meta.title}
-              {meta.greeting && (
-                <CheckCircle2 className="h-4 w-4 text-violet-400" />
-              )}
-            </h1>
-            <p className="hidden truncate text-xs text-slate-500 sm:block">
-              {meta.subtitle}
+          <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {NAV_GROUPS.map((group, gi) => (
+              <div key={group.heading ?? `g-${gi}`}>
+                {group.heading && (
+                  <p className="px-3 pb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600">
+                    {group.heading}
+                  </p>
+                )}
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = section === item.key;
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => setSection(item.key as SectionKey)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all",
+                          active
+                            ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                            : "text-slate-400 hover:bg-white/5 hover:text-white",
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            "h-[18px] w-[18px] shrink-0",
+                            active ? "text-white" : "text-slate-500",
+                          )}
+                        />
+                        <span className="flex-1 text-left">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+
+          <div className="border-t border-white/10 px-4 py-4">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Organization Status
             </p>
-          </div>
-          <div className="relative ml-auto hidden max-w-md flex-1 lg:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-            <Input
-              placeholder="Search cases, survivors, services, resources..."
-              className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-500"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-500">
-              ⌘K
-            </span>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-              LIVE
-            </span>
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{" "}
+              Verified NGO
+            </p>
+            <div className="mt-2 space-y-1 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Partnership Level</span>
+                <span className="font-bold text-amber-400">Gold</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Member Since</span>
+                <span className="text-slate-300">Jan 2024</span>
+              </div>
+            </div>
             <button
               type="button"
-              className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white"
-              aria-label="Notifications"
+              onClick={() =>
+                toast.info(
+                  `${orgName} — organization details are managed by your administrator in the Admin console.`,
+                )
+              }
+              className="mt-3 w-full rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 py-2 text-[11px] font-bold text-white"
             >
-              <Bell className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                12
+              View Organization Profile
+            </button>
+          </div>
+        </aside>
+
+        {/* Main */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-xl md:px-6">
+            <div className="min-w-0">
+              <h1 className="flex items-center gap-1.5 truncate text-base font-black tracking-tight text-white md:text-lg">
+                {meta.greeting ? `Welcome, ${orgName}` : meta.title}
+                {meta.greeting && (
+                  <CheckCircle2 className="h-4 w-4 text-violet-400" />
+                )}
+              </h1>
+              <p className="hidden truncate text-xs text-slate-500 sm:block">
+                {meta.subtitle}
+              </p>
+            </div>
+            <div className="relative ml-auto hidden max-w-md flex-1 lg:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Input
+                placeholder="Search cases, survivors, services, resources..."
+                className="h-9 border-white/10 bg-slate-900/60 pl-10 pr-12 text-sm text-white placeholder:text-slate-500"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1 text-[10px] text-slate-500">
+                ⌘K
               </span>
-            </button>
-            <button
-              type="button"
-              className="hidden h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white sm:grid"
-              aria-label="Help"
-            >
-              <HelpCircle className="h-5 w-5" />
-            </button>
-            <div
-              ref={menuRef}
-              className="relative border-l border-white/10 pl-2 sm:pl-3"
-            >
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300 sm:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                LIVE
+              </span>
               <button
                 type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="flex items-center gap-2"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
+                onClick={() => setSection("cases")}
+                className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white"
+                aria-label="Notifications"
               >
-                <Avatar name={account.name} />
-                <div className="hidden text-left leading-tight lg:block">
-                  <p className="text-sm font-bold text-white">{account.name}</p>
-                  <p className="text-[10px] text-slate-500">{account.role}</p>
-                </div>
-                <ChevronDown
-                  className={cn(
-                    "hidden h-4 w-4 text-slate-500 transition-transform lg:block",
-                    menuOpen && "rotate-180",
-                  )}
-                />
+                <Bell className="h-5 w-5" />
+                {pendingAlerts > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-black text-white">
+                    {pendingAlerts > 9 ? "9+" : pendingAlerts}
+                  </span>
+                )}
               </button>
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
+              <button
+                type="button"
+                onClick={() => window.open("/info/how-it-works", "_blank")}
+                className="hidden h-9 w-9 place-items-center rounded-lg text-slate-400 hover:text-white sm:grid"
+                aria-label="Help"
+              >
+                <HelpCircle className="h-5 w-5" />
+              </button>
+              <div
+                ref={menuRef}
+                className="relative border-l border-white/10 pl-2 sm:pl-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
                 >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void signOut();
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                  <Avatar name={account.name} />
+                  <div className="hidden text-left leading-tight lg:block">
+                    <p className="text-sm font-bold text-white">
+                      {account.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500">{account.role}</p>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "hidden h-4 w-4 text-slate-500 transition-transform lg:block",
+                      menuOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0c1224] shadow-xl shadow-black/40"
                   >
-                    <LogOut className="h-4 w-4" /> Sign out
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void signOut();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                    >
+                      <LogOut className="h-4 w-4" /> Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Mobile nav */}
+          <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {DETAILED.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSection(key)}
+                className={cn(
+                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors",
+                  section === key
+                    ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
+                    : "text-slate-400 hover:text-white",
+                )}
+              >
+                {key}
+              </button>
+            ))}
+          </nav>
+
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+              {!DETAILED.includes(section) && <SectionTitle meta={meta} />}
+              {section === "overview" && (
+                <OverviewSection onNavigate={setSection} />
+              )}
+              {section === "cases" && <CasesSection />}
+              {section === "survivors" && <SurvivorsSection />}
+              {section === "referrals" && <ReferralsSection />}
+              {section === "followups" && <FollowupsSection />}
+              {section === "counseling" && <CounselingSection />}
+              {section === "shelter" && <ShelterSection />}
+              {section === "legalaid" && <LegalAidSection />}
+              {section === "medical" && <MedicalSection />}
+              {section === "analytics" && <AnalyticsSection />}
+              {section === "reports" && <ReportsSection />}
+              {section === "messages" && <SecureMessagesWorkspace />}
+              {!DETAILED.includes(section) && (
+                <PlaceholderSection meta={meta} />
               )}
             </div>
-          </div>
-        </header>
-
-        {/* Mobile nav */}
-        <nav className="flex gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0f1f]/80 px-3 py-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {DETAILED.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSection(key)}
-              className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors",
-                section === key
-                  ? "bg-gradient-to-r from-violet-500 to-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white",
-              )}
-            >
-              {key}
-            </button>
-          ))}
-        </nav>
-
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
-            {!DETAILED.includes(section) && <SectionTitle meta={meta} />}
-            {section === "overview" && (
-              <OverviewSection onNavigate={setSection} />
-            )}
-            {section === "cases" && <CasesSection />}
-            {section === "survivors" && <SurvivorsSection />}
-            {section === "referrals" && <ReferralsSection />}
-            {section === "followups" && <FollowupsSection />}
-            {section === "counseling" && <CounselingSection />}
-            {section === "shelter" && <ShelterSection />}
-            {section === "legalaid" && <LegalAidSection />}
-            {section === "medical" && <MedicalSection />}
-            {section === "analytics" && <AnalyticsSection />}
-            {section === "reports" && <ReportsSection />}
-            {section === "messages" && <SecureMessagesWorkspace />}
-            {!DETAILED.includes(section) && <PlaceholderSection meta={meta} />}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </NgoPortalContext.Provider>
   );
 };
 
@@ -2648,6 +2881,8 @@ const CasesSection = () => {
     staleTime: 10000,
     refetchInterval: 30000,
   });
+  const [query, setQuery] = useState("");
+  const [riskFilter, setRiskFilter] = useState("All Risk Levels");
 
   const isResolved = (c: { status: string }) =>
     ["closed", "resolved"].includes((c.status || "").toLowerCase());
@@ -2709,6 +2944,21 @@ const CasesSection = () => {
       ? MOCK_CASES
       : [];
 
+  // Real filtering over the live rows: free-text search + risk level.
+  const visibleRows = caseRows.filter((c) => {
+    const q = query.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      [c.id, c.sid, c.type, c.status, c.worker]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    const matchesRisk =
+      riskFilter === "All Risk Levels" ||
+      c.risk.toLowerCase() === riskFilter.toLowerCase();
+    return matchesQuery && matchesRisk;
+  });
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -2729,22 +2979,44 @@ const CasesSection = () => {
           <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="Search cases by ID, survivor, or keyword..."
               className="h-9 border-white/10 bg-slate-900/60 pl-10 text-sm text-white placeholder:text-slate-500"
             />
           </div>
-          <SelectChip label="All Case Types" />
-          <SelectChip label="All Risk Levels" />
-          <SelectChip label="All Assigned Workers" />
-          <SelectChip label="May 9 - May 15, 2025" />
+          <SelectChip
+            key={`risk-${riskFilter}`}
+            label={riskFilter}
+            options={["All Risk Levels", "Critical", "High", "Medium", "Low"]}
+            onSelect={setRiskFilter}
+          />
+          <SelectChip
+            label="All Assigned Workers"
+            options={["All Assigned Workers", "Unassigned"]}
+          />
+          <SelectChip
+            label="Last 30 days"
+            options={["Last 7 days", "Last 30 days", "Last 90 days"]}
+          />
           <button
             type="button"
+            onClick={() => {
+              setQuery("");
+              setRiskFilter("All Risk Levels");
+              toast.info("Filters reset");
+            }}
             className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
           >
             Reset
           </button>
           <button
             type="button"
+            onClick={() =>
+              toast.success(
+                `${visibleRows.length} case${visibleRows.length === 1 ? "" : "s"} match the current filters`,
+              )
+            }
             className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
           >
             <Filter className="h-3.5 w-3.5" /> Apply Filters
@@ -2769,7 +3041,7 @@ const CasesSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {caseRows.map((c) => (
+                {visibleRows.map((c) => (
                   <tr key={c.id} className="hover:bg-white/[0.02]">
                     <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
                       {c.id}
@@ -2812,8 +3084,8 @@ const CasesSection = () => {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
             <span className="text-[11px] text-slate-500">
-              Showing {caseRows.length ? 1 : 0} to {caseRows.length} of{" "}
-              {nf.format(caseRows.length)} cases
+              Showing {visibleRows.length ? 1 : 0} to {visibleRows.length} of{" "}
+              {nf.format(visibleRows.length)} cases
             </span>
             <Pagination />
           </div>
@@ -2909,6 +3181,11 @@ const SurvivorsSection = () => (
           action={
             <button
               type="button"
+              onClick={() =>
+                toast.info(
+                  "Survivors self-register through the mobile app; new cases arrive in Case Management automatically.",
+                )
+              }
               className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
             >
               <Plus className="h-3.5 w-3.5" /> Add Survivor
@@ -2925,11 +3202,17 @@ const SurvivorsSection = () => (
             </div>
             <button
               type="button"
+              onClick={() =>
+                toast.info("Use the status selector to filter the directory.")
+              }
               className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
             >
               <Filter className="h-3.5 w-3.5" /> Filters
             </button>
-            <SelectChip label="All Statuses" />
+            <SelectChip
+              label="All Statuses"
+              options={["All Statuses", "Active", "Monitoring", "Closed"]}
+            />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -2973,20 +3256,10 @@ const SurvivorsSection = () => (
                       {s.followup}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
-                        >
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      <RowActions
+                        subject={s.caseId}
+                        detail={`${s.caseId} · ${s.name} — follow-up ${s.followup}`}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -3739,12 +4012,24 @@ const ShelterSection = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
+                            aria-label={`View ${s.name}`}
+                            onClick={() =>
+                              toast.info(
+                                `${s.name} · ${s.loc} — ${s.beds} beds available of ${s.cap} · ${s.contact}`,
+                              )
+                            }
                             className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
+                            aria-label={`Update ${s.name}`}
+                            onClick={() =>
+                              toast.info(
+                                "Bed availability is updated by the shelter partner; use Secure Messages to request changes.",
+                              )
+                            }
                             className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -4153,6 +4438,11 @@ const MedicalSection = () => (
             <button
               key={a.label}
               type="button"
+              onClick={() =>
+                toast.info(
+                  `${a.label}: coordinate with the facility via Secure Messages — contact details are in the directory above.`,
+                )
+              }
               className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4 text-left hover:border-white/20"
             >
               <div className="grid h-10 w-10 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300">
@@ -4379,177 +4669,223 @@ const AnalyticsSection = () => (
 
 /* =============================== Reports =============================== */
 
-const ReportsSection = () => (
-  <>
-    <div className="flex items-center justify-between gap-3">
-      <SectionTitle meta={SECTION_META.reports} />
-      <button
-        type="button"
-        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+const ReportsSection = () => {
+  const { data: reportCases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 30000,
+  });
+
+  const generateReport = () => {
+    const rows = reportCases.map((c) => ({
+      case_id: c.id,
+      status: c.status,
+      risk_level: c.riskLevel,
+      created_at: c.createdAt,
+    }));
+    if (downloadCsv("aegis-ngo-case-report.csv", rows)) {
+      toast.success(`Report exported — ${rows.length} cases`);
+    } else {
+      toast.info("No live case data to report yet.");
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle meta={SECTION_META.reports} />
+        <button
+          type="button"
+          onClick={generateReport}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-bold text-white"
+        >
+          <BarChart3 className="h-4 w-4" /> Generate Report
+        </button>
+      </div>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {gateKpis(MOCK_REPORT_KPIS).map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={k.delta}
+            sub={
+              k.label === "Monthly Reports"
+                ? "vs last month"
+                : "vs last 30 days"
+            }
+          />
+        ))}
+      </section>
+      <Panel
+        title="Report Categories"
+        subtitle="Choose a category to generate reports and export data."
+        action={<LinkChip label="View All Categories" />}
       >
-        <BarChart3 className="h-4 w-4" /> Generate Report
-      </button>
-    </div>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_REPORT_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-          sub={
-            k.label === "Monthly Reports" ? "vs last month" : "vs last 30 days"
-          }
-        />
-      ))}
-    </section>
-    <Panel
-      title="Report Categories"
-      subtitle="Choose a category to generate reports and export data."
-      action={<LinkChip label="View All Categories" />}
-    >
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {MOCK_REPORT_CATEGORIES.map((c) => {
-          const Icon = c.icon;
-          return (
-            <div
-              key={c.name}
-              className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={cn(
-                      "grid h-10 w-10 shrink-0 place-items-center rounded-xl border",
-                      ICON_TONES[c.tone],
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-white">{c.name}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      {c.desc}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-[10px] text-slate-500">
-                  {c.count} reports generated
-                </span>
-                <div className="flex gap-1.5">
-                  {[
-                    ["PDF", "rose"],
-                    ["CSV", "sky"],
-                    ["Excel", "emerald"],
-                  ].map(([f, t]) => (
-                    <span
-                      key={f}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {MOCK_REPORT_CATEGORIES.map((c) => {
+            const Icon = c.icon;
+            return (
+              <div
+                key={c.name}
+                className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div
                       className={cn(
-                        "rounded-md border px-2 py-0.5 text-[10px] font-bold",
-                        PILL_TONES[t],
+                        "grid h-10 w-10 shrink-0 place-items-center rounded-xl border",
+                        ICON_TONES[c.tone],
                       )}
                     >
-                      {f}
-                    </span>
-                  ))}
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-white">{c.name}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {c.desc}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">
+                    {c.count} reports generated
+                  </span>
+                  <div className="flex gap-1.5">
+                    {[
+                      ["PDF", "rose"],
+                      ["CSV", "sky"],
+                      ["Excel", "emerald"],
+                    ].map(([f, t]) => (
+                      <span
+                        key={f}
+                        className={cn(
+                          "rounded-md border px-2 py-0.5 text-[10px] font-bold",
+                          PILL_TONES[t],
+                        )}
+                      >
+                        {f}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
-      <Panel
-        title="Recent Reports"
-        subtitle="View and manage your recently generated reports."
-        bodyClassName="p-0"
-        action={<LinkChip label="View All Reports" />}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-5 py-3">Report Name</th>
-                <th className="px-5 py-3">Generated By</th>
-                <th className="px-5 py-3">Date Generated</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_RECENT_REPORTS.map((r, i) => (
-                <tr key={i} className="hover:bg-white/[0.02]">
-                  <td className="px-5 py-3 font-bold text-white">{r.name}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={r.by} />
-                      <div>
-                        <p className="text-xs font-medium text-white">{r.by}</p>
-                        <p className="text-[10px] text-slate-500">{r.role}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">{r.date}</td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(r.status)}>{r.status}</Pill>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            );
+          })}
         </div>
       </Panel>
-      <Panel title="Quick Actions">
-        <QuickActionGrid
-          cols=""
-          items={[
-            {
-              label: "Generate Report",
-              desc: "Create a custom report with filters and date ranges.",
-              icon: BarChart3,
-            },
-            {
-              label: "Schedule Report",
-              desc: "Automate report generation and delivery via email.",
-              icon: Calendar,
-            },
-            {
-              label: "Export Data",
-              desc: "Export raw data for advanced analysis and backup.",
-              icon: Download,
-            },
-          ]}
-        />
-      </Panel>
-    </section>
-  </>
-);
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+        <Panel
+          title="Recent Reports"
+          subtitle="View and manage your recently generated reports."
+          bodyClassName="p-0"
+          action={<LinkChip label="View All Reports" />}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-5 py-3">Report Name</th>
+                  <th className="px-5 py-3">Generated By</th>
+                  <th className="px-5 py-3">Date Generated</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {MOCK_RECENT_REPORTS.map((r, i) => (
+                  <tr key={i} className="hover:bg-white/[0.02]">
+                    <td className="px-5 py-3 font-bold text-white">{r.name}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={r.by} />
+                        <div>
+                          <p className="text-xs font-medium text-white">
+                            {r.by}
+                          </p>
+                          <p className="text-[10px] text-slate-500">{r.role}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400">{r.date}</td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(r.status)}>{r.status}</Pill>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          aria-label={`View ${r.name}`}
+                          onClick={() =>
+                            toast.info(`${r.name} · ${r.by} (${r.role})`)
+                          }
+                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-violet-300 hover:bg-white/5"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Download ${r.name}`}
+                          onClick={() => {
+                            downloadCsv(
+                              `${r.name.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                              [r as unknown as Record<string, unknown>],
+                            );
+                            toast.success(`${r.name} exported`);
+                          }}
+                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Export ${r.name}`}
+                          onClick={() => {
+                            downloadCsv(
+                              `${r.name.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                              [r as unknown as Record<string, unknown>],
+                            );
+                            toast.success(`${r.name} exported`);
+                          }}
+                          className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5"
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+        <Panel title="Quick Actions">
+          <QuickActionGrid
+            cols=""
+            items={[
+              {
+                label: "Generate Report",
+                desc: "Create a custom report with filters and date ranges.",
+                icon: BarChart3,
+              },
+              {
+                label: "Schedule Report",
+                desc: "Automate report generation and delivery via email.",
+                icon: Calendar,
+              },
+              {
+                label: "Export Data",
+                desc: "Export raw data for advanced analysis and backup.",
+                icon: Download,
+              },
+            ]}
+          />
+        </Panel>
+      </section>
+    </>
+  );
+};
 
 export default NgoPortal;
