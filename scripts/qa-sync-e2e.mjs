@@ -60,6 +60,31 @@ try {
   ok("push token registered");
 } catch (e) { bad("push token registered", e); }
 
+// --- police client (web path) — signed in before the SOS so a responder
+// device exists for the fanout trigger to target ---
+const police = createClient(url, anon);
+const policeToken = `ExponentPushToken[qa-sync-police-${crypto.randomBytes(4).toString("hex")}]`;
+try {
+  const { error } = await police.auth.signInWithPassword({
+    email: POLICE_EMAIL,
+    password: POLICE_PASSWORD,
+  });
+  if (error) throw error;
+  const { data: me } = await police.auth.getUser();
+  const { error: tokErr } = await police.from("push_tokens").upsert(
+    {
+      user_id: me.user.id,
+      token: policeToken,
+      platform: "expo",
+      is_active: true,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "token" },
+  );
+  if (tokErr) throw tokErr;
+  ok("police signed in + responder device registered");
+} catch (e) { bad("police sign-in/device", e); }
+
 try {
   const { data, error } = await survivor
     .from("escalation_events")
@@ -79,25 +104,47 @@ try {
 } catch (e) { bad("SOS sent", e); }
 
 // --- fanout trigger: responder devices queued ---
+// The fanout trigger targets ACTIVE RESPONDER push tokens and tags rows with
+// the escalation's case_id (text), not an escalation_id column. Assert on
+// rows addressed to the police token we registered — precise and race-free.
 try {
-  await new Promise((r) => setTimeout(r, 1500));
-  const { count, error } = await admin
+  await new Promise((r) => setTimeout(r, 3000));
+  const { data: rows, error } = await admin
     .from("notification_queue")
-    .select("*", { count: "exact", head: true })
-    .eq("escalation_id", sosId);
+    .select("id,recipient_type,status")
+    .eq("recipient_address", policeToken);
   if (error) throw error;
-  if (!count) throw new Error("no notification_queue rows for the SOS");
-  ok("push fanout queued", `${count} device notification(s)`);
+  if (!rows?.length)
+    throw new Error("no notification_queue row for the responder device");
+  ok("push fanout queued", `${rows.length} device notification(s)`);
 } catch (e) { bad("push fanout queued", e); }
 
-// --- police client (web path) ---
-const police = createClient(url, anon);
+// --- deployed worker drains the push row (prod pipeline proof) ---
 try {
-  const { error } = await police.auth.signInWithPassword({
-    email: POLICE_EMAIL,
-    password: POLICE_PASSWORD,
-  });
-  if (error) throw error;
+  let row = null;
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const { data } = await admin
+      .from("notification_queue")
+      .select("status,last_error")
+      .eq("recipient_address", policeToken)
+      .maybeSingle();
+    row = data;
+    if (row && !["pending", "queued"].includes(row.status)) break;
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  if (!row) throw new Error("queue row disappeared");
+  if (row.last_error?.includes("Unsupported recipient type"))
+    throw new Error(`worker rejected push channel: ${row.last_error}`);
+  if (["pending", "queued"].includes(row.status))
+    throw new Error("row still pending after 90s — worker not draining");
+  ok(
+    "worker drained push row",
+    `status=${row.status}${row.last_error ? ` (${row.last_error.slice(0, 80)})` : ""}`,
+  );
+} catch (e) { bad("worker drained push row", e); }
+
+try {
   const { data, error: readErr } = await police
     .from("escalation_events")
     .select("id,severity,status")
@@ -188,8 +235,12 @@ try {
       .eq("conversation_id", convId);
     await admin.from("secure_conversations").delete().eq("id", convId);
   }
+  await admin
+    .from("notification_queue")
+    .delete()
+    .eq("recipient_address", policeToken);
+  await admin.from("push_tokens").delete().eq("token", policeToken);
   if (sosId) {
-    await admin.from("notification_queue").delete().eq("escalation_id", sosId);
     await admin.from("escalation_events").delete().eq("id", sosId);
   }
   await admin.from("push_tokens").delete().eq("user_id", survivorId);
