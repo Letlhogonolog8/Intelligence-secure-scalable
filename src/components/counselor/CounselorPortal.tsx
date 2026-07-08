@@ -88,6 +88,11 @@ import {
   type SessionType,
 } from "@/data/counselingSessions";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  portalPreferencesKey,
+  savePortalPreferences,
+  usePortalPreferences,
+} from "@/data/responderSettings";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
 import { ALLOW_MOCK, NO_DATA, gateKpis } from "@/lib/mockData";
@@ -4380,299 +4385,350 @@ const SettingToggle = ({
   label,
   desc,
   defaultOn = true,
+  checked,
+  onCheckedChange,
 }: {
   label: string;
   desc: string;
   defaultOn?: boolean;
+  /** Controlled mode: pass both checked and onCheckedChange to persist. */
+  checked?: boolean;
+  onCheckedChange?: (value: boolean) => void;
 }) => {
   const [on, setOn] = useState(defaultOn);
+  const value = checked ?? on;
+  const handle = onCheckedChange ?? setOn;
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <div className="min-w-0">
         <p className="text-sm font-bold text-white">{label}</p>
         <p className="text-[11px] text-slate-500">{desc}</p>
       </div>
-      <Switch checked={on} onCheckedChange={setOn} />
+      <Switch checked={value} onCheckedChange={handle} />
     </div>
   );
 };
 
-const SettingsSection = () => (
-  <>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {[
-        {
-          l: "Profile Status",
-          v: "Complete",
-          note: "All profile details up to date",
-          icon: Users,
-          tone: "violet",
-        },
-        {
-          l: "MFA Enabled",
-          v: "Yes",
-          note: "Multi-factor authentication active",
-          icon: ShieldCheck,
-          tone: "sky",
-        },
-        {
-          l: "Notification Channels",
-          v: "3 Active",
-          note: "Email, SMS, Push",
-          icon: Bell,
-          tone: "violet",
-        },
-        {
-          l: "Language Settings",
-          v: "English (US)",
-          note: "Primary language",
-          icon: Globe,
-          tone: "emerald",
-        },
-      ].map((k) => {
-        const Icon = k.icon;
-        return (
-          <div
-            key={k.l}
-            className="rounded-2xl border border-white/10 bg-slate-900/50 p-5 backdrop-blur-md"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className={cn(
-                  "grid h-11 w-11 place-items-center rounded-xl border-2",
-                  ICON_TONES[k.tone],
-                )}
-              >
-                <Icon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  {k.l}
-                </p>
-                <p className="text-lg font-black text-emerald-300">{k.v}</p>
-                <p className="text-[10px] text-slate-500">{k.note}</p>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <div className="flex flex-col gap-6 xl:col-span-2">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Panel title="Profile" action={<LinkChip label="Edit" />}>
-            <div className="space-y-2 text-[11px]">
-              {[
-                ["Full Name", "Dr. Sarah M."],
-                ["Email", "sarah.m@aegis-ai.org"],
-                ["Phone", "+1 234 567 8901"],
-                ["Timezone", "(GMT+5:30) Asia/Kolkata"],
-              ].map(([l, v]) => (
+const SettingsSection = () => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: prefs = {} } = usePortalPreferences(user?.id, "counselor");
+
+  const pref = (key: string, fallback = true): boolean =>
+    typeof prefs[key] === "boolean" ? (prefs[key] as boolean) : fallback;
+  const setPref = async (key: string, value: boolean) => {
+    if (!user?.id) {
+      toast.error("Sign in to save preferences");
+      return;
+    }
+    const next = { ...prefs, [key]: value };
+    queryClient.setQueryData(portalPreferencesKey(user.id, "counselor"), next);
+    try {
+      await savePortalPreferences(user.id, "counselor", next);
+      toast.success("Preference saved");
+    } catch {
+      toast.error("Couldn't save the preference — please retry.");
+      void queryClient.invalidateQueries({
+        queryKey: portalPreferencesKey(user.id, "counselor"),
+      });
+    }
+  };
+  const toggleProps = (key: string, fallback = true) => ({
+    checked: pref(key, fallback),
+    onCheckedChange: (value: boolean) => void setPref(key, value),
+  });
+
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {[
+          {
+            l: "Profile Status",
+            v: "Complete",
+            note: "All profile details up to date",
+            icon: Users,
+            tone: "violet",
+          },
+          {
+            l: "MFA Enabled",
+            v: "Yes",
+            note: "Multi-factor authentication active",
+            icon: ShieldCheck,
+            tone: "sky",
+          },
+          {
+            l: "Notification Channels",
+            v: "3 Active",
+            note: "Email, SMS, Push",
+            icon: Bell,
+            tone: "violet",
+          },
+          {
+            l: "Language Settings",
+            v: "English (US)",
+            note: "Primary language",
+            icon: Globe,
+            tone: "emerald",
+          },
+        ].map((k) => {
+          const Icon = k.icon;
+          return (
+            <div
+              key={k.l}
+              className="rounded-2xl border border-white/10 bg-slate-900/50 p-5 backdrop-blur-md"
+            >
+              <div className="flex items-center gap-3">
                 <div
-                  key={l}
-                  className="flex justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
+                  className={cn(
+                    "grid h-11 w-11 place-items-center rounded-xl border-2",
+                    ICON_TONES[k.tone],
+                  )}
                 >
-                  <span className="text-slate-500">{l}</span>
-                  <span className="text-right text-slate-300">{v}</span>
+                  <Icon className="h-5 w-5" />
                 </div>
-              ))}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    {k.l}
+                  </p>
+                  <p className="text-lg font-black text-emerald-300">{k.v}</p>
+                  <p className="text-[10px] text-slate-500">{k.note}</p>
+                </div>
+              </div>
             </div>
-          </Panel>
-          <Panel title="Security" action={<LinkChip label="Edit" />}>
-            <div className="space-y-2 text-[11px]">
-              {[
-                ["Password", "••••••••••••", "Edit"],
-                ["Multi-Factor Authentication", "Enabled", "Manage"],
-                ["Trusted Devices", "3 devices", "Manage"],
-                ["Session Timeout", "30 minutes", "Edit"],
-              ].map(([l, v, a]) => (
-                <div
-                  key={l}
-                  className="flex items-center justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
-                >
-                  <span className="text-slate-500">{l}</span>
-                  <span className="flex items-center gap-2">
+          );
+        })}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="flex flex-col gap-6 xl:col-span-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <Panel title="Profile" action={<LinkChip label="Edit" />}>
+              <div className="space-y-2 text-[11px]">
+                {[
+                  ["Full Name", "Dr. Sarah M."],
+                  ["Email", "sarah.m@aegis-ai.org"],
+                  ["Phone", "+1 234 567 8901"],
+                  ["Timezone", "(GMT+5:30) Asia/Kolkata"],
+                ].map(([l, v]) => (
+                  <div
+                    key={l}
+                    className="flex justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
+                  >
+                    <span className="text-slate-500">{l}</span>
+                    <span className="text-right text-slate-300">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+            <Panel title="Security" action={<LinkChip label="Edit" />}>
+              <div className="space-y-2 text-[11px]">
+                {[
+                  ["Password", "••••••••••••", "Edit"],
+                  ["Multi-Factor Authentication", "Enabled", "Manage"],
+                  ["Trusted Devices", "3 devices", "Manage"],
+                  ["Session Timeout", "30 minutes", "Edit"],
+                ].map(([l, v, a]) => (
+                  <div
+                    key={l}
+                    className="flex items-center justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
+                  >
+                    <span className="text-slate-500">{l}</span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={
+                          v === "Enabled"
+                            ? "text-emerald-400"
+                            : "text-slate-300"
+                        }
+                      >
+                        {v}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toast.info(
+                            "Security settings are managed with your administrator.",
+                          )
+                        }
+                        className="text-violet-400"
+                      >
+                        {a}
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+            <Panel title="Notifications" action={<LinkChip label="Edit" />}>
+              <div className="divide-y divide-white/5">
+                <SettingToggle
+                  {...toggleProps("email_notifications", true)}
+                  label="Email Notifications"
+                  desc="Receive updates via email"
+                />
+                <SettingToggle
+                  {...toggleProps("sms_notifications", true)}
+                  label="SMS Notifications"
+                  desc="Receive updates via SMS"
+                />
+                <SettingToggle
+                  {...toggleProps("push_notifications", true)}
+                  label="Push Notifications"
+                  desc="Receive push notifications in-app"
+                />
+              </div>
+            </Panel>
+            <Panel
+              title="Language & Accessibility"
+              action={<LinkChip label="Edit" />}
+            >
+              <div className="space-y-1">
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm font-bold text-white">Language</span>
+                  <SelectChip label="English (US)" />
+                </div>
+                <SettingToggle
+                  {...toggleProps("translation_support", true)}
+                  label="Translation Support"
+                  desc="Enable real-time translation"
+                />
+                <SettingToggle
+                  {...toggleProps("high_contrast", false)}
+                  label="High Contrast Mode"
+                  desc="Improve readability"
+                  defaultOn={false}
+                />
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm font-bold text-white">
+                    Text Size
+                  </span>
+                  <SelectChip label="Medium" />
+                </div>
+              </div>
+            </Panel>
+            <Panel title="Session Defaults" action={<LinkChip label="Edit" />}>
+              <div className="space-y-2 text-[11px]">
+                {[
+                  ["Default Session Duration", "60 minutes"],
+                  ["Default Session Type", "Individual"],
+                  ["Notes Visibility", "Private"],
+                  ["Auto-Save Notes", "Enabled"],
+                ].map(([l, v]) => (
+                  <div
+                    key={l}
+                    className="flex justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
+                  >
+                    <span className="text-slate-500">{l}</span>
                     <span
-                      className={
-                        v === "Enabled" ? "text-emerald-400" : "text-slate-300"
-                      }
+                      className={cn(
+                        "text-right",
+                        v === "Enabled" ? "text-emerald-400" : "text-slate-300",
+                      )}
                     >
                       {v}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toast.info(
-                          "Security settings are managed with your administrator.",
-                        )
-                      }
-                      className="text-violet-400"
-                    >
-                      {a}
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Panel>
-          <Panel title="Notifications" action={<LinkChip label="Edit" />}>
-            <div className="divide-y divide-white/5">
-              <SettingToggle
-                label="Email Notifications"
-                desc="Receive updates via email"
-              />
-              <SettingToggle
-                label="SMS Notifications"
-                desc="Receive updates via SMS"
-              />
-              <SettingToggle
-                label="Push Notifications"
-                desc="Receive push notifications in-app"
-              />
-            </div>
-          </Panel>
-          <Panel
-            title="Language & Accessibility"
-            action={<LinkChip label="Edit" />}
-          >
-            <div className="space-y-1">
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm font-bold text-white">Language</span>
-                <SelectChip label="English (US)" />
+                  </div>
+                ))}
               </div>
-              <SettingToggle
-                label="Translation Support"
-                desc="Enable real-time translation"
-              />
-              <SettingToggle
-                label="High Contrast Mode"
-                desc="Improve readability"
-                defaultOn={false}
-              />
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm font-bold text-white">Text Size</span>
-                <SelectChip label="Medium" />
+            </Panel>
+            <Panel title="AI Assistance" action={<LinkChip label="Edit" />}>
+              <div className="divide-y divide-white/5">
+                <SettingToggle
+                  {...toggleProps("distress_detection", true)}
+                  label="Distress Detection Assist"
+                  desc="Get alerts for high-risk indicators"
+                />
+                <SettingToggle
+                  {...toggleProps("wellness_reminders", true)}
+                  label="Wellness Reminders"
+                  desc="Receive reminders to take breaks"
+                />
+                <SettingToggle
+                  {...toggleProps("ai_summaries", true)}
+                  label="AI Summary Suggestions"
+                  desc="Suggest session summaries"
+                />
               </div>
+            </Panel>
+          </div>
+        </div>
+        <Panel title="Account Summary">
+          <div className="flex justify-center">
+            <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xl font-black text-white">
+              D
             </div>
-          </Panel>
-          <Panel title="Session Defaults" action={<LinkChip label="Edit" />}>
-            <div className="space-y-2 text-[11px]">
-              {[
-                ["Default Session Duration", "60 minutes"],
-                ["Default Session Type", "Individual"],
-                ["Notes Visibility", "Private"],
-                ["Auto-Save Notes", "Enabled"],
-              ].map(([l, v]) => (
+          </div>
+          <div className="mt-4 space-y-3 text-[11px]">
+            {[
+              [Users, "Role", "Counselor"],
+              [Home, "Organization", "AEGIS Counseling Services"],
+              [ShieldCheck, "License Status", "Active · Expires May 31, 2026"],
+              [Clock, "Last Login", "May 17, 2025 10:15 AM"],
+              [Lock, "Account Created", "Jan 12, 2024"],
+            ].map(([Ic, l, v], i) => {
+              const Icon = Ic as ComponentType<{ className?: string }>;
+              return (
                 <div
-                  key={l}
-                  className="flex justify-between gap-2 border-b border-white/5 pb-2 last:border-0"
+                  key={i}
+                  className="flex items-start gap-2 border-b border-white/5 pb-2"
                 >
-                  <span className="text-slate-500">{l}</span>
-                  <span
-                    className={cn(
-                      "text-right",
-                      v === "Enabled" ? "text-emerald-400" : "text-slate-300",
-                    )}
-                  >
-                    {v}
-                  </span>
+                  <Icon className="mt-0.5 h-3.5 w-3.5 text-violet-300" />
+                  <div>
+                    <p className="text-slate-500">{l as string}</p>
+                    <p className="text-slate-300">{v as string}</p>
+                  </div>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+            <div>
+              <p className="text-[10px] text-slate-500">Account ID</p>
+              <p className="text-[11px] font-bold text-violet-300">
+                AEGIS-DRSM-78421
+              </p>
             </div>
-          </Panel>
-          <Panel title="AI Assistance" action={<LinkChip label="Edit" />}>
-            <div className="divide-y divide-white/5">
-              <SettingToggle
-                label="Distress Detection Assist"
-                desc="Get alerts for high-risk indicators"
-              />
-              <SettingToggle
-                label="Wellness Reminders"
-                desc="Receive reminders to take breaks"
-              />
-              <SettingToggle
-                label="AI Summary Suggestions"
-                desc="Suggest session summaries"
-              />
-            </div>
-          </Panel>
-        </div>
+            <button
+              type="button"
+              aria-label="Copy account ID"
+              onClick={() => {
+                void navigator.clipboard?.writeText("AEGIS-DRSM-78421");
+                toast.success("Account ID copied");
+              }}
+              className="text-slate-400 hover:text-white"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </Panel>
+      </section>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-3">
+        <span className="px-2 text-sm font-black text-white">
+          Quick Actions
+        </span>
+        {[
+          { label: "Save Changes", icon: CheckCircle2 },
+          { label: "Update Password", icon: Lock },
+          { label: "Manage Notifications", icon: Bell },
+          { label: "Change Language", icon: Globe },
+          { label: "Enable MFA", icon: ShieldCheck },
+          { label: "Reset Preferences", icon: RefreshCw },
+        ].map((a) => {
+          const Icon = a.icon;
+          return (
+            <button
+              key={a.label}
+              type="button"
+              onClick={() => toast.success(a.label)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-[11px] font-bold text-white hover:border-white/20"
+            >
+              <Icon className="h-4 w-4 text-violet-300" />
+              {a.label}
+            </button>
+          );
+        })}
       </div>
-      <Panel title="Account Summary">
-        <div className="flex justify-center">
-          <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xl font-black text-white">
-            D
-          </div>
-        </div>
-        <div className="mt-4 space-y-3 text-[11px]">
-          {[
-            [Users, "Role", "Counselor"],
-            [Home, "Organization", "AEGIS Counseling Services"],
-            [ShieldCheck, "License Status", "Active · Expires May 31, 2026"],
-            [Clock, "Last Login", "May 17, 2025 10:15 AM"],
-            [Lock, "Account Created", "Jan 12, 2024"],
-          ].map(([Ic, l, v], i) => {
-            const Icon = Ic as ComponentType<{ className?: string }>;
-            return (
-              <div
-                key={i}
-                className="flex items-start gap-2 border-b border-white/5 pb-2"
-              >
-                <Icon className="mt-0.5 h-3.5 w-3.5 text-violet-300" />
-                <div>
-                  <p className="text-slate-500">{l as string}</p>
-                  <p className="text-slate-300">{v as string}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
-          <div>
-            <p className="text-[10px] text-slate-500">Account ID</p>
-            <p className="text-[11px] font-bold text-violet-300">
-              AEGIS-DRSM-78421
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Copy account ID"
-            onClick={() => {
-              void navigator.clipboard?.writeText("AEGIS-DRSM-78421");
-              toast.success("Account ID copied");
-            }}
-            className="text-slate-400 hover:text-white"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </Panel>
-    </section>
-    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-3">
-      <span className="px-2 text-sm font-black text-white">Quick Actions</span>
-      {[
-        { label: "Save Changes", icon: CheckCircle2 },
-        { label: "Update Password", icon: Lock },
-        { label: "Manage Notifications", icon: Bell },
-        { label: "Change Language", icon: Globe },
-        { label: "Enable MFA", icon: ShieldCheck },
-        { label: "Reset Preferences", icon: RefreshCw },
-      ].map((a) => {
-        const Icon = a.icon;
-        return (
-          <button
-            key={a.label}
-            type="button"
-            onClick={() => toast.success(a.label)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 text-[11px] font-bold text-white hover:border-white/20"
-          >
-            <Icon className="h-4 w-4 text-violet-300" />
-            {a.label}
-          </button>
-        );
-      })}
-    </div>
-  </>
-);
+    </>
+  );
+};
 
 export default CounselorPortal;

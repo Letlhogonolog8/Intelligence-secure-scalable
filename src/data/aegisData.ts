@@ -1583,7 +1583,28 @@ const fetchAuditLogs = async (options?: FetchOptions) => {
     if (isMissingTableError(error)) return [] as AuditLog[];
     throw error;
   }
-  return (data ?? []).map((row) => mapAuditLog(row as Record<string, unknown>));
+  if (data && data.length) {
+    return data.map((row) => mapAuditLog(row as Record<string, unknown>));
+  }
+
+  // The server-written audit_logs table is empty until the API's security
+  // modules run. Fall back to the trigger-fed audit trail via the sanitized
+  // recent_audit_activity() feed (table/operation/actor-role only — no
+  // record contents), so activity panels reflect real platform activity.
+  const { data: trail, error: trailError } = await supabase.rpc(
+    "recent_audit_activity",
+    { p_limit: options?.limit ?? 20 },
+  );
+  if (trailError || !trail) return [] as AuditLog[];
+  return (trail as Record<string, unknown>[]).map(
+    (row): AuditLog => ({
+      time: toString(row.changed_at),
+      action: `${toString(row.operation)} ${toString(row.table_name).replace(/_/g, " ")}`,
+      module: toString(row.table_name),
+      user: toString(row.user_role, "system") || "system",
+      severity: toString(row.operation) === "DELETE" ? "critical" : "info",
+    }),
+  );
 };
 
 const fetchEscalationReviews = async (options?: FetchOptions) => {

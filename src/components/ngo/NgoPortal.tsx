@@ -93,6 +93,8 @@ import {
   type PartnerType,
   type ReferralStatus,
 } from "@/data/partnerReferrals";
+import { useCaseCategories } from "@/data/analyticsData";
+import { useCounselingSessions } from "@/data/counselingSessions";
 import { acknowledgeEscalation } from "@/data/escalationActions";
 import { ESCALATION_EVENTS_KEY } from "@/data/escalationActions";
 import { useQueryClient } from "@tanstack/react-query";
@@ -4082,214 +4084,287 @@ const FollowupsSection = () => {
 
 /* =============================== Counseling =============================== */
 
-const CounselingSection = () => (
-  <>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_COUNSELING_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-          sub={"sub" in k ? k.sub : undefined}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
-      <Panel
-        title="Session Overview"
-        bodyClassName="p-0"
-        action={<SelectChip label="All Counselors" />}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-5 py-3">Session ID</th>
-                <th className="px-5 py-3">Survivor</th>
-                <th className="px-5 py-3">Counselor</th>
-                <th className="px-5 py-3">Date</th>
-                <th className="px-5 py-3">Mode</th>
-                <th className="px-5 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_SESSIONS.map((s) => (
-                <tr key={s.id} className="hover:bg-white/[0.02]">
-                  <td className="px-5 py-3 font-mono text-[11px] text-violet-300">
-                    {s.id}
-                  </td>
-                  <td className="px-5 py-3 text-white">
-                    {s.name} <span className="text-slate-500">• {s.age}</span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <Avatar name={s.counselor} />
-                      <div>
-                        <p className="text-xs font-medium text-white">
-                          {s.counselor}
-                        </p>
-                        <p className="text-[10px] text-slate-500">Counselor</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">
-                    <p>{s.date}</p>
-                    <p className="text-[10px] text-slate-500">{s.time}</p>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="flex items-center gap-1.5 text-slate-300">
-                      {s.mode === "Video" ? (
-                        <Video className="h-3.5 w-3.5 text-violet-300" />
-                      ) : (
-                        <Phone className="h-3.5 w-3.5 text-sky-300" />
-                      )}
-                      {s.mode}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(s.status)}>{s.status}</Pill>
-                  </td>
+const CounselingSection = () => {
+  const { data: sessions = [] } = useCounselingSessions();
+
+  const sessionRows = sessions.length
+    ? sessions.slice(0, 8).map((cs) => {
+        const d = new Date(cs.scheduledAt);
+        return {
+          key: cs.id,
+          id: `CS-${cs.id.slice(0, 8).toUpperCase()}`,
+          name: cs.survivorAlias || "Protected",
+          age: "—" as string | number,
+          counselor: "Assigned",
+          date: d.toLocaleDateString(),
+          time: d.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          mode: cs.mode === "in_person" ? "In-Person" : titleCase(cs.mode),
+          status: titleCase(cs.status.replace(/_/g, " ")),
+        };
+      })
+    : ALLOW_MOCK
+      ? MOCK_SESSIONS.map((m) => ({ ...m, key: m.id }))
+      : [];
+
+  const counselingKpis = sessions.length
+    ? [
+        {
+          label: "Total Sessions",
+          value: nf.format(sessions.length),
+          icon: MessageSquare,
+          tone: "violet",
+        },
+        {
+          label: "Completed",
+          value: nf.format(
+            sessions.filter((cs) => cs.status === "completed").length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+        {
+          label: "Upcoming",
+          value: nf.format(
+            sessions.filter(
+              (cs) =>
+                cs.status === "scheduled" &&
+                new Date(cs.scheduledAt).getTime() > Date.now(),
+            ).length,
+          ),
+          icon: Calendar,
+          tone: "sky",
+        },
+        {
+          label: "Crisis Sessions",
+          value: nf.format(
+            sessions.filter((cs) => cs.sessionType === "crisis").length,
+          ),
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+      ]
+    : gateKpis(MOCK_COUNSELING_KPIS);
+
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {counselingKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+            sub={"sub" in k ? k.sub : undefined}
+          />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+        <Panel
+          title="Session Overview"
+          bodyClassName="p-0"
+          action={<SelectChip label="All Counselors" />}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-5 py-3">Session ID</th>
+                  <th className="px-5 py-3">Survivor</th>
+                  <th className="px-5 py-3">Counselor</th>
+                  <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3">Mode</th>
+                  <th className="px-5 py-3">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-          <span className="text-[11px] text-slate-500">
-            Showing 1 to 7 of 48 sessions
-          </span>
-          <Pagination pages={["1", "2", "3", "…", "7"]} />
-        </div>
-      </Panel>
-      <Panel
-        title="Urgent Counseling Requests"
-        action={<LinkChip label="View all" />}
-      >
-        <div className="space-y-2.5">
-          {MOCK_URGENT_COUNSELING.map((u, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-            >
-              <Pill tone="rose">High</Pill>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-white">
-                  {u.name} <span className="text-slate-500">• {u.age}</span>
-                </p>
-                <p className="truncate text-[10px] text-slate-500">{u.need}</p>
-              </div>
-              <span className="text-[10px] text-slate-500">{u.time}</span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Panel
-        title="Weekly Appointments"
-        className="xl:col-span-2"
-        action={<SelectChip label="This Week" />}
-      >
-        <div className="mb-3 flex flex-wrap gap-4">
-          {[
-            ["Completed", "#a855f7"],
-            ["Scheduled", "#3b82f6"],
-            ["In Progress", "#10b981"],
-            ["Cancelled", "#f43f5e"],
-          ].map(([l, c]) => (
-            <span
-              key={l}
-              className="flex items-center gap-1.5 text-[11px] text-slate-400"
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: c }}
-              />
-              {l}
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {sessionRows.map((s) => (
+                  <tr key={s.id} className="hover:bg-white/[0.02]">
+                    <td className="px-5 py-3 font-mono text-[11px] text-violet-300">
+                      {s.id}
+                    </td>
+                    <td className="px-5 py-3 text-white">
+                      {s.name} <span className="text-slate-500">• {s.age}</span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Avatar name={s.counselor} />
+                        <div>
+                          <p className="text-xs font-medium text-white">
+                            {s.counselor}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            Counselor
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400">
+                      <p>{s.date}</p>
+                      <p className="text-[10px] text-slate-500">{s.time}</p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className="flex items-center gap-1.5 text-slate-300">
+                        {s.mode === "Video" ? (
+                          <Video className="h-3.5 w-3.5 text-violet-300" />
+                        ) : (
+                          <Phone className="h-3.5 w-3.5 text-sky-300" />
+                        )}
+                        {s.mode}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(s.status)}>{s.status}</Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+            <span className="text-[11px] text-slate-500">
+              Showing 1 to 7 of 48 sessions
             </span>
-          ))}
-        </div>
-        <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={MOCK_WEEKLY_APPTS}>
-            <CartesianGrid
-              stroke="#1e293b"
-              strokeDasharray="3 3"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="day"
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <YAxis
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <Tooltip {...chartTooltip} />
-            <Line
-              type="monotone"
-              dataKey="completed"
-              stroke="#a855f7"
-              strokeWidth={2}
-              dot={{ r: 2 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="scheduled"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={{ r: 2 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="progress"
-              stroke="#10b981"
-              strokeWidth={2}
-              dot={{ r: 2 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="cancelled"
-              stroke="#f43f5e"
-              strokeWidth={2}
-              dot={{ r: 2 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </Panel>
-      <Panel title="Counseling by Mode" subtitle="This Week">
-        <Donut data={MOCK_COUNSEL_MODE} centerValue="68" centerLabel="Total" />
-        <div className="mt-2 space-y-1.5">
-          {MOCK_COUNSEL_MODE.map((m) => (
-            <div
-              key={m.name}
-              className="flex items-center justify-between text-xs"
-            >
-              <span className="flex items-center gap-2">
+            <Pagination pages={["1", "2", "3", "…", "7"]} />
+          </div>
+        </Panel>
+        <Panel
+          title="Urgent Counseling Requests"
+          action={<LinkChip label="View all" />}
+        >
+          <div className="space-y-2.5">
+            {MOCK_URGENT_COUNSELING.map((u, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+              >
+                <Pill tone="rose">High</Pill>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold text-white">
+                    {u.name} <span className="text-slate-500">• {u.age}</span>
+                  </p>
+                  <p className="truncate text-[10px] text-slate-500">
+                    {u.need}
+                  </p>
+                </div>
+                <span className="text-[10px] text-slate-500">{u.time}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Panel
+          title="Weekly Appointments"
+          className="xl:col-span-2"
+          action={<SelectChip label="This Week" />}
+        >
+          <div className="mb-3 flex flex-wrap gap-4">
+            {[
+              ["Completed", "#a855f7"],
+              ["Scheduled", "#3b82f6"],
+              ["In Progress", "#10b981"],
+              ["Cancelled", "#f43f5e"],
+            ].map(([l, c]) => (
+              <span
+                key={l}
+                className="flex items-center gap-1.5 text-[11px] text-slate-400"
+              >
                 <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ background: m.color }}
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: c }}
                 />
-                {m.name}
+                {l}
               </span>
-              <span className="font-bold text-white">
-                {m.value}{" "}
-                <span className="font-medium text-slate-500">({m.pct})</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </section>
-  </>
-);
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={MOCK_WEEKLY_APPTS}>
+              <CartesianGrid
+                stroke="#1e293b"
+                strokeDasharray="3 3"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="day"
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <YAxis
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <Tooltip {...chartTooltip} />
+              <Line
+                type="monotone"
+                dataKey="completed"
+                stroke="#a855f7"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="scheduled"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="progress"
+                stroke="#10b981"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="cancelled"
+                stroke="#f43f5e"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Panel>
+        <Panel title="Counseling by Mode" subtitle="This Week">
+          <Donut
+            data={MOCK_COUNSEL_MODE}
+            centerValue="68"
+            centerLabel="Total"
+          />
+          <div className="mt-2 space-y-1.5">
+            {MOCK_COUNSEL_MODE.map((m) => (
+              <div
+                key={m.name}
+                className="flex items-center justify-between text-xs"
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ background: m.color }}
+                  />
+                  {m.name}
+                </span>
+                <span className="font-bold text-white">
+                  {m.value}{" "}
+                  <span className="font-medium text-slate-500">({m.pct})</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Shelter =============================== */
 
@@ -4516,549 +4591,792 @@ const ShelterSection = () => {
 
 /* =============================== Legal Aid =============================== */
 
-const LegalAidSection = () => (
-  <>
-    <SectionTitle meta={SECTION_META.legalaid} />
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_LEGAL_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
-      <Panel
-        title="Legal Aid Cases"
-        bodyClassName="p-0"
-        action={
-          <div className="flex items-center gap-2">
-            <SelectChip label="All Statuses" />
-            <SelectChip label="Filters" />
-          </div>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-5 py-3">Case ID</th>
-                <th className="px-5 py-3">Survivor</th>
-                <th className="px-5 py-3">Legal Need</th>
-                <th className="px-5 py-3">Partner / Advocate</th>
-                <th className="px-5 py-3">Next Date</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Priority</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_LEGAL_CASES.map((c) => (
-                <tr key={c.id} className="hover:bg-white/[0.02]">
-                  <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
-                    {c.id}
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={c.name} />
-                      <div>
-                        <p className="font-bold text-white">{c.name}</p>
-                        <p className="text-[10px] text-slate-500">{c.meta}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-300">{c.need}</td>
-                  <td className="px-5 py-3">
-                    <p className="font-medium text-white">{c.firm}</p>
-                    <p className="text-[10px] text-slate-500">{c.adv}</p>
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">
-                    <p>{c.date}</p>
-                    <p className="text-[10px] text-slate-500">{c.time}</p>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(c.status)}>{c.status}</Pill>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(c.priority)}>{c.priority}</Pill>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-          <span className="text-[11px] text-slate-500">
-            Showing 1 to 8 of 142 results
-          </span>
-          <Pagination pages={["1", "2", "3", "…", "18"]} />
-        </div>
-      </Panel>
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Upcoming Court & Legal Deadlines"
-          action={<LinkChip label="View all" />}
-        >
-          <div className="space-y-2.5">
-            {MOCK_COURT_DATES.map((d, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3"
-              >
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-center">
-                  <span className="text-[9px] font-bold text-violet-300">
-                    {d.d}
-                  </span>
-                  <span className="text-sm font-black text-white">{d.n}</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-white">
-                    {d.name}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">{d.sub}</p>
-                  <p className="truncate text-[10px] text-slate-500">
-                    {d.court}
-                  </p>
-                </div>
-                <Pill tone={d.chip === "TODAY" ? "rose" : "amber"}>
-                  {d.chip}
-                </Pill>
-              </div>
-            ))}
-            <LinkChip label="Sync calendar" />
-          </div>
-        </Panel>
-        <Panel title="Quick Actions">
-          <QuickActionGrid
-            items={[
-              {
-                label: "Create Legal Referral",
-                desc: "Register new referral",
-                icon: Plus,
-              },
-              {
-                label: "Contact Partner",
-                desc: "Reach out to advocate",
-                icon: Phone,
-              },
-              {
-                label: "Upload Document",
-                desc: "Add case document",
-                icon: Upload,
-              },
-              {
-                label: "Request Legal Aid",
-                desc: "External legal support",
-                icon: Scale,
-              },
-              {
-                label: "Schedule Meeting",
-                desc: "Book with survivor",
-                icon: Calendar,
-              },
-              {
-                label: "Generate Report",
-                desc: "Legal aid summary",
-                icon: FileText,
-              },
-            ]}
+const LegalAidSection = () => {
+  const { data: legalReferrals = [] } = usePartnerReferrals();
+  const legal = legalReferrals.filter((r) => r.partnerType === "legal");
+
+  const legalRows = legal.length
+    ? legal.map((r) => {
+        const d = new Date(r.createdAt);
+        return {
+          key: r.id,
+          id: r.caseReference || `REF-${r.id.slice(0, 8).toUpperCase()}`,
+          name: "Protected",
+          meta: r.contactPhone || "—",
+          need: r.serviceRequested,
+          firm: r.organizationName,
+          adv: r.contactName || "—",
+          date: d.toLocaleDateString(),
+          time: d.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          status: REFERRAL_STATUS_LABEL[r.status],
+          priority:
+            r.dueAt && new Date(r.dueAt).getTime() - Date.now() < 24 * 3600_000
+              ? "Urgent"
+              : "Standard",
+        };
+      })
+    : ALLOW_MOCK
+      ? MOCK_LEGAL_CASES.map((m) => ({ ...m, key: m.id }))
+      : [];
+
+  const legalKpis = legal.length
+    ? [
+        {
+          label: "Legal Referrals",
+          value: nf.format(legal.length),
+          icon: Scale,
+          tone: "violet",
+        },
+        {
+          label: "Awaiting Response",
+          value: nf.format(legal.filter((r) => r.status === "pending").length),
+          icon: Clock,
+          tone: "amber",
+        },
+        {
+          label: "In Progress",
+          value: nf.format(
+            legal.filter((r) => ["accepted", "in_progress"].includes(r.status))
+              .length,
+          ),
+          icon: RefreshCw,
+          tone: "sky",
+        },
+        {
+          label: "Completed",
+          value: nf.format(
+            legal.filter((r) => r.status === "completed").length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+      ]
+    : gateKpis(MOCK_LEGAL_KPIS);
+
+  return (
+    <>
+      <SectionTitle meta={SECTION_META.legalaid} />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {legalKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
           />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
+        <Panel
+          title="Legal Aid Cases"
+          bodyClassName="p-0"
+          action={
+            <div className="flex items-center gap-2">
+              <SelectChip label="All Statuses" />
+              <SelectChip label="Filters" />
+            </div>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-5 py-3">Case ID</th>
+                  <th className="px-5 py-3">Survivor</th>
+                  <th className="px-5 py-3">Legal Need</th>
+                  <th className="px-5 py-3">Partner / Advocate</th>
+                  <th className="px-5 py-3">Next Date</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Priority</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {legalRows.map((c) => (
+                  <tr key={c.id} className="hover:bg-white/[0.02]">
+                    <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
+                      {c.id}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={c.name} />
+                        <div>
+                          <p className="font-bold text-white">{c.name}</p>
+                          <p className="text-[10px] text-slate-500">{c.meta}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-300">{c.need}</td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-white">{c.firm}</p>
+                      <p className="text-[10px] text-slate-500">{c.adv}</p>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400">
+                      <p>{c.date}</p>
+                      <p className="text-[10px] text-slate-500">{c.time}</p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(c.status)}>{c.status}</Pill>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(c.priority)}>{c.priority}</Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+            <span className="text-[11px] text-slate-500">
+              Showing 1 to 8 of 142 results
+            </span>
+            <Pagination pages={["1", "2", "3", "…", "18"]} />
+          </div>
         </Panel>
-      </div>
-    </section>
-  </>
-);
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Upcoming Court & Legal Deadlines"
+            action={<LinkChip label="View all" />}
+          >
+            <div className="space-y-2.5">
+              {MOCK_COURT_DATES.map((d, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                >
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-center">
+                    <span className="text-[9px] font-bold text-violet-300">
+                      {d.d}
+                    </span>
+                    <span className="text-sm font-black text-white">{d.n}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-white">
+                      {d.name}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      {d.sub}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      {d.court}
+                    </p>
+                  </div>
+                  <Pill tone={d.chip === "TODAY" ? "rose" : "amber"}>
+                    {d.chip}
+                  </Pill>
+                </div>
+              ))}
+              <LinkChip label="Sync calendar" />
+            </div>
+          </Panel>
+          <Panel title="Quick Actions">
+            <QuickActionGrid
+              items={[
+                {
+                  label: "Create Legal Referral",
+                  desc: "Register new referral",
+                  icon: Plus,
+                },
+                {
+                  label: "Contact Partner",
+                  desc: "Reach out to advocate",
+                  icon: Phone,
+                },
+                {
+                  label: "Upload Document",
+                  desc: "Add case document",
+                  icon: Upload,
+                },
+                {
+                  label: "Request Legal Aid",
+                  desc: "External legal support",
+                  icon: Scale,
+                },
+                {
+                  label: "Schedule Meeting",
+                  desc: "Book with survivor",
+                  icon: Calendar,
+                },
+                {
+                  label: "Generate Report",
+                  desc: "Legal aid summary",
+                  icon: FileText,
+                },
+              ]}
+            />
+          </Panel>
+        </div>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Medical =============================== */
 
-const MedicalSection = () => (
-  <>
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_MEDICAL_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
-      <Panel
-        title="Medical Support Requests"
-        bodyClassName="p-0"
-        action={
-          <div className="flex items-center gap-2">
-            <SelectChip label="All Status" />
-            <SelectChip label="May 9 – May 15, 2025" />
-          </div>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className={tableHead}>
-                <th className="px-5 py-3">Survivor</th>
-                <th className="px-5 py-3">Service Needed</th>
-                <th className="px-5 py-3">Facility</th>
-                <th className="px-5 py-3">Appointment Date</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Priority</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {MOCK_MEDICAL.map((m, i) => (
-                <tr key={i} className="hover:bg-white/[0.02]">
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={m.name} />
-                      <div>
-                        <p className="font-bold text-white">{m.name}</p>
-                        <p className="text-[10px] text-slate-500">
-                          Case {m.caseId}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <p className="font-medium text-white">{m.service}</p>
-                    <p className="text-[10px] text-slate-500">{m.serviceSub}</p>
-                  </td>
-                  <td className="px-5 py-3">
-                    <p className="font-medium text-white">{m.facility}</p>
-                    <p className="text-[10px] text-slate-500">{m.loc}</p>
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">
-                    <p>{m.date}</p>
-                    <p className="text-[10px] text-slate-500">{m.time}</p>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(m.status)}>{m.status}</Pill>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Pill tone={statusTone(m.priority)}>{m.priority}</Pill>
-                  </td>
+const MedicalSection = () => {
+  const { data: medicalReferrals = [] } = usePartnerReferrals();
+  const medical = medicalReferrals.filter((r) => r.partnerType === "hospital");
+
+  const medicalRows = medical.length
+    ? medical.map((r) => {
+        const d = new Date(r.createdAt);
+        return {
+          key: r.id,
+          name: "Protected",
+          caseId: r.caseReference || `REF-${r.id.slice(0, 8).toUpperCase()}`,
+          service: r.serviceRequested,
+          serviceSub: r.nextAction || "",
+          facility: r.organizationName,
+          loc: r.contactName || "—",
+          date: d.toLocaleDateString(),
+          time: d.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          status: REFERRAL_STATUS_LABEL[r.status],
+          priority:
+            r.dueAt && new Date(r.dueAt).getTime() - Date.now() < 24 * 3600_000
+              ? "Urgent"
+              : "Standard",
+        };
+      })
+    : ALLOW_MOCK
+      ? MOCK_MEDICAL.map((m, i) => ({ ...m, key: String(i) }))
+      : [];
+
+  const medicalKpis = medical.length
+    ? [
+        {
+          label: "Medical Referrals",
+          value: nf.format(medical.length),
+          icon: Plus,
+          tone: "violet",
+        },
+        {
+          label: "Awaiting Response",
+          value: nf.format(
+            medical.filter((r) => r.status === "pending").length,
+          ),
+          icon: Clock,
+          tone: "amber",
+        },
+        {
+          label: "In Treatment",
+          value: nf.format(
+            medical.filter((r) =>
+              ["accepted", "in_progress"].includes(r.status),
+            ).length,
+          ),
+          icon: Stethoscope,
+          tone: "sky",
+        },
+        {
+          label: "Completed",
+          value: nf.format(
+            medical.filter((r) => r.status === "completed").length,
+          ),
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+      ]
+    : gateKpis(MOCK_MEDICAL_KPIS);
+
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {medicalKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+          />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
+        <Panel
+          title="Medical Support Requests"
+          bodyClassName="p-0"
+          action={
+            <div className="flex items-center gap-2">
+              <SelectChip label="All Status" />
+              <SelectChip label="May 9 – May 15, 2025" />
+            </div>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={tableHead}>
+                  <th className="px-5 py-3">Survivor</th>
+                  <th className="px-5 py-3">Service Needed</th>
+                  <th className="px-5 py-3">Facility</th>
+                  <th className="px-5 py-3">Appointment Date</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Priority</th>
                 </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {medicalRows.map((m) => (
+                  <tr key={m.key} className="hover:bg-white/[0.02]">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={m.name} />
+                        <div>
+                          <p className="font-bold text-white">{m.name}</p>
+                          <p className="text-[10px] text-slate-500">
+                            Case {m.caseId}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-white">{m.service}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {m.serviceSub}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-white">{m.facility}</p>
+                      <p className="text-[10px] text-slate-500">{m.loc}</p>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400">
+                      <p>{m.date}</p>
+                      <p className="text-[10px] text-slate-500">{m.time}</p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(m.status)}>{m.status}</Pill>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Pill tone={statusTone(m.priority)}>{m.priority}</Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
+            <span className="text-[11px] text-slate-500">
+              Showing 1 to 8 of 285 entries
+            </span>
+            <Pagination pages={["1", "2", "3", "…", "36"]} />
+          </div>
+        </Panel>
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Urgent Medical Cases"
+            action={<LinkChip label="View all" />}
+          >
+            <div className="space-y-2.5">
+              {MOCK_URGENT_MEDICAL.map((m, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-white">
+                      {m.id}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-400">
+                      {m.name} • {m.need}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      Referred to: {m.ref}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-slate-500">{m.time}</span>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </Panel>
+          <Panel
+            title="Facility Utilization"
+            subtitle="Next 7 Days"
+            action={<LinkChip label="View report" />}
+          >
+            <div className="space-y-3">
+              {MOCK_FACILITY_UTIL.map((f) => (
+                <div key={f.name}>
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300">{f.name}</span>
+                    <span className="font-bold text-white">{f.pct}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                      style={{ width: `${f.pct}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </div>
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-          <span className="text-[11px] text-slate-500">
-            Showing 1 to 8 of 285 entries
-          </span>
-          <Pagination pages={["1", "2", "3", "…", "36"]} />
+      </section>
+      <Panel title="Quick Actions">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              label: "Create Medical Referral",
+              desc: "Refer a survivor to a partner facility",
+              icon: Plus,
+            },
+            {
+              label: "Book Appointment",
+              desc: "Schedule an appointment for a survivor",
+              icon: Calendar,
+            },
+            {
+              label: "Contact Facility",
+              desc: "Get in touch with partner facilities",
+              icon: Phone,
+            },
+          ].map((a) => {
+            const Icon = a.icon;
+            return (
+              <button
+                key={a.label}
+                type="button"
+                onClick={() =>
+                  toast.info(
+                    `${a.label}: coordinate with the facility via Secure Messages — contact details are in the directory above.`,
+                  )
+                }
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4 text-left hover:border-white/20"
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-white">{a.label}</p>
+                  <p className="text-xs text-slate-500">{a.desc}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </Panel>
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Urgent Medical Cases"
-          action={<LinkChip label="View all" />}
-        >
-          <div className="space-y-2.5">
-            {MOCK_URGENT_MEDICAL.map((m, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] p-3"
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-white">
-                    {m.id}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-400">
-                    {m.name} • {m.need}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">
-                    Referred to: {m.ref}
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-500">{m.time}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel
-          title="Facility Utilization"
-          subtitle="Next 7 Days"
-          action={<LinkChip label="View report" />}
-        >
-          <div className="space-y-3">
-            {MOCK_FACILITY_UTIL.map((f) => (
-              <div key={f.name}>
-                <div className="mb-1 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-300">{f.name}</span>
-                  <span className="font-bold text-white">{f.pct}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/5">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
-                    style={{ width: `${f.pct}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-    </section>
-    <Panel title="Quick Actions">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          {
-            label: "Create Medical Referral",
-            desc: "Refer a survivor to a partner facility",
-            icon: Plus,
-          },
-          {
-            label: "Book Appointment",
-            desc: "Schedule an appointment for a survivor",
-            icon: Calendar,
-          },
-          {
-            label: "Contact Facility",
-            desc: "Get in touch with partner facilities",
-            icon: Phone,
-          },
-        ].map((a) => {
-          const Icon = a.icon;
-          return (
-            <button
-              key={a.label}
-              type="button"
-              onClick={() =>
-                toast.info(
-                  `${a.label}: coordinate with the facility via Secure Messages — contact details are in the directory above.`,
-                )
-              }
-              className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4 text-left hover:border-white/20"
-            >
-              <div className="grid h-10 w-10 place-items-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300">
-                <Icon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-black text-white">{a.label}</p>
-                <p className="text-xs text-slate-500">{a.desc}</p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </Panel>
-  </>
-);
+    </>
+  );
+};
 
 /* =============================== Analytics =============================== */
 
-const AnalyticsSection = () => (
-  <>
-    <SectionTitle meta={SECTION_META.analytics} />
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_ANALYTICS_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-          sub={k.sub}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Panel
-        title="Case Trends Over Time"
-        className="xl:col-span-2"
-        action={<SelectChip label="Daily" />}
-      >
-        <div className="mb-3 flex flex-wrap gap-4">
-          {[
-            ["New Cases", "#a855f7"],
-            ["In Progress", "#3b82f6"],
-            ["Resolved", "#10b981"],
-            ["Closed", "#64748b"],
-          ].map(([l, c]) => (
-            <span
-              key={l}
-              className="flex items-center gap-1.5 text-[11px] text-slate-400"
-            >
+const NGO_TYPE_DONUT_COLORS = [
+  "#a855f7",
+  "#f43f5e",
+  "#3b82f6",
+  "#f59e0b",
+  "#10b981",
+  "#64748b",
+];
+
+const AnalyticsSection = () => {
+  const { data: analyticsCases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 30000,
+  });
+  const { data: analyticsEscalations = [] } = useEscalationEvents({
+    limit: 200,
+    staleTime: 30000,
+  });
+  const { data: categoryTotals } = useCaseCategories();
+
+  const isDone = (c: { status: string }) =>
+    ["resolved", "closed"].includes((c.status || "").toLowerCase());
+
+  // Cases created per day over the last 15 days, split by their current
+  // status — an honest series computed purely from live rows.
+  const caseTrends = analyticsCases.length
+    ? Array.from({ length: 15 }, (_, i) => {
+        const day = new Date();
+        day.setHours(0, 0, 0, 0);
+        day.setDate(day.getDate() - (14 - i));
+        const next = new Date(day.getTime() + 24 * 3600_000);
+        const created = analyticsCases.filter((c) => {
+          const t = new Date(c.createdAt).getTime();
+          return t >= day.getTime() && t < next.getTime();
+        });
+        return {
+          day: day.toLocaleDateString([], { month: "short", day: "numeric" }),
+          newCases: created.length,
+          inProgress: created.filter(
+            (c) => !isDone(c) && (c.status || "").toLowerCase() !== "new",
+          ).length,
+          resolved: created.filter(
+            (c) => (c.status || "").toLowerCase() === "resolved",
+          ).length,
+          closed: created.filter(
+            (c) => (c.status || "").toLowerCase() === "closed",
+          ).length,
+        };
+      })
+    : sample(MOCK_CASE_TRENDS);
+
+  const totalByType = (categoryTotals ?? []).reduce(
+    (acc, c) => acc + c.value,
+    0,
+  );
+  const casesByType =
+    categoryTotals && categoryTotals.length
+      ? categoryTotals.map((c, i) => ({
+          name: titleCase(c.name),
+          value: c.value,
+          pct: totalByType
+            ? `${Math.round((c.value / totalByType) * 100)}% (${nf.format(c.value)})`
+            : String(c.value),
+          color: NGO_TYPE_DONUT_COLORS[i % NGO_TYPE_DONUT_COLORS.length],
+        }))
+      : sample(MOCK_CASES_BY_TYPE);
+
+  const analyticsKpis = analyticsCases.length
+    ? [
+        {
+          label: "Total Cases",
+          value: nf.format(analyticsCases.length),
+          icon: Briefcase,
+          tone: "violet",
+        },
+        {
+          label: "High Risk",
+          value: nf.format(
+            analyticsCases.filter((c) =>
+              ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+            ).length,
+          ),
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+        {
+          label: "Resolution Rate",
+          value: `${Math.round((analyticsCases.filter(isDone).length / analyticsCases.length) * 100)}%`,
+          icon: CheckCircle2,
+          tone: "emerald",
+        },
+        {
+          label: "Active Escalations",
+          value: nf.format(
+            analyticsEscalations.filter(
+              (e) =>
+                !["resolved", "closed"].includes(
+                  (e.status || "").toLowerCase(),
+                ),
+            ).length,
+          ),
+          icon: Bell,
+          tone: "amber",
+        },
+      ]
+    : gateKpis(MOCK_ANALYTICS_KPIS);
+
+  return (
+    <>
+      <SectionTitle meta={SECTION_META.analytics} />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {analyticsKpis.map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={"delta" in k ? k.delta : undefined}
+            sub={"sub" in k ? k.sub : undefined}
+          />
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Panel
+          title="Case Trends Over Time"
+          className="xl:col-span-2"
+          action={<SelectChip label="Daily" />}
+        >
+          <div className="mb-3 flex flex-wrap gap-4">
+            {[
+              ["New Cases", "#a855f7"],
+              ["In Progress", "#3b82f6"],
+              ["Resolved", "#10b981"],
+              ["Closed", "#64748b"],
+            ].map(([l, c]) => (
               <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: c }}
-              />
-              {l}
-            </span>
-          ))}
-        </div>
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={MOCK_CASE_TRENDS}>
-            <CartesianGrid
-              stroke="#1e293b"
-              strokeDasharray="3 3"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="day"
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <YAxis
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <Tooltip {...chartTooltip} />
-            <Line
-              type="monotone"
-              dataKey="newCases"
-              stroke="#a855f7"
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="inProgress"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="resolved"
-              stroke="#10b981"
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="closed"
-              stroke="#64748b"
-              strokeWidth={2}
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </Panel>
-      <Panel title="Cases by Type">
-        <Donut
-          data={MOCK_CASES_BY_TYPE}
-          centerValue="1,287"
-          centerLabel="Total"
-        />
-        <div className="mt-2 space-y-1.5">
-          {MOCK_CASES_BY_TYPE.map((c) => (
-            <div
-              key={c.name}
-              className="flex items-center justify-between text-[11px]"
-            >
-              <span className="flex items-center gap-2">
+                key={l}
+                className="flex items-center gap-1.5 text-[11px] text-slate-400"
+              >
                 <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ background: c.color }}
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: c }}
                 />
-                {c.name}
+                {l}
               </span>
-              <span className="font-bold text-white">{c.pct}</span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Panel
-        title="Service Utilization"
-        className="xl:col-span-2"
-        action={<SelectChip label="Weekly" />}
-      >
-        <div className="mb-3 flex flex-wrap gap-4">
-          {[
-            ["Counseling", "#a855f7"],
-            ["Shelter", "#3b82f6"],
-            ["Legal", "#10b981"],
-            ["Medical", "#f59e0b"],
-            ["Emergency", "#64748b"],
-          ].map(([l, c]) => (
-            <span
-              key={l}
-              className="flex items-center gap-1.5 text-[11px] text-slate-400"
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: c }}
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={caseTrends}>
+              <CartesianGrid
+                stroke="#1e293b"
+                strokeDasharray="3 3"
+                vertical={false}
               />
-              {l}
-            </span>
-          ))}
-        </div>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={MOCK_SERVICE_UTIL}>
-            <CartesianGrid
-              stroke="#1e293b"
-              strokeDasharray="3 3"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="week"
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <YAxis
-              stroke="#64748b"
-              tickLine={false}
-              axisLine={false}
-              fontSize={10}
-            />
-            <Tooltip
-              {...chartTooltip}
-              cursor={{ fill: "rgba(255,255,255,0.04)" }}
-            />
-            <Legend wrapperStyle={{ display: "none" }} />
-            <Bar dataKey="counseling" fill="#a855f7" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="shelter" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="legal" fill="#10b981" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="medical" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="emergency" fill="#64748b" radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-        <p className="mt-2 text-[11px] text-slate-400">
-          Total services delivered{" "}
-          <span className="font-black text-white">3,825</span>{" "}
-          <span className="font-bold text-emerald-400">↑ 11.4%</span>
-        </p>
-      </Panel>
-      <Panel title="Insights & Highlights">
-        <p className="mb-2 text-[11px] font-bold text-slate-300">
-          Top Regions by Cases
-        </p>
-        <div className="space-y-2">
-          {MOCK_TOP_REGIONS.map((r) => (
-            <div
-              key={r.name}
-              className="flex items-center justify-between text-xs"
-            >
-              <span className="text-slate-300">{r.name}</span>
-              <span className="font-bold text-violet-300">
-                {r.value}{" "}
-                <span className="font-medium text-slate-500">({r.pct})</span>
+              <XAxis
+                dataKey="day"
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <YAxis
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <Tooltip {...chartTooltip} />
+              <Line
+                type="monotone"
+                dataKey="newCases"
+                stroke="#a855f7"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="inProgress"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="resolved"
+                stroke="#10b981"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="closed"
+                stroke="#64748b"
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Panel>
+        <Panel title="Cases by Type">
+          <Donut data={casesByType} centerValue="1,287" centerLabel="Total" />
+          <div className="mt-2 space-y-1.5">
+            {casesByType.map((c) => (
+              <div
+                key={c.name}
+                className="flex items-center justify-between text-[11px]"
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ background: c.color }}
+                  />
+                  {c.name}
+                </span>
+                <span className="font-bold text-white">{c.pct}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Panel
+          title="Service Utilization"
+          className="xl:col-span-2"
+          action={<SelectChip label="Weekly" />}
+        >
+          <div className="mb-3 flex flex-wrap gap-4">
+            {[
+              ["Counseling", "#a855f7"],
+              ["Shelter", "#3b82f6"],
+              ["Legal", "#10b981"],
+              ["Medical", "#f59e0b"],
+              ["Emergency", "#64748b"],
+            ].map(([l, c]) => (
+              <span
+                key={l}
+                className="flex items-center gap-1.5 text-[11px] text-slate-400"
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: c }}
+                />
+                {l}
               </span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </section>
-  </>
-);
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={MOCK_SERVICE_UTIL}>
+              <CartesianGrid
+                stroke="#1e293b"
+                strokeDasharray="3 3"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="week"
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <YAxis
+                stroke="#64748b"
+                tickLine={false}
+                axisLine={false}
+                fontSize={10}
+              />
+              <Tooltip
+                {...chartTooltip}
+                cursor={{ fill: "rgba(255,255,255,0.04)" }}
+              />
+              <Legend wrapperStyle={{ display: "none" }} />
+              <Bar dataKey="counseling" fill="#a855f7" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="shelter" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="legal" fill="#10b981" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="medical" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="emergency" fill="#64748b" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Total services delivered{" "}
+            <span className="font-black text-white">3,825</span>{" "}
+            <span className="font-bold text-emerald-400">↑ 11.4%</span>
+          </p>
+        </Panel>
+        <Panel title="Insights & Highlights">
+          <p className="mb-2 text-[11px] font-bold text-slate-300">
+            Top Regions by Cases
+          </p>
+          <div className="space-y-2">
+            {MOCK_TOP_REGIONS.map((r) => (
+              <div
+                key={r.name}
+                className="flex items-center justify-between text-xs"
+              >
+                <span className="text-slate-300">{r.name}</span>
+                <span className="font-bold text-violet-300">
+                  {r.value}{" "}
+                  <span className="font-medium text-slate-500">({r.pct})</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Reports =============================== */
 

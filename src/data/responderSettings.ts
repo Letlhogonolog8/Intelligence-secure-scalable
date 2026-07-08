@@ -73,3 +73,71 @@ export const useResponderSettings = (userId?: string | null) =>
     enabled: hasSupabase && Boolean(userId),
     staleTime: 30000,
   });
+
+/* ---------------------- Free-form portal preferences ---------------------- */
+/**
+ * Per-user JSONB preference blob (responder_settings.preferences) for portals
+ * whose settings don't map onto the fixed notification columns above (e.g.
+ * the counselor portal's toggle set). Namespaced by portal key.
+ */
+
+export type PortalPreferences = Record<string, boolean | string | number>;
+
+export const portalPreferencesKey = (userId: string, portal: string) =>
+  ["aegis", "portalPreferences", userId, portal] as const;
+
+export async function fetchPortalPreferences(
+  userId: string,
+  portal: string,
+): Promise<PortalPreferences> {
+  if (!hasSupabase || !userId) return {};
+  const { data, error } = await supabase
+    .from("responder_settings")
+    .select("preferences")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const prefs = (data?.preferences ?? {}) as Record<string, unknown>;
+  const scoped = prefs[portal];
+  return scoped && typeof scoped === "object"
+    ? (scoped as PortalPreferences)
+    : {};
+}
+
+export async function savePortalPreferences(
+  userId: string,
+  portal: string,
+  values: PortalPreferences,
+): Promise<void> {
+  if (!userId) throw new Error("Not signed in");
+  const { data, error: readError } = await supabase
+    .from("responder_settings")
+    .select("preferences")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (readError) throw readError;
+  const current = (data?.preferences ?? {}) as Record<string, unknown>;
+  const { error } = await supabase.from("responder_settings").upsert(
+    {
+      user_id: userId,
+      preferences: { ...current, [portal]: values },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) throw error;
+}
+
+export const usePortalPreferences = (
+  userId: string | null | undefined,
+  portal: string,
+) =>
+  useQuery({
+    queryKey: portalPreferencesKey(userId ?? "none", portal),
+    queryFn: () =>
+      userId
+        ? fetchPortalPreferences(userId, portal)
+        : Promise.resolve({} as PortalPreferences),
+    enabled: hasSupabase && Boolean(userId),
+    staleTime: 30000,
+  });

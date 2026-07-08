@@ -478,12 +478,14 @@ export type Database = {
           case_assignment_push: boolean;
           audit_visibility: boolean;
           available: boolean;
+          preferences: Record<string, unknown>;
           updated_at: string;
         },
         {
           user_id: string;
           critical_push?: boolean;
           case_assignment_push?: boolean;
+          preferences?: Record<string, unknown>;
           audit_visibility?: boolean;
           available?: boolean;
           updated_at?: string;
@@ -535,6 +537,16 @@ export type Database = {
       set_preferred_language: {
         Args: { lang: string };
         Returns: undefined;
+      };
+      recent_audit_activity: {
+        Args: { p_limit?: number };
+        Returns: {
+          id: string;
+          table_name: string;
+          operation: string;
+          user_role: string | null;
+          changed_at: string;
+        }[];
       };
       start_secure_conversation: {
         Args: {
