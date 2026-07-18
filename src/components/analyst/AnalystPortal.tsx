@@ -2316,7 +2316,12 @@ const OverviewSection = () => {
         </Panel>
         <Panel title="AI Insights & Recommendations" info>
           <div className="space-y-3">
-            {MOCK_AI_INSIGHTS.map((a, i) => {
+            {sample(MOCK_AI_INSIGHTS).length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500">
+                No insights available yet.
+              </p>
+            ) : null}
+            {sample(MOCK_AI_INSIGHTS).map((a, i) => {
               const Icon = a.icon;
               return (
                 <div key={i} className="flex items-start gap-3">
@@ -2398,6 +2403,27 @@ const AnalyticsSection = () => {
     categoryData && categoryData.length
       ? categoryData.map((c) => ({ name: c.name, value: c.value }))
       : sample(MOCK_CATEGORY_VOLUME);
+
+  // Top Incident Categories table — reuses the same real category volume as
+  // the chart above rather than a second, disconnected fake ranking. No real
+  // period-over-period comparison exists yet, so trend is honestly omitted
+  // for live rows instead of inventing a direction/percentage.
+  const categoryTotal = categoryData?.length
+    ? categoryData.reduce((s, c) => s + c.value, 0)
+    : 0;
+  const topCategories = categoryData?.length
+    ? [...categoryData]
+        .sort((a, b) => b.value - a.value)
+        .map((c) => ({
+          name: c.name,
+          incidents: nf.format(c.value),
+          pct: categoryTotal
+            ? `${((c.value / categoryTotal) * 100).toFixed(1)}%`
+            : "—",
+          trend: null as string | null,
+          dir: null as "up" | "down" | null,
+        }))
+    : sample(MOCK_TOP_CATEGORIES);
 
   const kpis = MOCK_ANALYTICS_KPIS.map((k) => {
     if (k.label === "Total Incidents" && sm?.totalIncidents != null)
@@ -2619,7 +2645,12 @@ const AnalyticsSection = () => {
           action={<LinkChip label="View all" />}
         >
           <div className="space-y-3">
-            {MOCK_INSIGHT_NOTES.map((a, i) => {
+            {sample(MOCK_INSIGHT_NOTES).length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500">
+                No insight notes yet.
+              </p>
+            ) : null}
+            {sample(MOCK_INSIGHT_NOTES).map((a, i) => {
               const Icon = a.icon;
               return (
                 <div key={i} className="flex items-start gap-2.5">
@@ -2658,7 +2689,17 @@ const AnalyticsSection = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {MOCK_TOP_CATEGORIES.map((c, i) => (
+              {topCategories.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-5 py-6 text-center text-xs text-slate-500"
+                  >
+                    No category data yet.
+                  </td>
+                </tr>
+              ) : null}
+              {topCategories.map((c, i) => (
                 <tr key={c.name} className="hover:bg-white/[0.02]">
                   <td className="px-5 py-3 text-slate-500">{i + 1}</td>
                   <td className="px-5 py-3 font-bold text-white">{c.name}</td>
@@ -2669,14 +2710,18 @@ const AnalyticsSection = () => {
                     {c.pct}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <span
-                      className={cn(
-                        "font-bold",
-                        c.dir === "up" ? "text-emerald-400" : "text-rose-400",
-                      )}
-                    >
-                      {c.dir === "up" ? "↑" : "↓"} {c.trend}
-                    </span>
+                    {c.dir ? (
+                      <span
+                        className={cn(
+                          "font-bold",
+                          c.dir === "up" ? "text-emerald-400" : "text-rose-400",
+                        )}
+                      >
+                        {c.dir === "up" ? "↑" : "↓"} {c.trend}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -2943,7 +2988,12 @@ const HotspotsSection = () => {
             indicators.
           </p>
           <div className="space-y-2">
-            {MOCK_HOTSPOT_RECS.map((r, i) => {
+            {sample(MOCK_HOTSPOT_RECS).length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500">
+                No recommendations yet.
+              </p>
+            ) : null}
+            {sample(MOCK_HOTSPOT_RECS).map((r, i) => {
               const Icon = r.icon;
               return (
                 <div
@@ -3276,7 +3326,17 @@ const ForecastingSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MOCK_REGION_PRIORITY.map((r) => (
+                {sample(MOCK_REGION_PRIORITY).length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-4 py-6 text-center text-slate-500"
+                    >
+                      No forecast data yet.
+                    </td>
+                  </tr>
+                ) : null}
+                {sample(MOCK_REGION_PRIORITY).map((r) => (
                   <tr key={r.rank} className="hover:bg-white/[0.02]">
                     <td className="px-4 py-2 font-bold text-white">
                       {r.region}
@@ -3302,7 +3362,12 @@ const ForecastingSection = () => {
           action={<LinkChip label="View all recommendations" />}
         >
           <div className="space-y-2">
-            {MOCK_FORECAST_RECS.map((r, i) => {
+            {sample(MOCK_FORECAST_RECS).length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500">
+                No recommendations yet.
+              </p>
+            ) : null}
+            {sample(MOCK_FORECAST_RECS).map((r, i) => {
               const Icon = r.icon;
               return (
                 <div

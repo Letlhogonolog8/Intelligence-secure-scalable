@@ -2798,84 +2798,164 @@ const OverviewSection = ({
   onNavigate,
 }: {
   onNavigate: (s: SectionKey) => void;
-}) => (
-  <>
-    <SectionTitle
-      meta={{
-        title: "Overview",
-        subtitle: "A snapshot of your organization's impact and active work.",
-      }}
-    />
-    <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {gateKpis(MOCK_CASE_KPIS).map((k) => (
-        <KpiCard
-          key={k.label}
-          label={k.label}
-          value={k.value}
-          icon={k.icon}
-          tone={k.tone}
-          delta={k.delta}
-        />
-      ))}
-    </section>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Panel title="Active Survivors by Need" className="xl:col-span-2">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {MOCK_SUPPORT_CATEGORIES.map((c) => (
-            <div
-              key={c.name}
-              className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-center"
-            >
-              <p
-                className={cn(
-                  "text-2xl font-black",
-                  c.color === "rose"
-                    ? "text-rose-400"
-                    : c.color === "violet"
-                      ? "text-violet-400"
-                      : c.color === "sky"
-                        ? "text-sky-400"
-                        : "text-emerald-400",
-                )}
-              >
-                {c.value}
-              </p>
-              <p className="mt-1 text-[11px] font-bold text-white">{c.name}</p>
-              <p className="text-[10px] text-slate-500">{c.pct}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4">
-          <QuickActionGrid
-            items={MOCK_CASE_QUICK.slice(0, 4)}
-            cols="sm:grid-cols-2 xl:grid-cols-4"
+}) => {
+  const { data: cases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const urgentCases = cases.length
+    ? cases
+        .filter((c) =>
+          ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+        )
+        .slice(0, 5)
+        .map((c) => ({
+          id: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+          type: c.description
+            ? c.description.length > 28
+              ? `${c.description.slice(0, 28)}…`
+              : c.description
+            : "GBV Case",
+          loc: "Location pending",
+          time: fmtRelative(c.createdAt),
+        }))
+    : ALLOW_MOCK
+      ? MOCK_URGENT_CASES.slice(0, 5)
+      : [];
+
+  return (
+    <>
+      <SectionTitle
+        meta={{
+          title: "Overview",
+          subtitle: "A snapshot of your organization's impact and active work.",
+        }}
+      />
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {(cases.length
+          ? MOCK_CASE_KPIS.map((k) => {
+              const isResolved = (c: { status: string }) =>
+                ["closed", "resolved"].includes((c.status || "").toLowerCase());
+              if (k.label === "Open Cases")
+                return {
+                  ...k,
+                  value: nf.format(cases.filter((c) => !isResolved(c)).length),
+                  delta: undefined,
+                };
+              if (k.label === "High Risk Cases")
+                return {
+                  ...k,
+                  value: nf.format(
+                    cases.filter((c) =>
+                      ["critical", "high"].includes(
+                        (c.riskLevel || "").toLowerCase(),
+                      ),
+                    ).length,
+                  ),
+                  delta: undefined,
+                };
+              if (k.label === "In Progress")
+                return {
+                  ...k,
+                  value: nf.format(
+                    cases.filter((c) =>
+                      ["in_progress", "open", "assigned"].includes(
+                        (c.status || "").toLowerCase(),
+                      ),
+                    ).length,
+                  ),
+                  delta: undefined,
+                };
+              if (k.label === "Resolved")
+                return {
+                  ...k,
+                  value: nf.format(cases.filter(isResolved).length),
+                  delta: undefined,
+                };
+              return k;
+            })
+          : gateKpis(MOCK_CASE_KPIS)
+        ).map((k) => (
+          <KpiCard
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            icon={k.icon}
+            tone={k.tone}
+            delta={k.delta}
           />
-        </div>
-      </Panel>
-      <Panel title="Urgent Cases" action={<LinkChip label="View all" />}>
-        <div className="space-y-2">
-          {MOCK_URGENT_CASES.slice(0, 5).map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onNavigate("cases")}
-              className="flex w-full items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-left hover:border-white/15"
-            >
-              <Pill tone="rose">Critical</Pill>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-white">{c.id}</p>
-                <p className="truncate text-[10px] text-slate-500">
-                  {c.type} • {c.loc}
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Panel title="Active Survivors by Need" className="xl:col-span-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {MOCK_SUPPORT_CATEGORIES.map((c) => (
+              <div
+                key={c.name}
+                className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-center"
+              >
+                <p
+                  className={cn(
+                    "text-2xl font-black",
+                    c.color === "rose"
+                      ? "text-rose-400"
+                      : c.color === "violet"
+                        ? "text-violet-400"
+                        : c.color === "sky"
+                          ? "text-sky-400"
+                          : "text-emerald-400",
+                  )}
+                >
+                  {c.value}
                 </p>
+                <p className="mt-1 text-[11px] font-bold text-white">
+                  {c.name}
+                </p>
+                <p className="text-[10px] text-slate-500">{c.pct}</p>
               </div>
-              <span className="text-[10px] text-slate-500">{c.time}</span>
-            </button>
-          ))}
-        </div>
-      </Panel>
-    </section>
-  </>
-);
+            ))}
+          </div>
+          <div className="mt-4">
+            <QuickActionGrid
+              items={MOCK_CASE_QUICK.slice(0, 4)}
+              cols="sm:grid-cols-2 xl:grid-cols-4"
+            />
+          </div>
+        </Panel>
+        <Panel title="Urgent Cases" action={<LinkChip label="View all" />}>
+          {urgentCases.length === 0 ? (
+            <p className="px-1 py-4 text-xs text-slate-500">
+              No urgent cases right now.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {urgentCases.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onNavigate("cases")}
+                  className="flex w-full items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-left hover:border-white/15"
+                >
+                  <Pill tone="rose">Critical</Pill>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-white">
+                      {c.id}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">
+                      {c.type} • {c.loc}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-slate-500">{c.time}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Cases =============================== */
 
@@ -2899,6 +2979,25 @@ const CasesSection = () => {
 
   const isResolved = (c: { status: string }) =>
     ["closed", "resolved"].includes((c.status || "").toLowerCase());
+  const urgentCasesList = cases.length
+    ? cases
+        .filter((c) =>
+          ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+        )
+        .slice(0, 5)
+        .map((c) => ({
+          id: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+          type: c.description
+            ? c.description.length > 28
+              ? `${c.description.slice(0, 28)}…`
+              : c.description
+            : "GBV Case",
+          loc: "Location pending",
+          time: fmtRelative(c.createdAt),
+        }))
+    : ALLOW_MOCK
+      ? MOCK_URGENT_CASES.slice(0, 5)
+      : [];
   const caseKpis = MOCK_CASE_KPIS.map((k) => {
     if (k.label === "Open Cases" && cases.length)
       return {
@@ -3109,26 +3208,32 @@ const CasesSection = () => {
             title="Urgent Cases Requiring Attention"
             action={<LinkChip label="View all" />}
           >
-            <div className="space-y-2">
-              {MOCK_URGENT_CASES.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-                >
-                  <Pill tone="rose">Critical</Pill>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-bold text-white">
-                      {c.id}
-                    </p>
-                    <p className="truncate text-[10px] text-slate-500">
-                      {c.type} • {c.loc}
-                    </p>
+            {urgentCasesList.length === 0 ? (
+              <p className="px-1 py-4 text-xs text-slate-500">
+                No urgent cases right now.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {urgentCasesList.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+                  >
+                    <Pill tone="rose">Critical</Pill>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-white">
+                        {c.id}
+                      </p>
+                      <p className="truncate text-[10px] text-slate-500">
+                        {c.type} • {c.loc}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{c.time}</span>
+                    <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
                   </div>
-                  <span className="text-[10px] text-slate-500">{c.time}</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Panel>
           <Panel
             title="Recent Case Updates"
@@ -3172,205 +3277,298 @@ const CasesSection = () => {
 
 /* =============================== Survivors =============================== */
 
-const SurvivorsSection = () => (
-  <>
-    <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
-      <div className="flex flex-col gap-6">
-        <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {gateKpis(MOCK_SURVIVOR_KPIS).map((k) => (
-            <KpiCard
-              key={k.label}
-              label={k.label}
-              value={k.value}
-              icon={k.icon}
-              tone={k.tone}
-              delta={k.delta}
-            />
-          ))}
-        </section>
-        <Panel
-          title="Survivors Directory"
-          bodyClassName="p-0"
-          action={
-            <button
-              type="button"
-              onClick={() =>
-                toast.info(
-                  "Survivors self-register through the mobile app; new cases arrive in Case Management automatically.",
-                )
-              }
-              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add Survivor
-            </button>
-          }
-        >
-          <div className="flex flex-wrap items-center gap-3 border-b border-white/5 p-4">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <Input
-                placeholder="Search by name, case ID, needs, or counselor..."
-                className="h-9 border-white/10 bg-slate-900/60 pl-10 text-sm text-white placeholder:text-slate-500"
+const SurvivorsSection = () => {
+  const { data: cases = [] } = useCaseReports({
+    limit: 1000,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+  const survivorRows = cases.length
+    ? cases.slice(0, 20).map((c) => ({
+        caseId: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+        name: "Protected",
+        meta: titleCase(c.riskLevel || "") || "—",
+        need: c.description
+          ? c.description.length > 24
+            ? `${c.description.slice(0, 24)}…`
+            : c.description
+          : "—",
+        counselor: "Unassigned",
+        status: titleCase((c.status || "").replace(/_/g, " ")) || "Open",
+        followup: "—",
+        urgent: ["critical", "high"].includes(
+          (c.riskLevel || "").toLowerCase(),
+        ),
+      }))
+    : ALLOW_MOCK
+      ? MOCK_SURVIVORS
+      : [];
+  const vulnerableRows = cases.length
+    ? cases
+        .filter((c) =>
+          ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+        )
+        .slice(0, 5)
+        .map((c, i) => ({
+          tag: titleCase(c.riskLevel || "High Risk"),
+          name: "Protected",
+          sub: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+          time: fmtRelative(c.createdAt),
+          key: c.id || i,
+        }))
+    : ALLOW_MOCK
+      ? MOCK_VULNERABLE.map((v, i) => ({ ...v, key: i }))
+      : [];
+
+  return (
+    <>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
+        <div className="flex flex-col gap-6">
+          <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+            {(cases.length
+              ? MOCK_SURVIVOR_KPIS.map((k) => {
+                  if (k.label === "Active Survivors")
+                    return {
+                      ...k,
+                      value: nf.format(
+                        cases.filter(
+                          (c) =>
+                            !["closed", "resolved"].includes(
+                              (c.status || "").toLowerCase(),
+                            ),
+                        ).length,
+                      ),
+                      delta: undefined,
+                    };
+                  if (k.label === "High Priority")
+                    return {
+                      ...k,
+                      value: nf.format(
+                        cases.filter((c) =>
+                          ["critical", "high"].includes(
+                            (c.riskLevel || "").toLowerCase(),
+                          ),
+                        ).length,
+                      ),
+                      delta: undefined,
+                    };
+                  // No real schema backing for 7-day intake trend or support-plan
+                  // counts yet — be honest instead of guessing.
+                  return { ...k, value: NO_DATA, delta: undefined };
+                })
+              : gateKpis(MOCK_SURVIVOR_KPIS)
+            ).map((k) => (
+              <KpiCard
+                key={k.label}
+                label={k.label}
+                value={k.value}
+                icon={k.icon}
+                tone={k.tone}
+                delta={k.delta}
+              />
+            ))}
+          </section>
+          <Panel
+            title="Survivors Directory"
+            bodyClassName="p-0"
+            action={
+              <button
+                type="button"
+                onClick={() =>
+                  toast.info(
+                    "Survivors self-register through the mobile app; new cases arrive in Case Management automatically.",
+                  )
+                }
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-[11px] font-bold text-white"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Survivor
+              </button>
+            }
+          >
+            <div className="flex flex-wrap items-center gap-3 border-b border-white/5 p-4">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <Input
+                  placeholder="Search by name, case ID, needs, or counselor..."
+                  className="h-9 border-white/10 bg-slate-900/60 pl-10 text-sm text-white placeholder:text-slate-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  toast.info("Use the status selector to filter the directory.")
+                }
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
+              >
+                <Filter className="h-3.5 w-3.5" /> Filters
+              </button>
+              <SelectChip
+                label="All Statuses"
+                options={["All Statuses", "Active", "Monitoring", "Closed"]}
               />
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                toast.info("Use the status selector to filter the directory.")
-              }
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/5"
-            >
-              <Filter className="h-3.5 w-3.5" /> Filters
-            </button>
-            <SelectChip
-              label="All Statuses"
-              options={["All Statuses", "Active", "Monitoring", "Closed"]}
-            />
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className={tableHead}>
-                  <th className="px-5 py-3">Name</th>
-                  <th className="px-5 py-3">Case ID</th>
-                  <th className="px-5 py-3">Primary Need</th>
-                  <th className="px-5 py-3">Assigned Counselor</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Next Follow-up</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {MOCK_SURVIVORS.map((s) => (
-                  <tr key={s.caseId} className="hover:bg-white/[0.02]">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={s.name} />
-                        <div>
-                          <p className="font-bold text-white">{s.name}</p>
-                          <p className="text-[10px] text-slate-500">{s.meta}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
-                      {s.caseId}
-                    </td>
-                    <td className="px-5 py-3 text-slate-300">{s.need}</td>
-                    <td className="px-5 py-3 text-slate-300">{s.counselor}</td>
-                    <td className="px-5 py-3">
-                      <Pill tone={statusTone(s.status)}>{s.status}</Pill>
-                    </td>
-                    <td
-                      className={cn(
-                        "px-5 py-3",
-                        s.urgent ? "font-bold text-rose-400" : "text-slate-400",
-                      )}
-                    >
-                      {s.followup}
-                    </td>
-                    <td className="px-5 py-3">
-                      <RowActions
-                        subject={s.caseId}
-                        detail={`${s.caseId} · ${s.name} — follow-up ${s.followup}`}
-                      />
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="px-5 py-3">Name</th>
+                    <th className="px-5 py-3">Case ID</th>
+                    <th className="px-5 py-3">Primary Need</th>
+                    <th className="px-5 py-3">Assigned Counselor</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Next Follow-up</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
-            <span className="text-[11px] text-slate-500">
-              Showing 1 to 8 of 2,251 survivors
-            </span>
-            <Pagination pages={["1", "2", "3", "4", "5", "…", "282"]} />
-          </div>
-        </Panel>
-      </div>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {survivorRows.map((s) => (
+                    <tr key={s.caseId} className="hover:bg-white/[0.02]">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={s.name} />
+                          <div>
+                            <p className="font-bold text-white">{s.name}</p>
+                            <p className="text-[10px] text-slate-500">
+                              {s.meta}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-[11px] text-slate-300">
+                        {s.caseId}
+                      </td>
+                      <td className="px-5 py-3 text-slate-300">{s.need}</td>
+                      <td className="px-5 py-3 text-slate-300">
+                        {s.counselor}
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={statusTone(s.status)}>{s.status}</Pill>
+                      </td>
+                      <td
+                        className={cn(
+                          "px-5 py-3",
+                          s.urgent
+                            ? "font-bold text-rose-400"
+                            : "text-slate-400",
+                        )}
+                      >
+                        {s.followup}
+                      </td>
+                      <td className="px-5 py-3">
+                        <RowActions
+                          subject={s.caseId}
+                          detail={`${s.caseId} · ${s.name} — follow-up ${s.followup}`}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
+              <span className="text-[11px] text-slate-500">
+                Showing {survivorRows.length ? 1 : 0} to {survivorRows.length}{" "}
+                of {nf.format(survivorRows.length)} survivors
+              </span>
+              <Pagination />
+            </div>
+          </Panel>
+        </div>
 
-      <div className="flex flex-col gap-6">
-        <Panel
-          title="Vulnerable Survivors Needing Attention"
-          action={<LinkChip label="View all" />}
-        >
-          <div className="space-y-2.5">
-            {MOCK_VULNERABLE.map((v, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={cn(
-                      "text-[10px] font-bold",
-                      v.tag.includes("Risk") || v.tag.includes("Urgent")
-                        ? "text-rose-400"
-                        : "text-amber-400",
-                    )}
+        <div className="flex flex-col gap-6">
+          <Panel
+            title="Vulnerable Survivors Needing Attention"
+            action={<LinkChip label="View all" />}
+          >
+            {vulnerableRows.length === 0 ? (
+              <p className="px-1 py-4 text-xs text-slate-500">
+                No high-risk survivors right now.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {vulnerableRows.map((v) => (
+                  <div
+                    key={v.key}
+                    className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
                   >
-                    {v.tag}
-                  </p>
-                  <p className="truncate text-xs font-bold text-white">
-                    {v.name}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">{v.sub}</p>
-                </div>
-                <span className="text-[10px] text-slate-500">{v.time}</span>
-                <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "text-[10px] font-bold",
+                          v.tag.includes("Risk") || v.tag.includes("Urgent")
+                            ? "text-rose-400"
+                            : "text-amber-400",
+                        )}
+                      >
+                        {v.tag}
+                      </p>
+                      <p className="truncate text-xs font-bold text-white">
+                        {v.name}
+                      </p>
+                      <p className="truncate text-[10px] text-slate-500">
+                        {v.sub}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{v.time}</span>
+                    <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel
-          title="Survivor Demographics"
-          action={<LinkChip label="View report" />}
-        >
-          <div className="grid grid-cols-2 gap-3">
-            <Donut
-              data={MOCK_AGE_GROUPS}
-              centerValue="2,251"
-              centerLabel="Total"
-            />
-            <div className="space-y-1.5 self-center">
-              {MOCK_AGE_GROUPS.map((a) => (
+            )}
+          </Panel>
+          <Panel
+            title="Survivor Demographics"
+            action={<LinkChip label="View report" />}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Donut
+                data={MOCK_AGE_GROUPS}
+                centerValue="2,251"
+                centerLabel="Total"
+              />
+              <div className="space-y-1.5 self-center">
+                {MOCK_AGE_GROUPS.map((a) => (
+                  <div
+                    key={a.name}
+                    className="flex items-center justify-between text-[11px]"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: a.color }}
+                      />
+                      {a.name}
+                    </span>
+                    <span className="font-bold text-white">{a.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Panel>
+          <Panel
+            title="Primary Support Categories"
+            action={<LinkChip label="View report" />}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {MOCK_SUPPORT_CATEGORIES.map((c) => (
                 <div
-                  key={a.name}
-                  className="flex items-center justify-between text-[11px]"
+                  key={c.name}
+                  className={cn("rounded-xl border p-3", ICON_TONES[c.color])}
                 >
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ background: a.color }}
-                    />
-                    {a.name}
-                  </span>
-                  <span className="font-bold text-white">{a.value}%</span>
+                  <p className="text-[10px] font-bold uppercase">{c.name}</p>
+                  <p className="mt-1 text-lg font-black text-white">
+                    {c.value}
+                  </p>
+                  <p className="text-[10px] opacity-80">{c.pct}</p>
                 </div>
               ))}
             </div>
-          </div>
-        </Panel>
-        <Panel
-          title="Primary Support Categories"
-          action={<LinkChip label="View report" />}
-        >
-          <div className="grid grid-cols-2 gap-2">
-            {MOCK_SUPPORT_CATEGORIES.map((c) => (
-              <div
-                key={c.name}
-                className={cn("rounded-xl border p-3", ICON_TONES[c.color])}
-              >
-                <p className="text-[10px] font-bold uppercase">{c.name}</p>
-                <p className="mt-1 text-lg font-black text-white">{c.value}</p>
-                <p className="text-[10px] opacity-80">{c.pct}</p>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-    </section>
-  </>
-);
+          </Panel>
+        </div>
+      </section>
+    </>
+  );
+};
 
 /* =============================== Referrals =============================== */
 

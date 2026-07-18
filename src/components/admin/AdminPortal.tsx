@@ -96,6 +96,7 @@ import {
   useConsentCategories,
   useConsentMetrics,
   useDeletionRequests,
+  useEscalationEvents,
   useOrganizations,
   usePartnerIntegrations,
   usePlatformServices,
@@ -129,6 +130,34 @@ const fmtDateTime = (t: string) => {
 const titleCase = (s: string) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
 const fmtTB = (bytes: number) => `${(bytes / 1_099_511_627_776).toFixed(2)} TB`;
+const dayKey = (iso?: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+};
+/** Build a real 7-day platform-activity series ending today from live rows. */
+const buildPlatformActivity = (
+  profiles: { createdAt?: string | null }[],
+  cases: { createdAt?: string | null }[],
+  escalations: { triggeredAt?: string | null }[],
+) => {
+  const days: { key: string; label: string }[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push({
+      key: d.toISOString().slice(0, 10),
+      label: d.toLocaleDateString([], { month: "short", day: "2-digit" }),
+    });
+  }
+  return days.map((day) => ({
+    day: day.label,
+    users: profiles.filter((p) => dayKey(p.createdAt) === day.key).length,
+    cases: cases.filter((c) => dayKey(c.createdAt) === day.key).length,
+    incidents: escalations.filter((e) => dayKey(e.triggeredAt) === day.key)
+      .length,
+  }));
+};
 
 type SectionKey =
   | "overview"
@@ -1917,6 +1946,11 @@ const OverviewSection = () => {
   const { data: profiles = [] } = useUserProfiles();
   const { data: services = [] } = usePlatformServices({ staleTime: 30000 });
   const { data: storage = [] } = useStorageMetrics({ staleTime: 30000 });
+  const { data: escalations = [] } = useEscalationEvents({
+    limit: 500,
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
 
   const systemHealth = services.length
     ? services.map((s) => ({
@@ -2057,6 +2091,19 @@ const OverviewSection = () => {
       : [];
   const caseDistTotal = caseDistribution.reduce((s, c) => s + c.value, 0);
 
+  // No real AI-recommendation pipeline exists to back this panel (same gap
+  // already found in the Police Portal's equivalent) — demo-mode only.
+  const aiInsights = ALLOW_MOCK ? MOCK_AI_INSIGHTS : [];
+
+  // Platform Activity — real 7-day series from user_profiles/case_reports/
+  // escalation_events, not a fabricated trend line under a "Last 7 Days" label.
+  const platformActivity =
+    profiles.length || cases.length || escalations.length
+      ? buildPlatformActivity(profiles, cases, escalations)
+      : ALLOW_MOCK
+        ? MOCK_PLATFORM_ACTIVITY
+        : [];
+
   // Identity & Access Overview — real aggregates from user_profiles.
   const identityOverview: {
     label: string;
@@ -2153,59 +2200,65 @@ const OverviewSection = () => {
               </span>
             ))}
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={MOCK_PLATFORM_ACTIVITY}>
-              <CartesianGrid
-                stroke="#1e293b"
-                strokeDasharray="3 3"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="day"
-                stroke="#64748b"
-                tickLine={false}
-                axisLine={false}
-                fontSize={10}
-              />
-              <YAxis
-                stroke="#64748b"
-                tickLine={false}
-                axisLine={false}
-                fontSize={10}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "#0b1220",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 12,
-                  color: "#e2e8f0",
-                  fontSize: 12,
-                }}
-              />
-              <Legend wrapperStyle={{ display: "none" }} />
-              <Line
-                type="monotone"
-                dataKey="users"
-                stroke="#a855f7"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="cases"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="incidents"
-                stroke="#ef4444"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {platformActivity.length === 0 ? (
+            <p className="flex h-[260px] items-center justify-center text-xs text-slate-500">
+              No activity recorded yet.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={platformActivity}>
+                <CartesianGrid
+                  stroke="#1e293b"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="day"
+                  stroke="#64748b"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={10}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={10}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#0b1220",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 12,
+                    color: "#e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <Legend wrapperStyle={{ display: "none" }} />
+                <Line
+                  type="monotone"
+                  dataKey="users"
+                  stroke="#a855f7"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cases"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="incidents"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </Panel>
 
         <Panel
@@ -2344,31 +2397,39 @@ const OverviewSection = () => {
           subtitle="Smart insights from platform data"
           action={<LinkChip label="View all" />}
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {MOCK_AI_INSIGHTS.map((a) => {
-              const Icon = a.icon;
-              return (
-                <div
-                  key={a.title}
-                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
-                >
+          {aiInsights.length === 0 ? (
+            <div className="grid place-items-center py-8 text-center text-xs text-slate-500">
+              No insights available yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {aiInsights.map((a) => {
+                const Icon = a.icon;
+                return (
                   <div
-                    className={cn(
-                      "mb-2 grid h-8 w-8 place-items-center rounded-lg border",
-                      ICON_TONES[a.tone],
-                    )}
+                    key={a.title}
+                    className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
                   >
-                    <Icon className="h-4 w-4" />
+                    <div
+                      className={cn(
+                        "mb-2 grid h-8 w-8 place-items-center rounded-lg border",
+                        ICON_TONES[a.tone],
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <p className="text-xs font-bold text-white">{a.title}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      {a.desc}
+                    </p>
+                    <p className="mt-1.5 text-[10px] font-bold text-violet-400">
+                      {a.action}
+                    </p>
                   </div>
-                  <p className="text-xs font-bold text-white">{a.title}</p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">{a.desc}</p>
-                  <p className="mt-1.5 text-[10px] font-bold text-violet-400">
-                    {a.action}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Panel>
       </section>
 
@@ -2618,6 +2679,33 @@ const ApprovalsSection = () => {
       ? MOCK_APPROVAL_ROWS
       : [];
 
+  // Recent Decisions — real, already-decided profiles (approved/rejected),
+  // not a fabricated "latest actions taken" feed.
+  const decided = profiles
+    .filter((p) =>
+      ["approved", "rejected"].includes((p.approvalStatus ?? "").toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt || 0).getTime() -
+        new Date(a.updatedAt || 0).getTime(),
+    )
+    .slice(0, 5);
+  const recentDecisions = decided.length
+    ? decided.map((p) => ({
+        title: `${titleCase(p.role)} Access Request`,
+        by: p.fullName || p.username || "User",
+        org: p.organizationName || "Unassigned",
+        status:
+          (p.approvalStatus ?? "").toLowerCase() === "approved"
+            ? "Approved"
+            : "Denied",
+        time: p.updatedAt ? fmtRelative(p.updatedAt) : "",
+      }))
+    : ALLOW_MOCK
+      ? MOCK_RECENT_DECISIONS
+      : [];
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -2752,7 +2840,12 @@ const ApprovalsSection = () => {
             action={<LinkChip label="View all" />}
           >
             <div className="space-y-3">
-              {MOCK_RECENT_DECISIONS.map((d, i) => (
+              {recentDecisions.length === 0 ? (
+                <p className="py-4 text-center text-xs text-slate-500">
+                  No decisions recorded yet.
+                </p>
+              ) : null}
+              {recentDecisions.map((d, i) => (
                 <div key={i} className="flex items-start gap-2.5">
                   {d.status === "Approved" ? (
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
@@ -2827,6 +2920,32 @@ const IdentitiesSection = () => {
   // Live counts drive the KPI strip; the detailed roster below stays on
   // sample data until the directory schema exposes email / last-active.
   const { data: profiles = [] } = useUserProfiles();
+
+  // Verification Alerts — real MFA-not-configured identities. No real signal
+  // exists yet for "email not verified" or "unusual sign-in" (no such
+  // columns/events tracked), so this list is intentionally narrower than the
+  // demo version rather than fabricating alert types nothing detects.
+  const mfaGapAlerts = profiles
+    .filter((p) => !p.mfaEnabled)
+    .slice(0, 5)
+    .map((p) => ({
+      name: p.fullName || p.username || "User",
+      email: p.email || "—",
+      org: p.organizationName || "Unassigned",
+      alert: "MFA not configured",
+      triggered: p.updatedAt ? fmtDateTime(p.updatedAt) : "—",
+      severity: "Medium",
+    }));
+  const verificationAlerts = profiles.length
+    ? mfaGapAlerts
+    : ALLOW_MOCK
+      ? MOCK_VERIFICATION_ALERTS
+      : [];
+
+  // Access Recovery Requests — no backing table exists for password/account
+  // recovery requests yet; demo-mode only rather than a guessed real source.
+  const recoveryRequests = ALLOW_MOCK ? MOCK_RECOVERY : [];
+
   const kpis = MOCK_IDENTITY_KPIS.map((k) => {
     if (!profiles.length) return ALLOW_MOCK ? k : { ...k, value: NO_DATA };
     if (k.label === "Total Identities")
@@ -3019,7 +3138,17 @@ const IdentitiesSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MOCK_RECOVERY.map((r, i) => (
+                {recoveryRequests.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-5 py-6 text-center text-xs text-slate-500"
+                    >
+                      No recovery requests yet.
+                    </td>
+                  </tr>
+                ) : null}
+                {recoveryRequests.map((r, i) => (
                   <tr key={i} className="hover:bg-white/[0.02]">
                     <td className="px-5 py-3">
                       <p className="font-bold text-white">{r.name}</p>
@@ -3057,7 +3186,17 @@ const IdentitiesSection = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MOCK_VERIFICATION_ALERTS.map((a, i) => (
+                {verificationAlerts.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-5 py-6 text-center text-xs text-slate-500"
+                    >
+                      No verification alerts.
+                    </td>
+                  </tr>
+                ) : null}
+                {verificationAlerts.map((a, i) => (
                   <tr key={i} className="hover:bg-white/[0.02]">
                     <td className="px-5 py-3">
                       <p className="font-bold text-white">{a.name}</p>
@@ -3533,6 +3672,12 @@ const ComplianceSection = () => {
   const findStandard = (kw: string) =>
     standards.find((s) => s.name.toLowerCase().includes(kw));
 
+  // No real event log exists yet spanning the different compliance activity
+  // types shown here (exports, consent updates, retention...) — only
+  // deletion requests are real in this scope. Demo-mode only rather than a
+  // thin, misleading partial feed.
+  const complianceActivity = ALLOW_MOCK ? MOCK_COMPLIANCE_ACTIVITY : [];
+
   return (
     <>
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -3764,7 +3909,12 @@ const ComplianceSection = () => {
           action={<LinkChip label="View all" />}
         >
           <div className="space-y-3">
-            {MOCK_COMPLIANCE_ACTIVITY.map((a, i) => {
+            {complianceActivity.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500">
+                No compliance activity recorded yet.
+              </p>
+            ) : null}
+            {complianceActivity.map((a, i) => {
               const Icon = a.icon;
               return (
                 <div key={i} className="flex items-start gap-2.5">

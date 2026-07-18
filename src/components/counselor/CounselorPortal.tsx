@@ -76,6 +76,7 @@ import {
   useCaseReports,
   useEscalationEvents,
   useUserProfile,
+  type CaseReport,
 } from "@/data/aegisData";
 import { useCaseCategories } from "@/data/analyticsData";
 import { useLiveResources } from "@/data/liveDashboardData";
@@ -2289,7 +2290,7 @@ const OverviewSection = () => {
             </button>
           </div>
         </Panel>
-        <HighRiskPanel />
+        <HighRiskPanel cases={cases} />
       </section>
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel title="Cases by Support Type">
@@ -2462,32 +2463,65 @@ const OverviewSection = () => {
   );
 };
 
-const HighRiskPanel = () => {
+const HighRiskPanel = ({ cases }: { cases: CaseReport[] }) => {
+  const rows = cases.length
+    ? cases
+        .filter((c) =>
+          ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+        )
+        .slice(0, 5)
+        .map((c) => ({
+          id: c.id,
+          tag: titleCase(c.riskLevel || "high"),
+          name: "Protected",
+          type: c.description
+            ? c.description.length > 28
+              ? `${c.description.slice(0, 28)}…`
+              : c.description
+            : "GBV Case",
+          score: titleCase(c.riskLevel || "—"),
+          note: titleCase((c.status || "").replace(/_/g, " ")) || "Open",
+          time: fmtRelative(c.createdAt),
+        }))
+    : ALLOW_MOCK
+      ? MOCK_HIGH_RISK.map((h) => ({ ...h, id: h.name }))
+      : [];
+
   return (
     <Panel
       title="High-Risk Survivors Requiring Attention"
       action={<LinkChip label="View all" />}
     >
-      <div className="space-y-2">
-        {MOCK_HIGH_RISK.map((h) => (
-          <div
-            key={h.name}
-            className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-          >
-            <Pill tone={statusTone(h.tag)}>{h.tag}</Pill>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold text-white">{h.name}</p>
-              <p className="truncate text-[10px] text-slate-500">{h.type}</p>
+      {rows.length === 0 ? (
+        <p className="px-1 py-4 text-xs text-slate-500">
+          No high-risk cases right now.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((h) => (
+            <div
+              key={h.id}
+              className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+            >
+              <Pill tone={statusTone(h.tag)}>{h.tag}</Pill>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-bold text-white">
+                  {h.name}
+                </p>
+                <p className="truncate text-[10px] text-slate-500">{h.type}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-white">
+                  {h.score} Risk
+                </p>
+                <p className="text-[10px] text-slate-500">{h.note}</p>
+              </div>
+              <span className="text-[10px] text-slate-500">{h.time}</span>
+              <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
             </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-white">Risk {h.score}</p>
-              <p className="text-[10px] text-slate-500">{h.note}</p>
-            </div>
-            <span className="text-[10px] text-slate-500">{h.time}</span>
-            <ArrowRight className="h-3.5 w-3.5 text-violet-400" />
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </Panel>
   );
 };
