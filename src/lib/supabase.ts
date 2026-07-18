@@ -1,14 +1,15 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env, hasSupabase } from "@/lib/env";
-
-type Json = unknown;
-
-type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
-  Row: Row;
-  Insert: Insert;
-  Update: Update;
-  Relationships: [];
-};
+import type {
+  CaseReportRow,
+  EscalationEventRow,
+  Json,
+  PeerSupportMessageInsert,
+  PeerSupportMessageRow,
+  SharedDatabaseFunctions,
+  TableDefinition,
+  UserProfileRow,
+} from "../../shared/database-types";
 
 export type Database = {
   public: {
@@ -52,28 +53,7 @@ export type Database = {
         acknowledged_by: string | null;
         created_at: string | null;
       }>;
-      case_reports: TableDefinition<{
-        id: string;
-        survivor_id: string | null;
-        source: string | null;
-        report_method: string | null;
-        language: string | null;
-        category: string | null;
-        status: string;
-        risk_level: string;
-        risk_score: number | null;
-        priority: string;
-        description: string | null;
-        encrypted_location: string | null;
-        location_iv: string | null;
-        location: { address?: string } | null;
-        is_anonymous: boolean | null;
-        reported_by: string | null;
-        public_reference: string | null;
-        reporter_relationship: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>;
+      case_reports: TableDefinition<CaseReportRow>;
       chat_messages: TableDefinition<{
         id: string;
         session_id: string;
@@ -91,20 +71,8 @@ export type Database = {
         created_at: string | null;
       }>;
       peer_support_messages: TableDefinition<
-        {
-          id: string;
-          alias: string;
-          content: string;
-          flagged: boolean;
-          created_at: string;
-          expires_at: string;
-        },
-        {
-          alias: string;
-          content: string;
-          flagged?: boolean;
-          expires_at?: string;
-        }
+        PeerSupportMessageRow,
+        PeerSupportMessageInsert
       >;
       evidence_vault: TableDefinition<{
         id: string;
@@ -225,22 +193,7 @@ export type Database = {
           notes?: string | null;
         }
       >;
-      escalation_events: TableDefinition<{
-        id: string;
-        case_id: string | null;
-        user_id: string | null;
-        escalation_type: string | null;
-        severity: string;
-        reason: string | null;
-        location: Json | null;
-        status: string;
-        acknowledged_by: string | null;
-        acknowledged_at: string | null;
-        resolved_at: string | null;
-        triggered_at: string | null;
-        metadata: Json | null;
-        created_at: string | null;
-      }>;
+      escalation_events: TableDefinition<EscalationEventRow>;
       incidents: TableDefinition<{
         id: string;
         region_id: string;
@@ -313,23 +266,7 @@ export type Database = {
         response_message: string | null;
         created_at: string | null;
       }>;
-      user_profiles: TableDefinition<{
-        id: string;
-        organization_id: string | null;
-        role: string;
-        full_name: string | null;
-        email: string | null;
-        avatar_url: string | null;
-        preferred_language: string | null;
-        is_active: boolean | null;
-        approval_status: ApprovalStatus | null;
-        mfa_enabled: boolean | null;
-        role_assigned_by: string | null;
-        approved_by: string | null;
-        approved_at: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>;
+      user_profiles: TableDefinition<UserProfileRow>;
       dispatch_units: TableDefinition<
         {
           id: string;
@@ -533,11 +470,7 @@ export type Database = {
       >;
     };
     Views: Record<string, never>;
-    Functions: {
-      set_preferred_language: {
-        Args: { lang: string };
-        Returns: undefined;
-      };
+    Functions: SharedDatabaseFunctions & {
       recent_audit_activity: {
         Args: { p_limit?: number };
         Returns: {

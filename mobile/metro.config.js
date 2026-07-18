@@ -11,6 +11,16 @@ const config = getDefaultConfig(projectRoot);
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, "node_modules")];
 config.resolver.disableHierarchicalLookup = true;
 
+// ../shared holds plain, dependency-free .ts type definitions shared with
+// the web app (see mobile/src/shared/types.ts). It's outside this app's
+// projectRoot, so Metro won't see it — or resolve mobile/src/shared/types.ts's
+// relative import of it — unless it's an explicit watch folder. This does
+// NOT affect node_modules resolution above: ../shared has no package.json
+// and no dependencies of its own, so it can't reintroduce the React
+// duplication bug that nodeModulesPaths/disableHierarchicalLookup guard
+// against.
+config.watchFolders = [path.resolve(projectRoot, "..", "shared")];
+
 // On Windows there's no Watchman, so Metro's fallback watcher crawls into the
 // native Gradle output (android/build, android/.cxx, and the per-library
 // android/build dirs under node_modules). Gradle constantly creates/deletes
