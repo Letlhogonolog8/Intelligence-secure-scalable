@@ -200,9 +200,16 @@ jobs:
         curl -f https://staging-api.aegis-ai.co.za/health/ready || exit 1
 
   # Deploy to Production
+  #
+  # NOTE: this targets the reference Kubernetes topology in kubernetes/*.yaml,
+  # which is not the live deployment (Render is — see DEPLOYMENT.md's target
+  # matrix and the comment on build-images above). This job only matters for
+  # a team that has actually stood up KUBE_CONFIG_PRODUCTION for self-hosting;
+  # until then a tag push builds/publishes images but this job intentionally
+  # has nothing to deploy to.
   deploy-production:
     needs: build-images
-    if: github.ref == 'refs/heads/main' && startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     name: Deploy to Production
     environment:

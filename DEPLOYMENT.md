@@ -8,14 +8,14 @@ drift.
 
 ## Target matrix
 
-| Environment                | Frontend                             | Backend                      | Worker                           | Notes                                                             |
-| -------------------------- | ------------------------------------ | ---------------------------- | -------------------------------- | ----------------------------------------------------------------- |
-| Local dev                  | Vite (`npm run dev`)                 | tsx (`npm run dev`)          | not run                          | `.env.local`                                                      |
-| Local container parity     | `Dockerfile.frontend.nginx`          | `Dockerfile.backend`         | `Dockerfile.backend` (worker.js) | `docker-compose.prod.yml`                                         |
-| Staging / competition demo | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`**      | `render.yaml` (single source of truth)                            |
-| Production                 | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **Render — `aegis-worker`**      | Set production env vars in Render dashboard                       |
-| Kubernetes                 | reference only                       | reference only               | reference only                   | `kubernetes/*.yaml` retained for future self-hosting              |
-| Railway                    | not used                             | not used                     | not used                         | `railway.toml` retained for the Ele-vate AI competition demo only |
+| Environment                | Frontend                             | Backend                      | Worker                            | Notes                                                                                                   |
+| -------------------------- | ------------------------------------ | ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Local dev                  | Vite (`npm run dev`)                 | tsx (`npm run dev`)          | not run                           | `.env.local`                                                                                            |
+| Local container parity     | `Dockerfile.frontend.nginx`          | `Dockerfile.backend`         | `Dockerfile.backend` (worker.js)  | `docker-compose.prod.yml`                                                                               |
+| Staging / competition demo | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **in-process on `aegis-backend`** | `render.yaml` (single source of truth)                                                                  |
+| Production                 | **Render — `aegis-frontend` static** | **Render — `aegis-backend`** | **in-process on `aegis-backend`** | Set production env vars in Render dashboard. `aegis-backend` must stay at 1 instance — see `RUNBOOK.md` |
+| Kubernetes                 | not deployed                         | not deployed                 | not deployed                      | `kubernetes/*.yaml` is a reference design for possible future self-hosting — not running anywhere today |
+| Railway                    | not used                             | not used                     | not used                          | `railway.toml` retained for the Ele-vate AI competition demo only                                       |
 
 ## Frontend container
 
@@ -80,7 +80,13 @@ The default backend API base is:
 https://aegis-backend-zhv3.onrender.com/api
 ```
 
-### Kubernetes (production)
+### Kubernetes (reference / possible future self-hosting — not live today)
+
+This is **not** how production is deployed today (see the target matrix
+above) — production is Render, deployed by the `Render (staging)` procedure
+above with `autoDeploy: true` on every push. These steps describe the
+reference topology in `kubernetes/*.yaml` for a team that later chooses to
+self-host instead of Render.
 
 ```bash
 # 1) Build and push images via CI (push a tag matching v*).
@@ -106,6 +112,13 @@ curl -f https://aegis-ai.co.za
 
 ### Rollback
 
+**Production (Render):** Render dashboard → `aegis-backend` (or
+`aegis-frontend`) → **Deploys** → select the last known-good deploy →
+**Rollback to this deploy**. See `RUNBOOK.md` incident #1 for the full
+procedure.
+
+**Kubernetes (reference path only):**
+
 ```bash
 kubectl rollout undo deployment/aegis-api -n aegis
 kubectl rollout undo deployment/aegis-worker -n aegis
@@ -115,10 +128,14 @@ kubectl rollout undo deployment/aegis-frontend -n aegis
 ## CI/CD
 
 `.github/workflows/ci.yml` runs on every push/PR:
-`npm ci → lint → test → build`.
+`npm ci → lint → typecheck → test → build`.
 
-`.github/workflows/ci-cd.yml` adds typecheck, npm audit (advisory),
-container build & push, kubectl rollout to staging on `develop`, and to
-production on tagged commits matching `v*`.
+`.github/workflows/ci-cd.yml` adds a second lint/typecheck pass, npm audit
+(advisory), container image build (published to GHCR only on tagged
+releases — see the note in that file), and an optional `kubectl` rollout
+path guarded behind a real Kubernetes deployment (see the reference-only
+note above). It does **not** deploy to Render — Render deploys itself via
+`autoDeploy: true` in `render.yaml` on every push, independent of GitHub
+Actions.
 
 `.github/workflows/security-ci.yml` runs the dedicated security scans.
