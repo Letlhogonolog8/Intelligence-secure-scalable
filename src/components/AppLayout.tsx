@@ -12,9 +12,6 @@ import { ROLE_DEFINITIONS, UserRole } from "@/lib/roleConfig";
 import { useOrganizationContext } from "@/contexts/organizationContext";
 import SurvivorAppRedirect from "@/components/auth/SurvivorAppRedirect";
 
-const CommandCenter = lazy(
-  () => import("@/components/dashboard/CommandCenter"),
-);
 const SurvivorSupport = lazy(
   () => import("@/components/survivor/SurvivorSupport"),
 );
@@ -23,12 +20,6 @@ const RiskPrediction = lazy(
 );
 const JusticeAnalytics = lazy(
   () => import("@/components/justice/JusticeAnalytics"),
-);
-const PolicySimulation = lazy(
-  () => import("@/components/policy/PolicySimulation"),
-);
-const EthicalGovernance = lazy(
-  () => import("@/components/governance/EthicalGovernance"),
 );
 const CHWDashboard = lazy(() => import("@/components/dashboard/CHWDashboard"));
 const PersonalDashboard = lazy(
@@ -40,7 +31,6 @@ const SurvivorFeatureWorkspace = lazy(
 const ReportingCenter = lazy(
   () => import("@/components/reporting/ReportingCenter"),
 );
-const AdminConsole = lazy(() => import("@/components/admin/AdminConsole"));
 const AnalystPortal = lazy(() => import("@/components/analyst/AnalystPortal"));
 const AdminPortal = lazy(() => import("@/components/admin/AdminPortal"));
 const NgoPortal = lazy(() => import("@/components/ngo/NgoPortal"));
@@ -125,9 +115,12 @@ const AppLayout: React.FC = () => {
   }, [mobileSidebarOpen, setMobileSidebarOpen]);
 
   const renderModule = useMemo(() => {
-    // Only the CHW role still reaches this shared shell; every other
-    // professional role early-returns to its dedicated full-screen Portal
-    // below, and survivors are redirected to the mobile app.
+    // Dead code, kept only because fully removing this shared shell is a
+    // larger change than this pass: no role ever reaches it. Every role
+    // below either early-returns to its own dedicated full-screen Portal or
+    // (survivor/chw) is redirected away entirely before this ever renders —
+    // the previous comment here claiming "CHW still reaches this shared
+    // shell" was already stale, since CHW is intercepted below too.
     if (activeModule === "dashboard") {
       return <CHWDashboard />;
     }
@@ -143,22 +136,14 @@ const AppLayout: React.FC = () => {
         return <SurvivorFeatureWorkspace module={activeModule} />;
       case "reporting":
         return <ReportingCenter />;
-      case "admin_console":
-        return <AdminConsole />;
-      case "command_center":
-        return <CommandCenter />;
       case "survivor_support":
         return <SurvivorSupport />;
       case "prediction":
         return <RiskPrediction />;
       case "justice":
         return <JusticeAnalytics />;
-      case "policy":
-        return <PolicySimulation />;
-      case "governance":
-        return <EthicalGovernance />;
       default:
-        return <CommandCenter />;
+        return <CHWDashboard />;
     }
   }, [activeModule]);
 
