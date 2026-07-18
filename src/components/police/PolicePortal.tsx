@@ -170,6 +170,13 @@ import {
 const nf = new Intl.NumberFormat("en-US");
 const titleCase = (s: string) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+/**
+ * Case descriptions from the USSD/SOS gateway carry a leading internal
+ * reference tag (e.g. "[SOS-3786] Silent SOS triggered from mobile app").
+ * Strip it for display — it's routing metadata, not part of what a
+ * responder should read as the case summary.
+ */
+const stripLeadingTag = (s: string) => s.replace(/^\[[^\]]*\]\s*/, "");
 const fmtRelative = (t: string) => {
   const d = new Date(t);
   if (Number.isNaN(d.getTime())) return t;
@@ -5126,9 +5133,9 @@ const CasesSection = ({
         id: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
         alias: "Protected",
         type: c.description
-          ? c.description.length > 36
-            ? `${c.description.slice(0, 36)}…`
-            : c.description
+          ? stripLeadingTag(c.description).length > 36
+            ? `${stripLeadingTag(c.description).slice(0, 36)}…`
+            : stripLeadingTag(c.description) || "GBV Case"
           : "GBV Case",
         risk: titleCase(c.riskLevel),
         status: titleCase((c.status || "").replace(/_/g, " ")),
@@ -5357,7 +5364,9 @@ const CasesSection = ({
               </p>
               <p className="text-[11px] text-slate-300">
                 Case Type:{" "}
-                {previewCase ? previewCase.description || "GBV Case" : "—"}
+                {previewCase
+                  ? stripLeadingTag(previewCase.description || "") || "GBV Case"
+                  : "—"}
               </p>
             </div>
             <div className="space-y-3">

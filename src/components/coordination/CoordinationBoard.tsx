@@ -197,8 +197,10 @@ const CoordinationBoard: React.FC<{
     >
       {!organizationId ? (
         <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] p-5 text-xs text-slate-400">
-          Your account isn't linked to an organisation, so cross-agency handoffs
-          aren't available.
+          Your account isn't linked to an organisation, so formal org-to-org
+          case handoffs aren't available here. The referral board below — NGO,
+          shelter, hospital and legal-support requests — doesn't require an
+          organisation link and works as normal.
         </div>
       ) : (
         <>
