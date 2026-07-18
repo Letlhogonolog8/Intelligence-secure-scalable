@@ -59,10 +59,23 @@ export class TwilioNotificationService {
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
-    this.client =
-      this.accountSid && this.authToken
-        ? twilio(this.accountSid, this.authToken)
-        : null;
+    // Twilio's own SDK validates accountSid/authToken synchronously and
+    // throws on a malformed value (e.g. a still-placeholder env var like
+    // `[replace-with-twilio-account-sid]` copied from .env.example) — that
+    // must not be allowed to crash server boot over an optional service.
+    if (this.accountSid && this.authToken) {
+      try {
+        this.client = twilio(this.accountSid, this.authToken);
+      } catch (error) {
+        console.warn(
+          "Twilio credentials present but invalid — phone notifications will remain failed in queue.",
+          error instanceof Error ? error.message : error,
+        );
+        this.client = null;
+      }
+    } else {
+      this.client = null;
+    }
 
     if (this.client && this.fromPhoneNumber) {
       console.log("🔔 Twilio notification service initialized");
