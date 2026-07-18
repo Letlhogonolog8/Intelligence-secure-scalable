@@ -159,7 +159,13 @@ import { supabase } from "@/lib/supabase";
 import { hasSupabase } from "@/lib/env";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_DEFINITIONS, type UserRole } from "@/lib/roleConfig";
-import { ALLOW_MOCK, NO_DATA, gateKpis, mockList } from "@/lib/mockData";
+import {
+  ALLOW_MOCK,
+  NO_DATA,
+  gateKpis,
+  mockList,
+  sample,
+} from "@/lib/mockData";
 
 const nf = new Intl.NumberFormat("en-US");
 const titleCase = (s: string) =>
@@ -263,14 +269,22 @@ const MOCK_OVERVIEW_KPIS = [
   },
 ] as const;
 
-const MOCK_CASE_ACTIVITY = Array.from({ length: 13 }, (_, i) => ({
-  t: `${String((9 + i * 2) % 24).padStart(2, "0")}:00`,
-  sos: 18 + Math.round(Math.sin(i / 2) * 6) + i * 2,
-  dv: 14 + Math.round(Math.cos(i / 2) * 4) + i * 1.6,
-  sa: 11 + i * 1.2,
-  cp: 8 + Math.round(Math.sin(i / 3) * 3) + i * 0.7,
-  traf: 6 + Math.round(Math.cos(i / 3) * 2),
-}));
+// No live per-category (SOS/DV/SA/child-protection/trafficking) time series
+// exists yet — case_reports.category is free text with no controlled
+// vocabulary to reliably bucket into these 5 groups. sample() keeps this
+// panel populated in dev/demo but empty (not fabricated) in production;
+// see "Incident & Case Volume" in AnalyticsSection for the real equivalent
+// (day-by-day, not by category) this could be extended to replace.
+const MOCK_CASE_ACTIVITY = sample(
+  Array.from({ length: 13 }, (_, i) => ({
+    t: `${String((9 + i * 2) % 24).padStart(2, "0")}:00`,
+    sos: 18 + Math.round(Math.sin(i / 2) * 6) + i * 2,
+    dv: 14 + Math.round(Math.cos(i / 2) * 4) + i * 1.6,
+    sa: 11 + i * 1.2,
+    cp: 8 + Math.round(Math.sin(i / 3) * 3) + i * 0.7,
+    traf: 6 + Math.round(Math.cos(i / 3) * 2),
+  })),
+);
 
 const MOCK_SA_MAP: MapRegion[] = [
   {
@@ -374,7 +388,11 @@ const MOCK_CASES_BY_STATUS = [
   { name: "Closed", value: 38, pct: "3%", color: "#64748b" },
 ];
 
-const MOCK_AI_INSIGHTS = [
+// No live AI-insights source exists yet (no computed distress-detection /
+// escalation-recommendation pipeline). gateKpis keeps the sample values in
+// dev/demo and blanks them to NO_DATA in production instead of presenting
+// fabricated "36 high risk survivors"-style numbers as real.
+const MOCK_AI_INSIGHTS = gateKpis([
   {
     title: "High Risk Survivors",
     value: "36",
@@ -403,7 +421,7 @@ const MOCK_AI_INSIGHTS = [
     icon: Radio,
     tone: "rose",
   },
-];
+]);
 
 const MOCK_RECENT_ACTIVITY = [
   {
@@ -623,7 +641,11 @@ const MOCK_QUEUE = [
   },
 ];
 
-const MOCK_RAPID_RECS = [
+// No live AI-generated recommendation source exists yet. sample() keeps
+// these in dev/demo and empties the panel (its own "no data" state below
+// handles the empty array) in production instead of always showing the same
+// four fixed recommendations as if AEGIS generated them for this queue.
+const MOCK_RAPID_RECS = sample([
   {
     text: "Dispatch nearest GBV-trained unit immediately. Survivor safety at critical risk.",
     tag: "Critical",
@@ -644,7 +666,7 @@ const MOCK_RAPID_RECS = [
     tag: "Medium",
     icon: FileCheck,
   },
-];
+]);
 
 const MOCK_RECENT_ALERTS = [
   {
@@ -827,7 +849,11 @@ const MOCK_CASES = [
   },
 ];
 
-const MOCK_TIMELINE = [
+// No live per-case audit-trail/timeline query exists yet (would need an
+// events-by-case_id source, not just case_reports' current status). sample()
+// keeps this in dev/demo only; the header above it now reflects a real case
+// instead of a permanently fixed fake one either way.
+const MOCK_TIMELINE = sample([
   {
     icon: Siren,
     title: "SOS Triggered",
@@ -864,13 +890,17 @@ const MOCK_TIMELINE = [
     sub: "Referred to POWA",
     date: "21 May 2025",
   },
-];
+]);
 
-const MOCK_HIGH_RISK_SURVIVORS = [
+// sample() fallback only — CasesSection derives the live list itself from
+// real case_reports rows (see highRiskSurvivors below) since case_reports
+// has no survivor name field to expose here (case rows elsewhere in this
+// file use the same "Protected" alias convention for the same reason).
+const MOCK_HIGH_RISK_SURVIVORS = sample([
   { name: "Thandi K.", id: "AEGIS-2025-05121", note: "Overdue" },
   { name: "Lerato M.", id: "AEGIS-2025-05120", note: "Due in 1 hr" },
   { name: "Zanele S.", id: "AEGIS-2025-05118", note: "Due in 2 hrs" },
-];
+]);
 
 const MOCK_WORKFLOW = [
   {
@@ -3944,92 +3974,102 @@ const OverviewSection = () => {
           title="Live Case Activity"
           action={
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-                Live
-              </span>
+              {MOCK_CASE_ACTIVITY.length > 0 && (
+                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                  Live
+                </span>
+              )}
               <SelectChip label="Last 24 Hours" />
             </div>
           }
         >
-          <div className="mb-3 flex flex-wrap gap-3">
-            {[
-              ["SOS Alerts", "#f43f5e"],
-              ["Domestic Violence", "#a855f7"],
-              ["Sexual Assault", "#3b82f6"],
-              ["Child Protection", "#f59e0b"],
-              ["Trafficking Alerts", "#06b6d4"],
-            ].map(([l, c]) => (
-              <span
-                key={l}
-                className="flex items-center gap-1.5 text-[10px] text-slate-300"
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: c }}
-                />
-                {l}
-              </span>
-            ))}
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={MOCK_CASE_ACTIVITY}>
-              <CartesianGrid
-                stroke="#1e293b"
-                strokeDasharray="3 3"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="t"
-                stroke="#64748b"
-                tickLine={false}
-                axisLine={false}
-                fontSize={10}
-              />
-              <YAxis
-                stroke="#64748b"
-                tickLine={false}
-                axisLine={false}
-                fontSize={10}
-              />
-              <Tooltip {...chartTooltip} />
-              <Line
-                type="monotone"
-                dataKey="sos"
-                stroke="#f43f5e"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="dv"
-                stroke="#a855f7"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="sa"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="cp"
-                stroke="#f59e0b"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="traf"
-                stroke="#06b6d4"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {MOCK_CASE_ACTIVITY.length === 0 ? (
+            <p className="grid h-[240px] place-items-center text-center text-xs text-slate-300">
+              No per-category incident breakdown yet.
+            </p>
+          ) : (
+            <>
+              <div className="mb-3 flex flex-wrap gap-3">
+                {[
+                  ["SOS Alerts", "#f43f5e"],
+                  ["Domestic Violence", "#a855f7"],
+                  ["Sexual Assault", "#3b82f6"],
+                  ["Child Protection", "#f59e0b"],
+                  ["Trafficking Alerts", "#06b6d4"],
+                ].map(([l, c]) => (
+                  <span
+                    key={l}
+                    className="flex items-center gap-1.5 text-[10px] text-slate-300"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: c }}
+                    />
+                    {l}
+                  </span>
+                ))}
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={MOCK_CASE_ACTIVITY}>
+                  <CartesianGrid
+                    stroke="#1e293b"
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="t"
+                    stroke="#64748b"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={10}
+                  />
+                  <YAxis
+                    stroke="#64748b"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={10}
+                  />
+                  <Tooltip {...chartTooltip} />
+                  <Line
+                    type="monotone"
+                    dataKey="sos"
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="dv"
+                    stroke="#a855f7"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="sa"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cp"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="traf"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </>
+          )}
         </Panel>
 
         <Panel
@@ -4708,6 +4748,11 @@ const QueueSection = () => {
             }
           >
             <div className="space-y-2.5">
+              {MOCK_RAPID_RECS.length === 0 && (
+                <p className="py-4 text-center text-xs text-slate-300">
+                  No AI recommendations yet.
+                </p>
+              )}
               {MOCK_RAPID_RECS.map((r, i) => {
                 const Icon = r.icon;
                 return (
@@ -5106,6 +5151,33 @@ const CasesSection = ({
       )
     : caseRows;
 
+  // Most recently created case — real preview subject instead of a
+  // permanently fixed fake one. case_reports carries no survivor name, so
+  // this uses the same "Protected" alias convention as caseRows above.
+  const sortedByCreated = [...cases].sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime(),
+  );
+  const previewCase = sortedByCreated[0] ?? null;
+
+  // Real high-risk cases (critical/high) needing follow-up, most recent
+  // first. No live "check-in due" timing exists, so this shows how long ago
+  // the case was created rather than a fabricated deadline.
+  const highRiskSurvivors = mockList(
+    sortedByCreated
+      .filter((c) =>
+        ["critical", "high"].includes((c.riskLevel || "").toLowerCase()),
+      )
+      .slice(0, 5)
+      .map((c) => ({
+        name: "Protected",
+        id: `AEG-${c.id.slice(0, 8).toUpperCase()}`,
+        note: c.createdAt ? fmtRelative(c.createdAt) : "—",
+      })),
+    MOCK_HIGH_RISK_SURVIVORS,
+  );
+
   return (
     <>
       {detailRow && (
@@ -5266,17 +5338,26 @@ const CasesSection = ({
         <div className="flex flex-col gap-6">
           <Panel
             title="Case Timeline Preview"
-            action={<Pill tone="rose">High Risk</Pill>}
+            action={
+              previewCase ? (
+                <Pill tone={statusTone(previewCase.riskLevel)}>
+                  {titleCase(previewCase.riskLevel)}
+                </Pill>
+              ) : null
+            }
           >
             <div className="mb-3">
               <p className="font-mono text-xs text-violet-300">
-                AEGIS-2025-05121
+                {previewCase
+                  ? `AEG-${previewCase.id.slice(0, 8).toUpperCase()}`
+                  : "No cases yet"}
               </p>
               <p className="text-[11px] text-slate-300">
-                Survivor Alias: Thandi K.
+                Survivor Alias: {previewCase ? "Protected" : "—"}
               </p>
               <p className="text-[11px] text-slate-300">
-                Case Type: Intimate Partner Violence
+                Case Type:{" "}
+                {previewCase ? previewCase.description || "GBV Case" : "—"}
               </p>
             </div>
             <div className="space-y-3">
@@ -5311,11 +5392,16 @@ const CasesSection = ({
             </div>
           </Panel>
           <Panel
-            title="High-Risk Survivors Requiring Check-In"
+            title="High-Risk Cases"
             action={<AlertTriangle className="h-4 w-4 text-rose-400" />}
           >
             <div className="space-y-2">
-              {MOCK_HIGH_RISK_SURVIVORS.map((s) => (
+              {highRiskSurvivors.length === 0 && (
+                <p className="py-4 text-center text-xs text-slate-300">
+                  No high-risk cases right now.
+                </p>
+              )}
+              {highRiskSurvivors.map((s) => (
                 <div
                   key={s.id}
                   className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
@@ -5822,7 +5908,7 @@ const DispatchSection = () => {
             }
           >
             <WorldRiskMap
-              regions={locatedRegions.length ? locatedRegions : MOCK_SA_MAP}
+              regions={mockList(locatedRegions, MOCK_SA_MAP)}
               height={300}
               center={[-20, 27]}
               zoom={4}
