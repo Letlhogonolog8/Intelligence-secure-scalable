@@ -69,8 +69,24 @@ type ParseEnvResult = {
   hasSupabase: boolean;
 };
 
+/**
+ * A variable declared in .env but left blank (e.g. `VITE_MOBILE_APP_URL=`,
+ * common for genuinely-optional config) comes through import.meta.env as an
+ * empty string, not undefined — every field below is `.optional()`, which
+ * only permits `undefined`, so a blank-but-present value fails validation
+ * exactly like a malformed one. Normalize blank strings to undefined first
+ * so "not set" and "set to nothing" behave identically.
+ */
+function blankToUndefined(raw: RawEnv): RawEnv {
+  const normalized: RawEnv = {};
+  for (const [key, value] of Object.entries(raw)) {
+    normalized[key] = value === "" ? undefined : value;
+  }
+  return normalized;
+}
+
 export const parseEnv = (raw: RawEnv): ParseEnvResult => {
-  const parsed = envSchema.safeParse(raw);
+  const parsed = envSchema.safeParse(blankToUndefined(raw));
   if (!parsed.success) {
     const fields = Object.keys(parsed.error.flatten().fieldErrors);
     throw new Error(`Invalid environment variables: ${fields.join(", ")}`);
