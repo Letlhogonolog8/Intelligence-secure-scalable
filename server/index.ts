@@ -10,7 +10,6 @@ import dotenv from "dotenv";
 import crypto from "crypto";
 import { v4 as uuid } from "uuid";
 
-import { WebSocketManager } from "./websocket";
 import { EventBus } from "./events/eventEmitter";
 import { EncryptionService } from "./security/encryption";
 import { MFAService } from "./security/mfa";
@@ -166,7 +165,6 @@ type AppRequest = Request & {
 };
 
 let supabase: SupabaseClient;
-let wsManager: WebSocketManager;
 let eventBus: EventBus;
 let _encryptionService: EncryptionService;
 let mfaService: MFAService;
@@ -188,7 +186,6 @@ try {
   }
 
   supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-  wsManager = new WebSocketManager(httpServer, supabase);
   eventBus = new EventBus(supabase);
 
   try {
@@ -506,24 +503,13 @@ async function getReadinessStatus(): Promise<{
     }
   }
 
-  const websocketStatus = wsManager.getHealthStatus();
   const rateLimitStatus = getRateLimitStoreStatus();
 
   services.redis = {
     configured: isRedisConfigured(),
-    websocket: websocketStatus.redisConfigured
-      ? websocketStatus.adapterReady
-        ? "ready"
-        : "unavailable"
-      : "not_configured",
     rateLimiting: rateLimitStatus,
   };
-  services.websocket = websocketStatus;
   services.rateLimiting = rateLimitStatus;
-
-  if (websocketStatus.redisConfigured && !websocketStatus.adapterReady) {
-    ready = false;
-  }
 
   if (rateLimitStatus.enabled && !rateLimitStatus.connected) {
     ready = false;
@@ -788,8 +774,7 @@ function extractBearerToken(req: Request): string | undefined {
   return authHeader.slice("Bearer ".length).trim() || undefined;
 }
 
-// Unified auth cache TTL. WebSocketManager uses the same key so REST and
-// socket auth see the same view. Override with AUTH_CACHE_TTL_SECONDS env var.
+// Auth cache TTL. Override with AUTH_CACHE_TTL_SECONDS env var.
 const AUTH_CACHE_TTL_SECONDS = Math.max(
   10,
   Number(process.env.AUTH_CACHE_TTL_SECONDS || 60),
@@ -1060,13 +1045,6 @@ app.post(
         severity,
         reason,
         userId: authenticatedUserId,
-        escalationId: escalation[0].id,
-      });
-
-      wsManager.broadcastEmergencyEscalation({
-        caseId,
-        severity,
-        reason,
         escalationId: escalation[0].id,
       });
 
@@ -1345,7 +1323,6 @@ app.use(
     auditLogService,
     requireAuth,
     escalationLimiter,
-    wsManager,
   ),
 );
 app.use(
@@ -2099,7 +2076,6 @@ if (
 async function startServer(): Promise<void> {
   await initializeServices();
   await rateLimitingInitialization;
-  await wsManager.initializeScaling();
   startNotificationWorker();
   startAuditChainCron();
 
@@ -2115,7 +2091,6 @@ async function startServer(): Promise<void> {
     server.listen(Number(PORT), HOST, () => {
       server.off("error", handleError);
       const protocol = server instanceof https.Server ? "HTTPS" : "HTTP";
-      const websocketStatus = wsManager.getHealthStatus();
       const rateLimitStatus = getRateLimitStoreStatus();
       logger.info("AEGIS-AI server startup", {
         port: PORT,
@@ -2127,10 +2102,6 @@ async function startServer(): Promise<void> {
           mfa: "TOTP + Backup codes",
           auditLogging: "Immutable blockchain-style",
           eventBus: "Active",
-          webSocket:
-            websocketStatus.adapter === "redis"
-              ? "Redis adapter enabled"
-              : "Local adapter enabled",
           rateLimiting:
             rateLimitStatus.store === "redis" ? "Redis-backed" : "In-memory",
           rateLimitingReason: rateLimitStatus.reason,
@@ -2168,13 +2139,6 @@ const gracefulShutdown = async (signal: string) => {
       logger.info("Notification worker stopped");
     } catch (error) {
       logger.error("Error stopping notification worker", error);
-    }
-
-    try {
-      await wsManager.shutdown();
-      logger.info("WebSocket connections closed");
-    } catch (error) {
-      logger.error("Error closing WebSocket", error);
     }
 
     try {

@@ -1,8 +1,8 @@
-import { Queue, Worker, Job } from 'bullmq';
-import IORedis from 'ioredis';
-import { createLogger } from '../utils/logger';
+import { Queue, Worker, Job } from "bullmq";
+import IORedis from "ioredis";
+import { createLogger } from "../utils/logger";
 
-const logger = createLogger('notification-queue');
+const logger = createLogger("notification-queue");
 
 function resolveRedisUrl(): string | null {
   if (process.env.REDIS_URL) return process.env.REDIS_URL;
@@ -13,18 +13,21 @@ function resolveRedisUrl(): string | null {
 function createConnection(): IORedis | null {
   const url = resolveRedisUrl();
   if (!url) {
-    logger.warn('Redis not configured — notification queue is disabled');
+    logger.warn("Redis not configured — notification queue is disabled");
     return null;
   }
 
-  const client = new IORedis(url, { maxRetriesPerRequest: null, lazyConnect: true });
-
-  client.on('error', (err) => {
-    logger.error('Redis connection error for queue', err);
+  const client = new IORedis(url, {
+    maxRetriesPerRequest: null,
+    lazyConnect: true,
   });
 
-  client.on('connect', () => {
-    logger.info('Notification queue Redis connected');
+  client.on("error", (err) => {
+    logger.error("Redis connection error for queue", err);
+  });
+
+  client.on("connect", () => {
+    logger.info("Notification queue Redis connected");
   });
 
   return client;
@@ -46,12 +49,12 @@ function getQueue(): Queue | null {
   const conn = getConnection();
   if (!conn) return null;
 
-  _queue = new Queue('notifications', {
+  _queue = new Queue("notifications", {
     connection: conn,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
-        type: 'exponential',
+        type: "exponential",
         delay: 2000,
       },
       removeOnComplete: {
@@ -71,93 +74,116 @@ export const notificationQueue = new Proxy({} as Queue, {
   get(_target, prop) {
     const q = getQueue();
     if (!q) {
-      throw new Error(`Notification queue unavailable: Redis is not configured (accessing .${String(prop)})`);
+      throw new Error(
+        `Notification queue unavailable: Redis is not configured (accessing .${String(prop)})`,
+      );
     }
-    return typeof (q as unknown as Record<string | symbol, unknown>)[prop] === 'function'
+    return typeof (q as unknown as Record<string | symbol, unknown>)[prop] ===
+      "function"
       ? (q as unknown as Record<string | symbol, unknown>)[prop]
       : (q as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 
 export interface NotificationJobData {
-  type: 'sms' | 'email' | 'push' | 'whatsapp';
+  type: "sms" | "email" | "push" | "whatsapp";
   recipient: string;
   message: string;
   metadata?: Record<string, unknown>;
   priority?: number;
 }
 
-export async function queueNotification(data: NotificationJobData): Promise<string | null> {
+export async function queueNotification(
+  data: NotificationJobData,
+): Promise<string | null> {
   const q = getQueue();
   if (!q) {
-    logger.warn('Notification queue unavailable — skipping job', { type: data.type, recipient: data.recipient });
+    logger.warn("Notification queue unavailable — skipping job", {
+      type: data.type,
+      recipient: data.recipient,
+    });
     return null;
   }
-  const job = await q.add('send-notification', data, {
+  const job = await q.add("send-notification", data, {
     priority: data.priority || 5,
   });
-  logger.info('Notification queued', { jobId: job.id, type: data.type });
+  logger.info("Notification queued", { jobId: job.id, type: data.type });
   return job.id!;
 }
 
-export async function queueBulkNotifications(notifications: NotificationJobData[]): Promise<(string | null)[]> {
+export async function queueBulkNotifications(
+  notifications: NotificationJobData[],
+): Promise<(string | null)[]> {
   const q = getQueue();
   if (!q) {
-    logger.warn('Notification queue unavailable — skipping bulk jobs', { count: notifications.length });
+    logger.warn("Notification queue unavailable — skipping bulk jobs", {
+      count: notifications.length,
+    });
     return notifications.map(() => null);
   }
   const jobs = await q.addBulk(
     notifications.map((data) => ({
-      name: 'send-notification',
+      name: "send-notification",
       data,
       opts: {
         priority: data.priority || 5,
       },
-    }))
+    })),
   );
-  logger.info('Bulk notifications queued', { count: jobs.length });
+  logger.info("Bulk notifications queued", { count: jobs.length });
   return jobs.map((j) => j.id!);
 }
 
 export function createNotificationWorker(
-  processor: (job: Job<NotificationJobData>) => Promise<void>
+  processor: (job: Job<NotificationJobData>) => Promise<void>,
 ): Worker | null {
   const conn = getConnection();
   if (!conn) {
-    logger.warn('Notification worker not started — Redis is not configured');
+    logger.warn("Notification worker not started — Redis is not configured");
     return null;
   }
 
+  // Tunable without a redeploy — raise these on the Render env var panel if a
+  // crisis event drives an SMS/alert spike (see RUNBOOK.md).
+  const concurrency = Number(process.env.NOTIFICATION_QUEUE_CONCURRENCY) || 10;
+  const limiterMax =
+    Number(process.env.NOTIFICATION_QUEUE_RATE_LIMIT_MAX) || 100;
+  const limiterDurationMs =
+    Number(process.env.NOTIFICATION_QUEUE_RATE_LIMIT_DURATION_MS) || 60000;
+
   const worker = new Worker<NotificationJobData>(
-    'notifications',
+    "notifications",
     async (job) => {
-      logger.info('Processing notification', { jobId: job.id, type: job.data.type });
+      logger.info("Processing notification", {
+        jobId: job.id,
+        type: job.data.type,
+      });
       await processor(job);
     },
     {
       connection: conn,
-      concurrency: 10,
+      concurrency,
       limiter: {
-        max: 100,
-        duration: 60000,
+        max: limiterMax,
+        duration: limiterDurationMs,
       },
-    }
+    },
   );
 
-  worker.on('completed', (job) => {
-    logger.info('Notification sent', { jobId: job.id, type: job.data.type });
+  worker.on("completed", (job) => {
+    logger.info("Notification sent", { jobId: job.id, type: job.data.type });
   });
 
-  worker.on('failed', (job, err) => {
-    logger.error('Notification failed', err, {
+  worker.on("failed", (job, err) => {
+    logger.error("Notification failed", err, {
       jobId: job?.id,
       type: job?.data.type,
       attempts: job?.attemptsMade,
     });
   });
 
-  worker.on('error', (err) => {
-    logger.error('Worker error', err);
+  worker.on("error", (err) => {
+    logger.error("Worker error", err);
   });
 
   return worker;
@@ -194,5 +220,5 @@ export async function closeQueue(): Promise<void> {
     await _connection.quit();
     _connection = null;
   }
-  logger.info('Notification queue closed');
+  logger.info("Notification queue closed");
 }
