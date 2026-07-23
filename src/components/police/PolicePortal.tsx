@@ -48,6 +48,7 @@ import {
   Home,
   Languages,
   LayoutGrid,
+  Loader2,
   LogOut,
   MapPin,
   Megaphone,
@@ -55,6 +56,7 @@ import {
   Mic,
   MoreHorizontal,
   Phone,
+  Play,
   Plus,
   Radio,
   Scale,
@@ -69,6 +71,7 @@ import {
   Upload,
   Users,
   Video,
+  Volume2,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -78,6 +81,13 @@ import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
 import SharedEvidencePanel from "@/components/evidence/SharedEvidencePanel";
+import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
+import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
+import {
+  languageLabel,
+  RESPONDER_LANGUAGES,
+} from "@/components/voice/voiceLanguages";
+import { canSpeak, speakText } from "@/lib/speech";
 import CoordinationBoard from "@/components/coordination/CoordinationBoard";
 import {
   useAlertsFeed,
@@ -6194,6 +6204,203 @@ const EvidenceUploadModal = ({
   );
 };
 
+const CASE_EVIDENCE_LANG_PREF_KEY = "aegis.responder.lang";
+
+interface CaseEvidenceTranslation {
+  originalText: string;
+  detectedLanguage: string | null;
+  translatedText: string;
+  targetLanguage: string;
+  audioBase64: string | null;
+  audioMimeType?: string | null;
+}
+
+/**
+ * Runs a case-evidence audio file (e.g. a survivor's recorded report from the
+ * mobile app) through the same Whisper -> translate -> Azure TTS pipeline as
+ * the standalone Voice Note Translator, so a responder can listen to evidence
+ * that's already attached to a case without re-downloading/re-uploading it.
+ */
+const VoiceEvidenceListenModal = ({
+  entry,
+  onClose,
+}: {
+  entry: CaseEvidenceEntry;
+  onClose: () => void;
+}) => {
+  const [lang, setLang] = useState(
+    () => localStorage.getItem(CASE_EVIDENCE_LANG_PREF_KEY) || "en",
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<CaseEvidenceTranslation | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const translate = async (targetLang: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const url = await createCaseEvidenceUrl(entry.storagePath);
+      if (!url) throw new Error("no_url");
+      const fileResponse = await fetch(url);
+      const blob = await fileResponse.blob();
+      const apiBaseUrl = (
+        import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+      ).replace(/\/+$/, "");
+      const response = await fetch(
+        `${apiBaseUrl}/ai/voice-translate?target=${encodeURIComponent(targetLang)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": entry.mimeType || blob.type || "audio/m4a",
+          },
+          body: blob,
+        },
+      );
+      if (!response.ok)
+        throw new Error(`Translation failed (${response.status})`);
+      const data = (await response.json()) as CaseEvidenceTranslation;
+      if (!data.originalText) {
+        setError(
+          "Couldn't transcribe that recording — it may be silent or too noisy.",
+        );
+        return;
+      }
+      setResult(data);
+    } catch {
+      setError(
+        "Voice translation is unavailable right now. Please try again shortly.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void translate(lang);
+    // Only re-run when the responder explicitly changes language (below) —
+    // not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.id]);
+
+  const updateLang = (code: string) => {
+    setLang(code);
+    localStorage.setItem(CASE_EVIDENCE_LANG_PREF_KEY, code);
+    void translate(code);
+  };
+
+  const playTranslation = () => {
+    if (!result?.audioBase64) return;
+    audioRef.current?.pause();
+    const mime = result.audioMimeType || "audio/mpeg";
+    const audio = new Audio(`data:${mime};base64,${result.audioBase64}`);
+    audioRef.current = audio;
+    void audio.play();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Listen to voice evidence"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#0c1224] shadow-2xl shadow-black/50"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-black text-white">
+              Listen in your language
+            </h2>
+            <p className="mt-0.5 truncate text-[11px] text-slate-300">
+              {entry.fileName ?? "Voice evidence"}
+            </p>
+          </div>
+          <select
+            value={lang}
+            onChange={(event) => updateLang(event.target.value)}
+            className="shrink-0 rounded-md border border-white/10 bg-slate-950/60 px-2 py-1.5 text-xs font-semibold text-white focus:border-violet-500/50 focus:outline-none"
+            aria-label="Preferred playback language"
+          >
+            {RESPONDER_LANGUAGES.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto px-5 py-4">
+          {busy ? (
+            <p className="flex items-center gap-2 py-6 text-xs text-slate-300">
+              <Loader2 className="h-4 w-4 animate-spin" /> Transcribing &
+              translating…
+            </p>
+          ) : error ? (
+            <p className="text-xs font-medium text-rose-400">{error}</p>
+          ) : result ? (
+            <>
+              <div className="rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Original · {languageLabel(result.detectedLanguage)}
+                </p>
+                <p className="text-sm leading-relaxed text-slate-200">
+                  {result.originalText}
+                </p>
+              </div>
+              <div className="rounded-lg border border-violet-500/25 bg-violet-500/10 p-3">
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-violet-300">
+                  Translation · {languageLabel(result.targetLanguage)}
+                </p>
+                <p className="text-sm leading-relaxed text-white">
+                  {result.translatedText}
+                </p>
+                {result.audioBase64 ? (
+                  <button
+                    type="button"
+                    onClick={playTranslation}
+                    className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500"
+                  >
+                    <Play className="h-3.5 w-3.5" /> Play in{" "}
+                    {languageLabel(result.targetLanguage)}
+                  </button>
+                ) : canSpeak() ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      speakText(result.translatedText, result.targetLanguage)
+                    }
+                    className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500"
+                  >
+                    <Volume2 className="h-3.5 w-3.5" /> Play in{" "}
+                    {languageLabel(result.targetLanguage)} (device voice)
+                  </button>
+                ) : (
+                  <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <Volume2 className="h-3.5 w-3.5" /> Audio playback
+                    unavailable for this language — transcript above.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+        <div className="flex justify-end border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/5"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CaseEvidenceRegister = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -6201,6 +6408,8 @@ const CaseEvidenceRegister = () => {
   const [query, setQuery] = useState("");
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [listeningEntry, setListeningEntry] =
+    useState<CaseEvidenceEntry | null>(null);
 
   useEffect(() => {
     if (!hasSupabase) return;
@@ -6288,6 +6497,12 @@ const CaseEvidenceRegister = () => {
               queryKey: CASE_EVIDENCE_QUERY_KEY,
             });
           }}
+        />
+      )}
+      {listeningEntry && (
+        <VoiceEvidenceListenModal
+          entry={listeningEntry}
+          onClose={() => setListeningEntry(null)}
         />
       )}
       <div className="flex items-center justify-end">
@@ -6391,7 +6606,17 @@ const CaseEvidenceRegister = () => {
                         {e.createdAt ? fmtRelative(e.createdAt) : "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {kind === "audio" && (
+                            <button
+                              type="button"
+                              onClick={() => setListeningEntry(e)}
+                              aria-label={`Listen to ${e.fileName ?? "evidence"} in your language`}
+                              className="flex items-center gap-1 rounded-md border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-200 hover:bg-violet-500/20"
+                            >
+                              <Languages className="h-3.5 w-3.5" /> Listen
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => void openFile(e)}
@@ -6426,6 +6651,9 @@ const EvidenceSection = () => (
     <SharedEvidencePanel />
     {/* Live: evidence responders upload and attach to cases. */}
     <CaseEvidenceRegister />
+    {/* Hear a survivor's voice note in your own language, any language in. */}
+    <VoiceNoteTranslator />
+    <VoiceEvidenceArchive />
   </>
 );
 

@@ -24,7 +24,10 @@ import {
   attachCommunityEvidence,
   type CommunityEvidenceAsset,
 } from "@/features/reports/communityEvidence";
-import { VoiceCapture } from "@/features/voice/VoiceCapture";
+import {
+  VoiceCapture,
+  type CapturedRecording,
+} from "@/features/voice/VoiceCapture";
 import { colors, font, radius, spacing, TOUCH_MIN } from "@/theme";
 
 type Urgency = "low" | "medium" | "high";
@@ -92,6 +95,9 @@ export default function Report() {
   const [anonymous, setAnonymous] = useState(false);
   const [consent, setConsent] = useState(false);
   const [evidence, setEvidence] = useState<CommunityEvidenceAsset[]>([]);
+  const [recordedAudio, setRecordedAudio] = useState<CapturedRecording | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
     tone: "success" | "info" | "danger";
@@ -137,6 +143,7 @@ export default function Report() {
     setRelationship("self");
     setConsent(false);
     setEvidence([]);
+    setRecordedAudio(null);
   }
 
   // Evidence can only be attached to a non-anonymous community report: RLS ties
@@ -191,16 +198,28 @@ export default function Report() {
         payload.public_reference ??
         (data.id ?? "submitted").slice(0, 8).toUpperCase();
 
-      // Attach any evidence to the new case so responders see it in their
-      // Case Evidence Register. Best-effort: a failed upload never loses the
-      // report itself.
+      // Attach any evidence — including a spoken voice note, if one was
+      // recorded — to the new case so responders see it in their Case
+      // Evidence Register and can play it back translated into their own
+      // language. Same authorization boundary as photos: only a signed-in,
+      // non-anonymous community/witness report can attach anything (RLS
+      // ties the upload to the reporter's own case). Best-effort: a failed
+      // upload never loses the report itself.
+      const attachAssets: CommunityEvidenceAsset[] = [...evidence];
+      if (recordedAudio) {
+        attachAssets.push({
+          uri: recordedAudio.uri,
+          fileName: "voice-note.m4a",
+          mimeType: recordedAudio.mimeType,
+        });
+      }
       let evidenceNote = "";
-      if (data.id && canAttachEvidence && evidence.length && user?.id) {
+      if (data.id && canAttachEvidence && attachAssets.length && user?.id) {
         const { attached, failed } = await attachCommunityEvidence({
           caseId: data.id,
           caseReference: payload.public_reference,
           uploaderId: user.id,
-          assets: evidence,
+          assets: attachAssets,
         });
         if (attached)
           evidenceNote += ` ${t("report.evidenceAttached", {
@@ -351,7 +370,16 @@ export default function Report() {
           onTranscript={(text) =>
             setDescription((cur) => (cur ? `${cur} ${text}` : text))
           }
+          onRecordingCaptured={setRecordedAudio}
         />
+        {recordedAudio && canAttachEvidence ? (
+          <Text style={styles.sectionHint}>
+            {t(
+              "report.voiceEvidenceHint",
+              "Your recording will be saved with this report so responders can listen to it.",
+            )}
+          </Text>
+        ) : null}
       </View>
 
       {/* Evidence — community/witness reports only */}

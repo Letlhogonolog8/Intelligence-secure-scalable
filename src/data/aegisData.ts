@@ -381,12 +381,6 @@ export interface AdminDashboardConfigResponse {
   requestId?: string;
 }
 
-export interface PoliceAlertFeedResponse {
-  alerts: Array<Record<string, unknown>>;
-  generatedAt?: string;
-  requestId?: string;
-}
-
 export interface RegionIncidentType {
   type: string;
   pct: number;
@@ -1179,61 +1173,6 @@ const useRealtimeQuery = <T>(
   return query;
 };
 
-/**
- * Subscribes to `escalation_events` (now published to Supabase Realtime) and
- * invalidates the alert-feed queries on any change, so a survivor's SOS appears
- * on responder dashboards instantly instead of waiting for the next poll.
- * Use alongside the polled feed hooks on responder surfaces.
- */
-export const useEscalationRealtime = (options?: { enabled?: boolean }) => {
-  const queryClient = useQueryClient();
-  const enabled = options?.enabled ?? true;
-
-  useEffect(() => {
-    if (!hasSupabase || !enabled) return;
-    if (typeof navigator !== "undefined" && !navigator.onLine) return;
-
-    const scopeKey = "escalationRealtime:escalation_events";
-    const scopeState = getRealtimeScopeState(scopeKey);
-    if (scopeState.disabled) return;
-
-    const invalidate = () => {
-      queryClient.invalidateQueries({
-        queryKey: ["aegis", "policeAlertsFeed"],
-      });
-      queryClient.invalidateQueries({ queryKey: ["aegis", "alertsFeed"] });
-    };
-
-    const channel = supabase
-      .channel("aegis:escalationRealtime:escalation_events")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "escalation_events" },
-        invalidate,
-      );
-
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        scopeState.failureCount = 0;
-        scopeState.disabled = false;
-        return;
-      }
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        scopeState.failureCount += 1;
-        if (scopeState.failureCount >= realtimeFailureThreshold) {
-          scopeState.disabled = true;
-        }
-        invalidate();
-        supabase.removeChannel(channel);
-      }
-    });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient, enabled]);
-};
-
 const fetchRegions = async (options?: FetchOptions) => {
   if (!hasSupabase) return [] as RegionData[];
 
@@ -1695,27 +1634,6 @@ const fetchAdminDashboardConfig =
       return fallbackConfig;
     }
   };
-
-const fetchPoliceAlertsFeed = async (
-  options?: FetchOptions,
-): Promise<AlertItem[]> => {
-  const fallbackAlerts = await fetchAlertsFeed(options);
-
-  try {
-    const response = await apiClient.get<PoliceAlertFeedResponse>(
-      "/police/alerts",
-      {
-        params: { limit: options?.limit },
-      },
-    );
-
-    return (response.data.alerts ?? []).map((row) =>
-      mapAlert(row as Record<string, unknown>),
-    );
-  } catch {
-    return fallbackAlerts;
-  }
-};
 
 export const acknowledgePoliceAlert = async (alertId: string) => {
   // Acknowledge directly in the DB (source of truth, same alerts_feed manage RLS
@@ -2285,20 +2203,6 @@ export const useAlertsFeed = (options?: ListQueryOptions) =>
     () => fetchAlertsFeed(options),
     { ...options, queryKey: [options?.limit, options?.offset] },
   );
-
-export const usePoliceAlertsFeed = (options?: ListQueryOptions) =>
-  useQuery({
-    queryKey: [
-      "aegis",
-      "policeAlertsFeed",
-      options?.limit ?? "all",
-      options?.offset ?? 0,
-    ],
-    queryFn: () => fetchPoliceAlertsFeed(options),
-    enabled: options?.enabled ?? true,
-    staleTime: options?.staleTime,
-    refetchInterval: options?.refetchInterval,
-  });
 
 export const useContinentalStats = (options?: RealtimeQueryOptions) =>
   useRealtimeQuery(

@@ -52,6 +52,7 @@ import {
   Heart,
   HelpCircle,
   Home,
+  Languages,
   Lock,
   LogOut,
   MoreHorizontal,
@@ -71,6 +72,8 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import SecureMessagesWorkspace from "@/components/messaging/SecureMessagesWorkspace";
+import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
+import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import {
   useAuditLogs,
   useCaseReports,
@@ -123,6 +126,7 @@ type SectionKey =
   | "sessions"
   | "followups"
   | "messages"
+  | "voiceNotes"
   | "resources"
   | "reports"
   | "settings";
@@ -1265,6 +1269,11 @@ const SECTION_META: Record<SectionKey, { title: string; subtitle: string }> = {
     subtitle:
       "Secure communication with survivors, NGOs, police, and partner services.",
   },
+  voiceNotes: {
+    title: "Voice Notes",
+    subtitle:
+      "Hear a survivor's voice note in your own language — any language in, your language out.",
+  },
   resources: {
     title: "Resources",
     subtitle:
@@ -1294,6 +1303,7 @@ const NAV: {
   { key: "sessions", label: "Sessions", icon: FileText },
   { key: "followups", label: "Follow-Ups", icon: RefreshCw },
   { key: "messages", label: "Messages", icon: MoreHorizontal, badge: 8 },
+  { key: "voiceNotes", label: "Voice Notes", icon: Languages },
   { key: "resources", label: "Resources", icon: BookOpen },
   { key: "reports", label: "Reports", icon: BarChart3 },
   { key: "settings", label: "Settings", icon: SettingsIcon },
@@ -2060,6 +2070,7 @@ const CounselorPortal: React.FC = () => {
               {section === "sessions" && <SessionsSection />}
               {section === "followups" && <FollowupsSection />}
               {section === "messages" && <MessagesSection />}
+              {section === "voiceNotes" && <VoiceNotesSection />}
               {section === "resources" && <ResourcesSection />}
               {section === "reports" && <ReportsSection />}
               {section === "settings" && <SettingsSection />}
@@ -3809,6 +3820,15 @@ const FollowupsSection = () => (
 /* =============================== Messages =============================== */
 
 const MessagesSection = () => <SecureMessagesWorkspace />;
+
+/* =============================== Voice Notes =============================== */
+
+const VoiceNotesSection = () => (
+  <>
+    <VoiceNoteTranslator />
+    <VoiceEvidenceArchive />
+  </>
+);
 
 /* =============================== Resources =============================== */
 

@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -16,8 +23,13 @@ type State = "idle" | "recording" | "transcribing";
 
 /** Longest note we accept — keeps the upload well under the server's 12 MB cap. */
 const MAX_RECORDING_SECONDS = 120;
-/** Transcription leg can ride out a Render cold start, but never hang forever. */
-const TRANSCRIBE_TIMEOUT_MS = 75_000;
+/**
+ * Transcription leg can ride out a Hugging Face cold start, but never hang
+ * forever. The server itself bounds a cold-start retry to ~75s
+ * (server/ai/huggingfaceAsr.ts), so this gives it headroom to actually finish
+ * rather than aborting the request out from under it.
+ */
+const TRANSCRIBE_TIMEOUT_MS = 90_000;
 
 function formatElapsed(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -25,13 +37,29 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export interface CapturedRecording {
+  uri: string;
+  mimeType: string | null;
+}
+
 /**
  * Records a short spoken statement and transcribes it via the server's
  * Hugging Face ASR endpoint, handing the text back to the parent (e.g. to fill
  * the incident description). Fully optional — if the API base or microphone is
  * unavailable it surfaces a gentle message and the user can still type.
+ *
+ * `onRecordingCaptured` (optional) hands back the local file for the raw
+ * recording itself, independent of whether transcription succeeds — the
+ * parent decides whether it's appropriate to keep (e.g. attach as case
+ * evidence) based on its own privacy rules.
  */
-export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) => void }) {
+export function VoiceCapture({
+  onTranscript,
+  onRecordingCaptured,
+}: {
+  onTranscript: (text: string) => void;
+  onRecordingCaptured?: (recording: CapturedRecording) => void;
+}) {
   const { t } = useTranslation();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [state, setState] = useState<State>("idle");
@@ -57,8 +85,16 @@ export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) =>
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.25, duration: 600, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulse, {
+          toValue: 0.25,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
       ]),
     );
     loop.start();
@@ -72,10 +108,15 @@ export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) =>
     try {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
-        setError(t("voice.permission", "Microphone access is needed to record."));
+        setError(
+          t("voice.permission", "Microphone access is needed to record."),
+        );
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setElapsed(0);
@@ -106,23 +147,39 @@ export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) =>
       if (!uri) throw new Error("no_audio");
       const file = await fetch(uri);
       const blob = await file.blob();
+      onRecordingCaptured?.({ uri, mimeType: blob.type || "audio/m4a" });
       const res = await fetch(`${env.apiUrl}/api/ai/transcribe`, {
         method: "POST",
         headers: { "Content-Type": blob.type || "audio/m4a" },
         body: blob,
         signal: controller.signal,
       });
-      const { text } = (await res.json()) as { text?: string };
+      const { text, coldStart } = (await res.json()) as {
+        text?: string;
+        coldStart?: boolean;
+      };
       if (text && text.trim()) {
         onTranscript(text.trim());
+      } else if (coldStart) {
+        setError(
+          t(
+            "voice.warming",
+            "The transcription service is still warming up — please try again in a moment.",
+          ),
+        );
       } else {
-        setError(t("voice.empty", "Couldn't transcribe that — you can type instead."));
+        setError(
+          t("voice.empty", "Couldn't transcribe that — you can type instead."),
+        );
       }
     } catch (err) {
       const aborted = err instanceof Error && err.name === "AbortError";
       setError(
         aborted
-          ? t("voice.timeout", "The server is taking too long — please try again or type instead.")
+          ? t(
+              "voice.timeout",
+              "The server is taking too long — please try again or type instead.",
+            )
           : t("voice.failed", "Transcription failed — you can type instead."),
       );
     } finally {
@@ -143,12 +200,18 @@ export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) =>
         disabled={transcribing}
         style={[styles.btn, recording && styles.btnRecording]}
         accessibilityRole="button"
-        accessibilityLabel={recording ? t("voice.stop", "Stop recording") : t("voice.record", "Record voice note")}
+        accessibilityLabel={
+          recording
+            ? t("voice.stop", "Stop recording")
+            : t("voice.record", "Record voice note")
+        }
       >
         {transcribing ? (
           <View style={styles.row}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.btnText}>{t("voice.transcribing", "Transcribing…")}</Text>
+            <Text style={styles.btnText}>
+              {t("voice.transcribing", "Transcribing…")}
+            </Text>
           </View>
         ) : recording ? (
           <View style={styles.row}>
@@ -160,15 +223,21 @@ export function VoiceCapture({ onTranscript }: { onTranscript: (text: string) =>
         ) : (
           <View style={styles.row}>
             <Ionicons name="mic" size={18} color={colors.primary} />
-            <Text style={styles.btnText}>{t("voice.record", "Record voice note")}</Text>
+            <Text style={styles.btnText}>
+              {t("voice.record", "Record voice note")}
+            </Text>
           </View>
         )}
       </Pressable>
       {recording ? (
         <Text style={styles.hint}>
-          {t("voice.hint", "Speak naturally. Recording stops automatically at {{m}} minutes.", {
-            m: MAX_RECORDING_SECONDS / 60,
-          })}
+          {t(
+            "voice.hint",
+            "Speak naturally. Recording stops automatically at {{m}} minutes.",
+            {
+              m: MAX_RECORDING_SECONDS / 60,
+            },
+          )}
         </Text>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -189,8 +258,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
-  btnRecording: { borderColor: colors.danger, backgroundColor: colors.danger + "1f" },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
+  btnRecording: {
+    borderColor: colors.danger,
+    backgroundColor: colors.danger + "1f",
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.danger,
+  },
   btnText: { color: colors.primary, fontWeight: "700", fontSize: font.body },
   btnTextRecording: { color: colors.danger },
   hint: { color: colors.textFaint, fontSize: font.tiny, textAlign: "center" },

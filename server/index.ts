@@ -24,6 +24,7 @@ import { idempotency } from "./middleware/idempotency";
 import whatsappRoutes from "./routes/whatsappRoutes";
 import { createCommunityRoutes } from "./routes/communityRoutes";
 import { synthesizeSpeech, isTtsConfigured } from "./ai/azureTts";
+import { transcribeAudio } from "./ai/huggingfaceAsr";
 import { createLogger } from "./utils/logger";
 import {
   metricsHandler,
@@ -1465,50 +1466,11 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     const requestId = (req as AppRequest).id;
     try {
-      const hfToken = process.env.HUGGINGFACE_API_TOKEN;
       const audio = req.body as Buffer;
-      if (
-        !hfToken ||
-        hfToken.startsWith("[replace") ||
-        !Buffer.isBuffer(audio) ||
-        audio.length === 0
-      ) {
-        res.json({ text: "" });
-        return;
-      }
-
-      // Turbo distils large-v3 with ~8x faster inference and far better
-      // serverless availability — the full model frequently cold-loads for
-      // minutes on HF, which reads as "transcription broken" to the survivor.
-      const model =
-        process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
-      const hfResponse = await fetch(
-        `https://router.huggingface.co/hf-inference/models/${model}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${hfToken}`,
-            "Content-Type":
-              (req.headers["content-type"] as string) || "audio/m4a",
-          },
-          body: audio,
-        },
-      );
-
-      if (!hfResponse.ok) {
-        const detail = await hfResponse.text().catch(() => "");
-        logger.error(
-          "Hugging Face transcription failed",
-          new Error(`HF ${hfResponse.status}: ${detail.slice(0, 200)}`),
-          {},
-          requestId,
-        );
-        res.json({ text: "" });
-        return;
-      }
-
-      const payload = (await hfResponse.json()) as { text?: string };
-      res.json({ text: (payload.text ?? "").trim() });
+      const contentType =
+        (req.headers["content-type"] as string) || "audio/m4a";
+      const { text, coldStart } = await transcribeAudio(audio, contentType);
+      res.json({ text, coldStart });
     } catch (error) {
       logger.error("Voice transcription failed", error, {}, requestId);
       res.json({ text: "" });
@@ -1545,27 +1507,21 @@ app.post(
       }
 
       // 1. Transcribe (Whisper handles all SA languages + auto language).
-      const asrModel =
-        process.env.HUGGINGFACE_ASR_MODEL || "openai/whisper-large-v3-turbo";
-      const asr = await fetch(
-        `https://router.huggingface.co/hf-inference/models/${asrModel}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${hfToken}`,
-            "Content-Type":
-              (req.headers["content-type"] as string) || "audio/m4a",
-          },
-          body: audio,
-        },
-      );
-      if (!asr.ok) {
+      let originalText: string;
+      try {
+        const contentType =
+          (req.headers["content-type"] as string) || "audio/m4a";
+        originalText = (await transcribeAudio(audio, contentType)).text;
+      } catch (transcribeError) {
+        logger.error(
+          "Voice-translate transcription failed",
+          transcribeError,
+          {},
+          requestId,
+        );
         res.status(502).json({ error: "transcription_failed" });
         return;
       }
-      const originalText = (
-        ((await asr.json()) as { text?: string }).text ?? ""
-      ).trim();
       if (!originalText) {
         res.json({
           originalText: "",

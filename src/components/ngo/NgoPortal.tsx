@@ -55,6 +55,7 @@ import {
   Heart,
   HelpCircle,
   Home,
+  Languages,
   LayoutGrid,
   LogOut,
   Megaphone,
@@ -80,6 +81,8 @@ import WorldRiskMap, {
   type MapRegion,
 } from "@/components/analyst/WorldRiskMap";
 import SecureMessagesWorkspace from "@/components/messaging/SecureMessagesWorkspace";
+import VoiceNoteTranslator from "@/components/voice/VoiceNoteTranslator";
+import VoiceEvidenceArchive from "@/components/voice/VoiceEvidenceArchive";
 import {
   useCaseReports,
   useEscalationEvents,
@@ -130,6 +133,7 @@ type SectionKey =
   | "analytics"
   | "reports"
   | "messages"
+  | "voiceNotes"
   | "placeholder";
 
 /* ============================ MOCK / SAMPLE DATA ============================ */
@@ -1840,6 +1844,11 @@ const SECTION_META: Record<
     subtitle:
       "Generate, manage, and export reports to track impact and performance.",
   },
+  voiceNotes: {
+    title: "Voice Notes",
+    subtitle:
+      "Hear a survivor's voice note in your own language — any language in, your language out.",
+  },
 };
 
 const NAV_GROUPS: {
@@ -1859,6 +1868,7 @@ const NAV_GROUPS: {
       { key: "referrals", label: "Referrals", icon: Send },
       { key: "followups", label: "Follow-ups", icon: RefreshCw },
       { key: "messages", label: "Secure Messages", icon: MessageSquare },
+      { key: "voiceNotes", label: "Voice Notes", icon: Languages },
     ],
   },
   {
@@ -1916,6 +1926,7 @@ const DETAILED: SectionKey[] = [
   "analytics",
   "reports",
   "messages",
+  "voiceNotes",
 ];
 
 /* ============================== UI HELPERS ============================== */
@@ -2753,6 +2764,7 @@ const NgoPortal: React.FC = () => {
               {section === "analytics" && <AnalyticsSection />}
               {section === "reports" && <ReportsSection />}
               {section === "messages" && <SecureMessagesWorkspace />}
+              {section === "voiceNotes" && <VoiceNotesSection />}
               {!DETAILED.includes(section) && (
                 <PlaceholderSection meta={meta} />
               )}
@@ -5575,6 +5587,15 @@ const AnalyticsSection = () => {
     </>
   );
 };
+
+/* =============================== Voice Notes =============================== */
+
+const VoiceNotesSection = () => (
+  <>
+    <VoiceNoteTranslator />
+    <VoiceEvidenceArchive />
+  </>
+);
 
 /* =============================== Reports =============================== */
 
